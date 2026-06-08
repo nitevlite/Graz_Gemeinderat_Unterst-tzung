@@ -206,6 +206,44 @@ def fetch_digra_entries(dates: list[str], tool_path: Path = DEFAULT_DIGRA_TOOL_P
     return entries
 
 
+def digra_entries_to_records(entries: list[DigraEntry]) -> list[AgendaRecord]:
+    records: list[AgendaRecord] = []
+    for index, entry in enumerate(entries, start=1):
+        status = entry.status if entry.result_text else "unknown"
+        records.append(
+            AgendaRecord(
+                record_id=f"{entry.meeting_date}-digra-{entry.record_type}-{entry.order_in_type}-{index}",
+                record_type=entry.record_type,
+                source_file="DIGRA",
+                meeting_date=entry.meeting_date,
+                section=entry.section,
+                agenda_item_no=entry.agenda_item_no,
+                business_numbers=[entry.business_number] if entry.business_number else [],
+                title=entry.title,
+                status=status,
+                status_text=status,
+                result_text=entry.result_text or "DIGRA-Ergebnis fehlt",
+                raw_result_text=entry.raw_result_text,
+                votes=entry.votes,
+                amounts=[],
+                locations=[],
+                source_snippet="",
+                parser_confidence=0.8 if entry.title else 0.5,
+                result_source=DIGRA_SOURCE if entry.result_text else DIGRA_MISSING_SOURCE,
+                digra_url=entry.url,
+                digra_business_number=entry.business_number,
+                protocol_result_text="",
+                digra_match_score=1.0,
+            )
+        )
+    return records
+
+
+def list_digra_meetings(tool_path: Path = DEFAULT_DIGRA_TOOL_PATH, limit: int = 20):
+    exporter = import_exporter(tool_path)
+    return exporter.list_recent_meetings(fallback_years=3, limit=limit)
+
+
 def import_exporter(tool_path: Path):
     if not tool_path.exists():
         raise RuntimeError(f"DIGRA-Export-Tool nicht gefunden: {tool_path}")

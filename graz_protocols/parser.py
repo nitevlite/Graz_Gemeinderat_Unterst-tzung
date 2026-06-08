@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 import json
 import re
 from typing import Iterable, Protocol
+
+from .street_names import normalize_street_name
 
 
 class ParagraphLike(Protocol):
@@ -39,9 +41,19 @@ AMOUNT_RE = re.compile(
 LOCATION_RE = re.compile(
     r"\b[\wÄÖÜäöüß.-]+(?:straße|strasse|gasse|weg|platz|park|brücke|bruecke|allee|kai|ufer)\b"
     r"|\bKG\s+[A-ZÄÖÜ][\wÄÖÜäöüß.-]+"
+    r"|\bEZ\s+\d+"
     r"|\bGdst\.?\s*Nr\.?\s*[\d/]+",
     re.IGNORECASE,
 )
+LOCATION_TYPED_PATTERNS = [
+    ("street", re.compile(r"\b[\wÄÖÜäöüß.-]+(?:straße|strasse|gasse|weg|allee|kai|ufer)\b", re.IGNORECASE)),
+    ("place", re.compile(r"\b[\wÄÖÜäöüß.-]+platz\b", re.IGNORECASE)),
+    ("park", re.compile(r"\b[\wÄÖÜäöüß.-]+park\b", re.IGNORECASE)),
+    ("bridge", re.compile(r"\b[\wÄÖÜäöüß.-]+(?:brücke|bruecke)\b", re.IGNORECASE)),
+    ("cadastral_municipality", re.compile(r"\bKG\s+[A-ZÄÖÜ][\wÄÖÜäöüß.-]+", re.IGNORECASE)),
+    ("land_register", re.compile(r"\bEZ\s+\d+", re.IGNORECASE)),
+    ("parcel", re.compile(r"\bGdst\.?\s*Nr\.?\s*[\d/]+", re.IGNORECASE)),
+]
 REPORTER_RE = re.compile(r"\((?:Berichterstatter(?:in)?|GR|KlObm|KlObf)[^)]+\)")
 TRAILING_PAGE_RE = re.compile(r"\t\d{1,4}$")
 
@@ -76,6 +88,10 @@ FORMAL_RESULT_RE = re.compile(
 )
 RESULT_DETAIL_RE = re.compile(
     r"^(?:Zustimmung|Dagegen|Gegen|Enthaltung|Gegenstimmen?|Gegenprobe)\s*:?",
+    re.IGNORECASE,
+)
+AMOUNT_SCOPE_START_RE = re.compile(
+    r"(?:folgender\s+(?:Antrag|Anfrage)\s+gestellt|Der\s+Gemeinderat\s+wolle\s+beschließen)",
     re.IGNORECASE,
 )
 RESULT_SUBJECT_RE = re.compile(
@@ -132,6 +148,7 @@ class AgendaRecord:
     locations: list[str]
     source_snippet: str
     parser_confidence: float
+    location_details: list[dict[str, object]] = field(default_factory=list)
     result_source: str = "protokoll"
     digra_url: str = ""
     digra_business_number: str = ""
@@ -142,7 +159,9 @@ class AgendaRecord:
         return json.dumps(asdict(self), ensure_ascii=False, sort_keys=True)
 
 
-def parse_protocol(paragraphs: Iterable[str | ParagraphLike], source_file: str) -> list[AgendaRecord]:
+def parse_protocol(
+    paragraphs: Iterable[str | ParagraphLike], source_file: str, street_names: set[str] | None = None
+) -> list[AgendaRecord]:
     blocks = normalize_blocks(paragraphs)
     meeting_date = extract_meeting_date((block.text for block in blocks), source_file)
     chunks = list(iter_record_chunks(blocks))
@@ -169,8 +188,9 @@ def parse_protocol(paragraphs: Iterable[str | ParagraphLike], source_file: str) 
             normalize_business_number(match.group(0))
             for match in BUSINESS_NO_RE.finditer(heading_body)
         )
-        amounts = unique_preserve_order(normalize_amount(match.group(0)) for match in AMOUNT_RE.finditer(chunk_text))
-        locations = unique_preserve_order(match.group(0).strip() for match in LOCATION_RE.finditer(chunk_text))
+        amounts = extract_amounts(heading_body, chunk.body)
+        location_details = extract_location_details(chunk_text, street_names=street_names)
+        locations = unique_preserve_order(str(location["value"]) for location in location_details)
         confidence = score_confidence(business_numbers, status, title)
         record_id = build_record_id(meeting_date, source_file, chunk.record_type, item_no, len(records) + 1)
         records.append(
@@ -190,6 +210,7 @@ def parse_protocol(paragraphs: Iterable[str | ParagraphLike], source_file: str) 
                 votes=votes,
                 amounts=amounts,
                 locations=locations,
+                location_details=location_details,
                 source_snippet=make_snippet(chunk_text),
                 parser_confidence=confidence,
             )
@@ -538,6 +559,54 @@ def normalize_amount(value: str) -> str:
     value = value.replace(" ,", ",")
     value = re.sub(r",\s*-+", ",-", value)
     return value
+
+
+def extract_amounts(heading_body: str, body: list[str]) -> list[str]:
+    scoped_texts = [heading_body]
+    marker_seen = False
+    for line in body:
+        if FORMAL_RESULT_RE.search(line):
+            break
+        if AMOUNT_SCOPE_START_RE.search(line):
+            marker_seen = True
+            scoped_texts.append(line)
+            continue
+        if marker_seen:
+            scoped_texts.append(line)
+    return unique_preserve_order(
+        normalize_amount(match.group(0)) for text in scoped_texts for match in AMOUNT_RE.finditer(text)
+    )
+
+
+def extract_location_details(text: str, street_names: set[str] | None = None) -> list[dict[str, object]]:
+    details: list[dict[str, object]] = []
+    seen: set[tuple[str, str]] = set()
+    for location_type, pattern in LOCATION_TYPED_PATTERNS:
+        for match in pattern.finditer(text):
+            value = match.group(0).strip()
+            if street_names is not None and location_type in {"street", "place", "park", "bridge"}:
+                if normalize_street_name(value) not in street_names:
+                    continue
+            key = (location_type, value.casefold())
+            if key in seen:
+                continue
+            seen.add(key)
+            details.append(
+                {
+                    "type": location_type,
+                    "value": value,
+                    "context": make_context(text, match.start(), match.end()),
+                    "confidence": 0.9 if location_type in {"parcel", "land_register", "cadastral_municipality"} else 0.75,
+                }
+            )
+    return details
+
+
+def make_context(text: str, start: int, end: int, limit: int = 160) -> str:
+    prefix_start = max(0, start - limit // 2)
+    suffix_end = min(len(text), end + limit // 2)
+    context = text[prefix_start:suffix_end]
+    return re.sub(r"\s+", " ", context).strip()
 
 
 def unique_preserve_order(values: Iterable[str]) -> list[str]:

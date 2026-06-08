@@ -25,6 +25,12 @@ def main(argv: list[str] | None = None) -> int:
         help="JSON-Datei mit Zusammenfassung. Standard: out/summary.json.",
     )
     parser.add_argument(
+        "--topics",
+        type=Path,
+        default=None,
+        help="Optionale JSON-Datei mit Themenkandidaten, z.B. out/topic_candidates.json.",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=Path("viewer.html"),
@@ -38,7 +44,8 @@ def main(argv: list[str] | None = None) -> int:
 
     records = read_jsonl(args.records)
     summary = read_json(args.summary) if args.summary.exists() else {}
-    args.output.write_text(build_html(records, summary), encoding="utf-8")
+    topics = read_json(args.topics) if args.topics and args.topics.exists() else []
+    args.output.write_text(build_html(records, summary, topics), encoding="utf-8")
     print(f"{args.output} mit {len(records)} Einträgen geschrieben.")
     return 0
 
@@ -57,26 +64,31 @@ def read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def build_html(records: list[dict], summary: dict) -> str:
+def build_html(records: list[dict], summary: dict, topics: list[dict] | None = None) -> str:
     data = json.dumps([viewer_record(record) for record in records], ensure_ascii=False)
     summary_data = json.dumps(viewer_summary(summary), ensure_ascii=False)
+    topics_data = json.dumps([viewer_topic(topic) for topic in topics or []], ensure_ascii=False)
     return f"""<!doctype html>
 <html lang="de">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Graz Gemeinderatsprotokolle MVP</title>
+  <title>Graz Gemeinderatsprotokolle</title>
   <style>
     :root {{
       color-scheme: light;
-      --bg: #f6f7f4;
+      --bg: #f7f8fa;
       --panel: #ffffff;
-      --ink: #1f2428;
-      --muted: #65717b;
-      --line: #d9ded6;
-      --accent: #0d6b57;
-      --accent-soft: #e3f0ec;
-      --warn: #a75d10;
+      --ink: #171923;
+      --muted: #687384;
+      --line: #e2e8f0;
+      --line-strong: #cbd5e1;
+      --accent: #2563eb;
+      --accent-dark: #1d4ed8;
+      --accent-soft: #dbeafe;
+      --accent-tint: #eff6ff;
+      --warn: #9a5b12;
+      --shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
     }}
     * {{ box-sizing: border-box; }}
     body {{
@@ -85,15 +97,96 @@ def build_html(records: list[dict], summary: dict) -> str:
       background: var(--bg);
       color: var(--ink);
     }}
+    .app-shell {{
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+    }}
+    .sidebar {{
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      padding: 22px 18px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+    }}
+    .brand {{
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding-bottom: 18px;
+      margin-bottom: 18px;
+      border-bottom: 1px solid var(--line);
+    }}
+    .brand-mark {{
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      background: var(--accent);
+      color: white;
+      font-weight: 750;
+    }}
+    .brand-title {{
+      display: block;
+      font-size: 15px;
+      font-weight: 700;
+    }}
+    .brand-subtitle {{
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 2px;
+    }}
+    .side-nav {{
+      display: grid;
+      gap: 6px;
+      margin-bottom: 20px;
+    }}
+    .side-item {{
+      border-radius: 8px;
+      color: #334155;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 11px;
+      font-size: 14px;
+      font-weight: 600;
+    }}
+    .side-item.active {{
+      background: var(--accent-tint);
+      color: var(--accent-dark);
+    }}
+    .side-dot {{
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: currentColor;
+    }}
+    .side-note {{
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfdff;
+    }}
+    .content-shell {{
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }}
     header {{
-      padding: 24px 28px 18px;
-      background: #fdfdfb;
+      padding: 22px 28px;
+      background: var(--bg);
       border-bottom: 1px solid var(--line);
     }}
     h1 {{
-      margin: 0 0 8px;
-      font-size: 24px;
-      font-weight: 650;
+      margin: 0 0 6px;
+      font-size: 26px;
+      font-weight: 700;
       letter-spacing: 0;
     }}
     .meta {{
@@ -105,24 +198,28 @@ def build_html(records: list[dict], summary: dict) -> str:
     }}
     .toolbar {{
       display: grid;
-      grid-template-columns: minmax(220px, 1fr) 155px 155px 155px 155px 155px 150px 130px;
-      gap: 10px;
-      padding: 14px 28px;
-      background: #eef2eb;
-      border-bottom: 1px solid var(--line);
-      position: sticky;
-      top: 0;
-      z-index: 2;
+      grid-template-columns: minmax(260px, 1.4fr) repeat(4, minmax(130px, 1fr)) minmax(128px, 0.8fr);
+      gap: 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 14px;
+      margin-bottom: 16px;
+    }}
+    .toolbar .wide {{
+      grid-column: span 2;
     }}
     input, select, button {{
       width: 100%;
-      min-height: 38px;
-      border: 1px solid #bfc8bd;
-      border-radius: 6px;
-      padding: 7px 10px;
+      min-height: 40px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      padding: 8px 11px;
       font: inherit;
       background: white;
       color: var(--ink);
+      outline-color: var(--accent);
     }}
     button {{
       cursor: pointer;
@@ -131,46 +228,57 @@ def build_html(records: list[dict], summary: dict) -> str:
       color: white;
       font-weight: 600;
     }}
+    button:hover {{ background: var(--accent-dark); }}
     main {{ padding: 18px 28px 32px; }}
     .stats {{
       display: grid;
-      grid-template-columns: repeat(4, minmax(130px, 1fr));
-      gap: 10px;
+      grid-template-columns: repeat(4, minmax(150px, 1fr));
+      gap: 12px;
       margin-bottom: 16px;
     }}
     .stat {{
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
-      padding: 12px;
+      box-shadow: var(--shadow);
+      padding: 14px;
     }}
     .stat b {{
       display: block;
-      font-size: 22px;
+      font-size: 24px;
       margin-bottom: 2px;
+      color: #0f172a;
     }}
     .stat span {{ color: var(--muted); font-size: 13px; }}
-    table {{
-      width: 100%;
-      border-collapse: collapse;
+    .table-card {{
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
+      box-shadow: var(--shadow);
       overflow: hidden;
     }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      background: transparent;
+    }}
     th, td {{
-      padding: 9px 10px;
+      padding: 11px 12px;
       border-bottom: 1px solid var(--line);
       vertical-align: top;
       text-align: left;
       font-size: 14px;
     }}
     th {{
-      background: #e9eee6;
+      background: #f8fafc;
+      color: #475569;
       font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
     }}
     tbody tr {{ cursor: pointer; }}
-    tr:hover td {{ background: #fbfcfa; }}
+    tbody tr:last-child td {{ border-bottom: 0; }}
+    tr:hover td {{ background: #f8fbff; }}
     .title {{ min-width: 280px; font-weight: 600; }}
     .result {{
       color: var(--muted);
@@ -195,6 +303,7 @@ def build_html(records: list[dict], summary: dict) -> str:
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
+      box-shadow: var(--shadow);
       padding: 14px;
       margin-bottom: 16px;
     }}
@@ -228,8 +337,67 @@ def build_html(records: list[dict], summary: dict) -> str:
       border: 1px solid var(--line);
       border-radius: 8px;
     }}
+    .topics {{
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 14px;
+      margin-bottom: 16px;
+    }}
+    .topics h2 {{
+      margin: 0 0 10px;
+      font-size: 16px;
+    }}
+    .topic-list {{
+      display: grid;
+      gap: 10px;
+    }}
+    .topic {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 11px;
+      background: #fbfdff;
+    }}
+    .topic-head {{
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-weight: 700;
+      margin-bottom: 5px;
+    }}
+    .topic-meta {{
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 7px;
+    }}
+    .topic-records {{
+      margin: 0;
+      padding-left: 18px;
+      color: #334155;
+      font-size: 13px;
+      line-height: 1.45;
+    }}
+    .sr-label {{
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      margin-bottom: 5px;
+    }}
+    .filter-cell {{ min-width: 0; }}
     @media (max-width: 920px) {{
-      .toolbar {{ grid-template-columns: 1fr; position: static; }}
+      .app-shell {{ grid-template-columns: 1fr; }}
+      .sidebar {{
+        position: static;
+        height: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }}
+      .side-nav {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+      header, main {{ padding-left: 16px; padding-right: 16px; }}
+      .toolbar {{ grid-template-columns: 1fr; }}
+      .toolbar .wide {{ grid-column: auto; }}
       .stats {{ grid-template-columns: repeat(2, minmax(130px, 1fr)); }}
       .detail-grid {{ grid-template-columns: 1fr; }}
       th {{ position: static; }}
@@ -248,38 +416,60 @@ def build_html(records: list[dict], summary: dict) -> str:
   </style>
 </head>
 <body>
-  <header>
-    <h1>Graz Gemeinderatsprotokolle MVP</h1>
-    <div class="meta">
-      <span>Lokale HTML-Ansicht</span>
-      <span>Keine Protokolle im Git</span>
-      <span>Quelle: lokale Parser-Ausgabe plus DIGRA-Abgleich</span>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">GR</div>
+        <div>
+          <span class="brand-title">Graz Gemeinderat</span>
+          <span class="brand-subtitle">Entscheidungsregister</span>
+        </div>
+      </div>
+      <nav class="side-nav" aria-label="Ansichten">
+        <div class="side-item active"><span class="side-dot"></span>Übersicht</div>
+        <div class="side-item"><span class="side-dot"></span>Suche</div>
+        <div class="side-item"><span class="side-dot"></span>DIGRA</div>
+        <div class="side-item"><span class="side-dot"></span>Export</div>
+      </nav>
+      <div class="side-note">Lokale Doppelklick-Ansicht. Protokolldateien bleiben außerhalb von Git.</div>
+    </aside>
+    <div class="content-shell">
+      <header>
+        <h1>Gemeinderatsprotokolle</h1>
+        <div class="meta">
+          <span>Lokale HTML-Ansicht</span>
+          <span>Ergebnisse bevorzugt aus DIGRA</span>
+          <span>Parser-Fallback nur bei fehlenden DIGRA-Daten</span>
+        </div>
+      </header>
+      <main>
+        <section class="stats">
+          <div class="stat"><b id="visibleCount">0</b><span>sichtbare Treffer</span></div>
+          <div class="stat"><b id="totalCount">0</b><span>Einträge gesamt</span></div>
+          <div class="stat"><b id="fileCount">0</b><span>Dateien mit Einträgen</span></div>
+          <div class="stat"><b id="digraCount">0</b><span>DIGRA-Ergebnisse</span></div>
+        </section>
+        <section class="toolbar" aria-label="Filter">
+          <label class="filter-cell wide"><span class="sr-label">Suche</span><input id="search" type="search" placeholder="Thema, Straße, Geschäftszahl, Betrag"></label>
+          <label class="filter-cell"><span class="sr-label">Datum</span><select id="dateFilter"><option value="">Alle Daten</option></select></label>
+          <label class="filter-cell"><span class="sr-label">Typ</span><select id="typeFilter"><option value="">Alle Typen</option></select></label>
+          <label class="filter-cell"><span class="sr-label">Status</span><select id="statusFilter"><option value="">Alle Status</option></select></label>
+          <label class="filter-cell"><span class="sr-label">Ergebnisquelle</span><select id="sourceFilter"><option value="">Alle Quellen</option></select></label>
+          <label class="filter-cell"><span class="sr-label">Beträge</span><select id="amountFilter"><option value="">Alle Beträge</option><option value="mit">Mit Betrag</option><option value="ohne">Ohne Betrag</option></select></label>
+          <label class="filter-cell"><span class="sr-label">Dateien</span><select id="fileFilter"><option value="">Alle Dateien</option></select></label>
+          <label class="filter-cell"><span class="sr-label">Abschnitte</span><select id="sectionFilter"><option value="">Alle Abschnitte</option></select></label>
+          <label class="filter-cell"><span class="sr-label">Export</span><button id="csvExport" type="button">CSV Export</button></label>
+        </section>
+        <section class="detail" id="detailWrap"></section>
+        <section class="topics" id="topicsWrap"></section>
+        <div id="tableWrap"></div>
+      </main>
     </div>
-  </header>
-  <section class="toolbar">
-    <input id="search" type="search" placeholder="Suchen: Thema, Straße, Geschäftszahl, Betrag">
-    <select id="dateFilter"><option value="">Alle Daten</option></select>
-    <select id="typeFilter"><option value="">Alle Typen</option></select>
-    <select id="statusFilter"><option value="">Alle Status</option></select>
-    <select id="sourceFilter"><option value="">Alle Quellen</option></select>
-    <select id="amountFilter"><option value="">Alle Beträge</option><option value="mit">Mit Betrag</option><option value="ohne">Ohne Betrag</option></select>
-    <select id="fileFilter"><option value="">Alle Dateien</option></select>
-    <select id="sectionFilter"><option value="">Alle Abschnitte</option></select>
-    <button id="csvExport" type="button">CSV Export</button>
-  </section>
-  <main>
-    <section class="stats">
-      <div class="stat"><b id="visibleCount">0</b><span>sichtbare Treffer</span></div>
-      <div class="stat"><b id="totalCount">0</b><span>Einträge gesamt</span></div>
-      <div class="stat"><b id="fileCount">0</b><span>Dateien mit Einträgen</span></div>
-      <div class="stat"><b id="digraCount">0</b><span>DIGRA-Ergebnisse</span></div>
-    </section>
-    <section class="detail" id="detailWrap"></section>
-    <div id="tableWrap"></div>
-  </main>
+  </div>
   <script>
     const records = {data};
     const summary = {summary_data};
+    const topics = {topics_data};
     const byId = (id) => document.getElementById(id);
     const search = byId('search');
     const dateFilter = byId('dateFilter');
@@ -394,6 +584,29 @@ def build_html(records: list[dict], summary: dict) -> str:
       `;
     }}
 
+    function renderTopics() {{
+      if (!topics.length) {{
+        byId('topicsWrap').style.display = 'none';
+        return;
+      }}
+      const rendered = topics.slice(0, 8).map((topic) => {{
+        const records = (topic.records || []).slice(0, 4).map((record) =>
+          `<li>${{escapeHtml(record.meeting_date || '-')}}: ${{escapeHtml(record.title || '-')}}</li>`
+        ).join('');
+        return `
+          <article class="topic">
+            <div class="topic-head">
+              <span>${{escapeHtml(topic.label || 'Thema')}}</span>
+              <span class="badge">${{escapeHtml(topic.confidence || '')}}</span>
+            </div>
+            <div class="topic-meta">${{escapeHtml(topic.reason || '')}} · ${{escapeHtml((topic.dates || []).join(' bis '))}}</div>
+            <ul class="topic-records">${{records}}</ul>
+          </article>
+        `;
+      }}).join('');
+      byId('topicsWrap').innerHTML = `<h2>Themenverläufe</h2><div class="topic-list">${{rendered}}</div>`;
+    }}
+
     function filteredRecords() {{
       const query = search.value.trim().toLocaleLowerCase('de-AT');
       return records.filter((record) => {{
@@ -441,6 +654,7 @@ def build_html(records: list[dict], summary: dict) -> str:
       `).join('');
 
       tableWrap.innerHTML = `
+        <div class="table-card">
         <table>
           <thead>
             <tr>
@@ -457,6 +671,7 @@ def build_html(records: list[dict], summary: dict) -> str:
           </thead>
           <tbody>${{rows}}</tbody>
         </table>
+        </div>
       `;
     }}
 
@@ -474,6 +689,7 @@ def build_html(records: list[dict], summary: dict) -> str:
       ausgewaehlterEintrag = sichtbareEintraege[Number(row.dataset.index)] || null;
       renderDetail(ausgewaehlterEintrag);
     }});
+    renderTopics();
     render();
   </script>
 </body>
@@ -506,6 +722,24 @@ def viewer_summary(summary: dict) -> dict:
         "dateien_mit_eintraegen": summary.get("files_with_records", 0),
         "unklare_eintraege": summary.get("records_by_status", {}).get("unknown", 0),
         "digra_ergebnisse": summary.get("digra_results_used", 0),
+    }
+
+
+def viewer_topic(topic: dict) -> dict:
+    return {
+        "topic_id": topic.get("topic_id", ""),
+        "label": topic.get("label", ""),
+        "reason": topic.get("reason", ""),
+        "confidence": format_score(topic.get("confidence", 0)),
+        "dates": topic.get("dates", []),
+        "records": [
+            {
+                "meeting_date": record.get("meeting_date", ""),
+                "title": record.get("title", ""),
+            }
+            for record in topic.get("records", [])
+            if isinstance(record, dict)
+        ],
     }
 
 

@@ -8,9 +8,18 @@ import sys
 
 from .audit import write_audit_report
 from .docx_text import read_docx_paragraph_blocks
-from .digra_import import DEFAULT_DIGRA_TOOL_PATH, enrich_records_with_digra
+from .digra_import import (
+    DEFAULT_DIGRA_TOOL_PATH,
+    digra_entries_to_records,
+    enrich_records_with_digra,
+    fetch_digra_entries,
+    list_digra_meetings,
+)
 from .parser import AgendaRecord, parse_protocol
+from .schema import SCHEMA_VERSION, validate_record
 from .sqlite_export import write_sqlite
+from .street_names import load_street_names
+from .topics import write_topic_candidates
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -21,6 +30,12 @@ def main(argv: list[str] | None = None) -> int:
         return run_parse(args)
     if args.command == "audit":
         return run_audit(args)
+    if args.command == "digra-list":
+        return run_digra_list(args)
+    if args.command == "digra-export":
+        return run_digra_export(args)
+    if args.command == "topics":
+        return run_topics(args)
     parser.print_help()
     return 2
 
@@ -57,6 +72,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="Optionaler SQLite-Ausgabepfad, z. B. out/eintraege.sqlite.",
+    )
+    parse_cmd.add_argument(
+        "--street-names",
+        type=Path,
+        default=None,
+        help="Optionale XLSX-Datei mit gültigen Grazer Straßennamen zur Ortserkennung.",
     )
     parse_cmd.add_argument(
         "--digra",
@@ -99,6 +120,22 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path("out") / "digra_audit.md",
         help="Markdown-Ausgabepfad. Standard: out/digra_audit.md.",
     )
+    digra_list_cmd = subparsers.add_parser("digra-list", help="Verfügbare DIGRA-Sitzungen listen.")
+    digra_list_cmd.add_argument("--limit", type=int, default=20, help="Maximale Anzahl Sitzungen.")
+    digra_list_cmd.add_argument("--digra-tool-path", type=Path, default=DEFAULT_DIGRA_TOOL_PATH)
+
+    digra_export_cmd = subparsers.add_parser(
+        "digra-export", help="Strukturierte DIGRA-Einträge für Datumswerte ohne DOCX-Protokoll erzeugen."
+    )
+    digra_export_cmd.add_argument("--date", action="append", required=True, help="Sitzungsdatum im Format YYYY-MM-DD.")
+    digra_export_cmd.add_argument("--output", type=Path, default=Path("out") / "digra_entries.jsonl")
+    digra_export_cmd.add_argument("--summary", type=Path, default=Path("out") / "digra_summary.json")
+    digra_export_cmd.add_argument("--sqlite", type=Path, default=None)
+    digra_export_cmd.add_argument("--digra-tool-path", type=Path, default=DEFAULT_DIGRA_TOOL_PATH)
+
+    topics_cmd = subparsers.add_parser("topics", help="Topic-Kandidaten über mehrere Sitzungen erzeugen.")
+    topics_cmd.add_argument("--records", type=Path, default=Path("out") / "agenda_items_digra.jsonl")
+    topics_cmd.add_argument("--output", type=Path, default=Path("out") / "topic_candidates.json")
     return parser
 
 
@@ -117,10 +154,11 @@ def run_parse(args: argparse.Namespace) -> int:
 
     records: list[AgendaRecord] = []
     errors: list[dict[str, str]] = []
+    street_names = load_street_names(args.street_names) if args.street_names else None
     for path in docx_files:
         try:
             paragraphs = read_docx_paragraph_blocks(path)
-            records.extend(parse_protocol(paragraphs, path.name))
+            records.extend(parse_protocol(paragraphs, path.name, street_names=street_names))
         except Exception as exc:  # pylint: disable=broad-except
             errors.append({"datei": path.name, "fehler": str(exc)})
 
@@ -135,6 +173,9 @@ def run_parse(args: argparse.Namespace) -> int:
             )
         except Exception as exc:  # pylint: disable=broad-except
             errors.append({"datei": "DIGRA", "fehler": str(exc)})
+
+    records, validation_errors = validate_records(records)
+    errors.extend(validation_errors)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", encoding="utf-8") as handle:
@@ -170,6 +211,40 @@ def run_audit(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_digra_list(args: argparse.Namespace) -> int:
+    meetings = list_digra_meetings(args.digra_tool_path, limit=args.limit)
+    for meeting in meetings:
+        print(f"{meeting.date}\t{meeting.number}\t{meeting.title}\t{meeting.url}")
+    return 0
+
+
+def run_digra_export(args: argparse.Namespace) -> int:
+    entries = fetch_digra_entries(args.date, tool_path=args.digra_tool_path)
+    records = digra_entries_to_records(entries)
+    records, validation_errors = validate_records(records)
+    summary = build_summary([], records, validation_errors)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with args.output.open("w", encoding="utf-8") as handle:
+        for record in records:
+            handle.write(record.to_json())
+            handle.write("\n")
+    args.summary.parent.mkdir(parents=True, exist_ok=True)
+    args.summary.write_text(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    if args.sqlite is not None:
+        write_sqlite(args.sqlite, records, summary)
+    print(f"{len(records)} DIGRA-Einträge nach {args.output} geschrieben.")
+    return 1 if validation_errors else 0
+
+
+def run_topics(args: argparse.Namespace) -> int:
+    if not args.records.exists():
+        print(f"Eintragsdatei nicht gefunden: {args.records}", file=sys.stderr)
+        return 1
+    write_topic_candidates(args.records, args.output)
+    print(f"Topic-Kandidaten nach {args.output} geschrieben.")
+    return 0
+
+
 def build_summary(docx_files: list[Path], records: list[AgendaRecord], errors: list[dict[str, str]]) -> dict:
     status_counts = Counter(record.status for record in records)
     section_counts = Counter(record.section or "unknown" for record in records)
@@ -185,8 +260,21 @@ def build_summary(docx_files: list[Path], records: list[AgendaRecord], errors: l
         "records_by_section": dict(sorted(section_counts.items())),
         "records_by_status": dict(sorted(status_counts.items())),
         "records_by_type": dict(sorted(type_counts.items())),
+        "schema_version": SCHEMA_VERSION,
         "errors": errors,
     }
+
+
+def validate_records(records: list[AgendaRecord]) -> tuple[list[AgendaRecord], list[dict[str, str]]]:
+    valid: list[AgendaRecord] = []
+    errors: list[dict[str, str]] = []
+    for record in records:
+        record_errors = validate_record(record)
+        if record_errors:
+            errors.append({"datei": record.source_file, "fehler": f"{record.record_id}: {'; '.join(record_errors)}"})
+            continue
+        valid.append(record)
+    return valid, errors
 
 
 if __name__ == "__main__":

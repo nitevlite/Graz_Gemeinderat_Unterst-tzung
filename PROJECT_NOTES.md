@@ -36,12 +36,16 @@ Aktuelle Module:
 - `graz_protocols/parser.py`: Extraktion von Tagesordnungspunkten, Status, Beträgen, Geschäftszahlen und Ortshinweisen
 - `graz_protocols/digra_import.py`: DIGRA-Abgleich über das vorhandene DIGRA-Export-Tool, Sitzungssuche, Dokumentlinks und Beschlussvermerk-Ergebnisse
 - `graz_protocols/audit.py`: Markdown-Auditbericht für Ergebnisquellen, Fallbacks und niedrige DIGRA-Trefferwerte
+- `graz_protocols/schema.py`: Validierung des JSONL-Datenmodells
+- `graz_protocols/street_names.py`: XLSX-Import und Normalisierung der Grazer Straßennamenliste
+- `graz_protocols/topics.py`: Themenkandidaten über Geschäftszahlen und Titel-Keywords
 - `graz_protocols/cli.py`: Stapelverarbeitung über die Kommandozeile
-- `graz_protocols/sqlite_export.py`: lokale SQLite-Ausgabe mit Tabelle `eintraege`
+- `graz_protocols/sqlite_export.py`: lokale SQLite-Ausgabe mit Tabelle `eintraege`, normalisierten Tabellen und FTS5
 - `graz_protocols/viewer.py`: erzeugte lokale Doppelklick-HTML-Ansicht
 - `scripts/check_git_safety.py`: lokaler und CI-fähiger Sicherheitscheck gegen versehentlich committed Quellen-/Exportdaten
 - `tests/test_parser.py`: bereinigte Parser-Tests
 - `tests/test_digra_import.py`: Test, dass DIGRA-Ergebnisse nur aus dem `Beschlussvermerk` extrahiert werden
+- `tests/test_goldset.py`: 20 sanitisierten Goldset-Fälle für Status, Geschäftszahl, Titel, Betrag und Abschnitt
 - `tests/test_viewer.py`: Tests für deutsche Viewer-Anzeige und Rohtextschutz
 
 Aktuelle Ergebnisbehandlung:
@@ -56,7 +60,10 @@ Aktuelle Ergebnisbehandlung:
 - Der lokale Viewer hat eine Detailansicht pro Eintrag mit Titel, Ergebnis, Ergebnisquelle, DIGRA-Einlagezahl, DIGRA-Trefferwert, DIGRA-Link, Geschäftszahlen, Beträgen, Orten und Quelldatei.
 - Der lokale Viewer kann nach Ergebnisquelle filtern: `DIGRA`, `Protokoll`, `DIGRA fehlt`.
 - Der lokale Viewer kann nach Betragsvorkommen und Quelldatei filtern und die aktuelle Trefferliste als CSV exportieren.
+- Der lokale Viewer zeigt optional Themenverläufe aus `out\topic_candidates.json`.
 - Rohformulierungen, Quellenausschnitte und interne englische Typ-/Statuscodes bleiben aus dem Viewer draußen.
+- Beträge werden nur aus Titel/Überschrift oder aus formalen Antrag-/Anfrageabschnitten übernommen, nicht aus beliebigen Debattenstellen.
+- Ortskandidaten werden optional gegen `Straßennamen_Graz.xlsx` geprüft; nicht passende Rede- oder Füllwörter werden nicht als Orte übernommen.
 
 ## DIGRA-Abgleich
 
@@ -97,15 +104,17 @@ Letzter lokaler Lauf am 2026-06-08:
 Letzter DIGRA-Lauf am 2026-06-08:
 
 - Befehl: `python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra`
+- Aktueller Befehl mit Straßennamenabgleich: `python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra --street-names .\Straßennamen_Graz.xlsx`
 - DIGRA-Einträge geladen: 1675
 - lokalen Datensätzen zugeordnet: 951
 - Ergebnisse aus DIGRA-Beschlussvermerken übernommen: 412
-- Protokoll-Fallbacks, weil DIGRA kein plausibel zuordenbares Ergebnis liefert: 718
+- Protokoll-Fallbacks, weil DIGRA kein plausibel zuordenbares Ergebnis liefert: 723
 - Datensätze ohne DIGRA- oder Protokoll-Ergebnis: 5
 - Ausgabe: `out/agenda_items_digra.jsonl`
 - SQLite-Ausgabe: `out\eintraege_digra.sqlite`
 - Viewer-Ausgabe: `viewer.html`
 - Audit-Ausgabe: `out\digra_audit.md`
+- Themenkandidaten: `out\topic_candidates.json`
 
 Erzeugte Ausgabe ist absichtlich ignoriert.
 
@@ -120,17 +129,15 @@ Die Extraktionsqualität über die Abschnittserkennung hinaus verbessern:
 
 ## GitHub Issues
 
-Am 2026-06-08 im privaten GitHub-Repository angelegt. Issue #10 wurde umgesetzt: lokales Check-Script plus GitHub Action sichern verbotene Dateitypen, lokale Datenordner und große Dateien ab.
+Am 2026-06-08 im privaten GitHub-Repository angelegt. Die MVP-Issues #3 bis #12 sind umgesetzt oder werden mit dem aktuellen Commit geschlossen:
 
-- https://github.com/nitevlite/graz-council-protocol-explorer/issues/1
-- https://github.com/nitevlite/graz-council-protocol-explorer/issues/2
-- https://github.com/nitevlite/graz-council-protocol-explorer/issues/3
-- https://github.com/nitevlite/graz-council-protocol-explorer/issues/4
-- https://github.com/nitevlite/graz-council-protocol-explorer/issues/5
-- https://github.com/nitevlite/graz-council-protocol-explorer/issues/6
-- https://github.com/nitevlite/graz-council-protocol-explorer/issues/7
-- https://github.com/nitevlite/graz-council-protocol-explorer/issues/8
-- https://github.com/nitevlite/graz-council-protocol-explorer/issues/9
-- https://github.com/nitevlite/graz-council-protocol-explorer/issues/10
-- https://github.com/nitevlite/graz-council-protocol-explorer/issues/11
-- https://github.com/nitevlite/graz-council-protocol-explorer/issues/12
+- strukturierte Abstimmungsergebnisse
+- JSONL-Schema und Validierung
+- SQLite-Normalisierung und FTS
+- DIGRA-Integration inklusive Export-Tool-Nutzung
+- Ortserkennung mit Straßennamenabgleich
+- lokale HTML-Ansicht mit CSV, Detailpanel und Themenverläufen
+- sanitisiertes Goldset mit 20 Fällen
+- Git-/Datensicherheitsprüfung
+- Themenkandidaten über mehrere Sitzungen
+- aktualisierte Produkt- und Entwicklerdokumentation

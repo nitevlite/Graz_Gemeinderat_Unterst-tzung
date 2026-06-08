@@ -38,6 +38,7 @@ Nicht ins Repository dürfen:
 - DIGRA Public: `https://digra.graz.at/timetable`
 - Archivseiten der Stadt Graz: `https://www.graz.at/cms/beitrag/10142612/7768104`
 - Bestehendes Hilfsprojekt: `E:\01_StadtGrazProtokolle\Digra_Export_Tool`
+- Lokale Straßennamenliste: `E:\.T_apps\Open-Source\Straßennamen_Graz.xlsx`
 
 ## Erstes MVP
 
@@ -73,17 +74,30 @@ python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\age
 
 Der Parser schreibt JSONL-Einträge mit Sitzungsdatum, Stücknummer, Geschäftszahlen, Titel, Status, einheitlichem Ergebnistext, strukturierten Abstimmungsdetails, Beträgen, Ortshinweisen und kurzem Quellenausschnitt.
 Er nutzt DOCX-Absatzformatvorlagen, um echte Überschriften von Inhaltsverzeichnis-Einträgen zu unterscheiden.
-Optional erzeugt er zusätzlich eine lokale SQLite-Datenbank mit der Tabelle `eintraege`. Die SQLite-Datei bleibt wie JSONL und HTML ignoriert.
+Optional erzeugt er zusätzlich eine lokale SQLite-Datenbank mit der Tabelle `eintraege`, normalisierten Tabellen für Suche/Verlauf und einer FTS5-Volltexttabelle. Die SQLite-Datei bleibt wie JSONL und HTML ignoriert.
 
 Parser mit DIGRA-Abgleich ausführen:
 
 ```powershell
-python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra
+python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra --street-names .\Straßennamen_Graz.xlsx
 ```
 
 Dieser Modus nutzt das vorhandene Tool unter `E:\01_StadtGrazProtokolle\Digra_Export_Tool\app`, lädt DIGRA-Sitzungen und DIGRA-Dokumentseiten, extrahiert offizielle Ergebnisse nur aus dem Block `Beschlussvermerk` und cached die geladenen DIGRA-Daten lokal in `out\digra_cache.json`.
 DIGRA-Ergebnisse haben Vorrang. Wenn DIGRA keinen Beschlussvermerk liefert oder kein Ergebnis zugeordnet werden kann, bleibt das normalisierte Protokoll-Ergebnis als Fallback erhalten und die Ergebnisquelle steht auf `Protokoll`.
+Mit `--street-names` wird die Ortserkennung gegen die Grazer Straßennamenliste gefiltert. Dadurch werden Füllwörter aus Reden nicht als Orte übernommen.
 Mit `--digra-results-only` kann man zusätzlich auditieren, wo DIGRA wirklich kein Ergebnis liefert.
+
+DIGRA-Sitzungen direkt aus dem Export-Tool abfragen:
+
+```powershell
+python -m graz_protocols.cli digra-list --limit 20
+```
+
+Eine einzelne DIGRA-Sitzung ohne DOCX-Protokoll als strukturierte Ausgabe exportieren:
+
+```powershell
+python -m graz_protocols.cli digra-export --date 2026-04-23 --output out\digra_2026-04-23.jsonl --summary out\digra_2026-04-23_summary.json --sqlite out\digra_2026-04-23.sqlite
+```
 
 Interne Eintragstypen:
 
@@ -97,7 +111,7 @@ Die erzeugte Ausgabe unter `out/` ist ignoriert und darf nicht committed werden.
 Lokale Doppelklick-HTML-Ansicht bauen:
 
 ```powershell
-python -m graz_protocols.viewer --records out\agenda_items_digra.jsonl --summary out\summary_digra.json --output viewer.html
+python -m graz_protocols.viewer --records out\agenda_items_digra.jsonl --summary out\summary_digra.json --topics out\topic_candidates.json --output viewer.html
 ```
 
 Danach `viewer.html` im Browser öffnen. Die Datei ist erzeugte lokale Ausgabe und wird von Git ignoriert.
@@ -105,6 +119,7 @@ Danach `viewer.html` im Browser öffnen. Die Datei ist erzeugte lokale Ausgabe u
 Der Viewer zeigt deutsche Typen, deutsche Statuswerte und einheitliche `Ergebnisse`, zum Beispiel `Antrag: mehrheitlich angenommen` plus Parteilisten wie `Dagegen: KFG, NEOS, FPÖ`.
 Ein Klick auf eine Tabellenzeile öffnet eine Detailansicht mit Titel, Ergebnis, Ergebnisquelle, DIGRA-Einlagezahl, DIGRA-Link, Geschäftszahlen, Beträgen, Orten und Quelldatei.
 Die aktuelle Trefferliste kann im Viewer als CSV exportiert werden. Filter gibt es unter anderem für Datum, Typ, Status, Ergebnisquelle, Beträge, Quelldatei und Abschnitt.
+Die Oberfläche ist als lokale App mit linker Navigation, KPI-Karten, Filterpanel, Detailansicht, Themenverläufen und Ergebnistabelle aufgebaut.
 Originalformulierungen aus dem Protokoll werden im Viewer nicht angezeigt und bleiben nur in der ignorierten lokalen JSONL-Ausgabe als Rohspur erhalten.
 
 DIGRA-Auditbericht bauen:
@@ -115,6 +130,14 @@ python -m graz_protocols.cli audit --records out\agenda_items_digra.jsonl --summ
 
 Der Bericht zeigt DIGRA-Ergebnisse, Protokoll-Fallbacks, fehlende Ergebnisse und niedrige DIGRA-Trefferwerte. Er bleibt als erzeugte lokale Ausgabe unter `out/` ignoriert.
 
+Themenkandidaten über mehrere Sitzungen erzeugen:
+
+```powershell
+python -m graz_protocols.cli topics --records out\agenda_items_digra.jsonl --output out\topic_candidates.json
+```
+
+Die Kandidaten enthalten Confidence, Begründung und verknüpfte Einträge. Sie können im Viewer angezeigt und später manuell bestätigt werden.
+
 ## GitHub-Backlog
 
 Repository:
@@ -123,16 +146,4 @@ Repository:
 https://github.com/nitevlite/graz-council-protocol-explorer
 ```
 
-Die nächsten Arbeitspakete liegen in GitHub Issues:
-
-- Abschnittserkennung und Trennung vom Inhaltsverzeichnis
-- Schriftliche Anfragen und Anträge ohne `Stk.`-Nummer
-- Strukturierte Abstimmungsergebnisse und Parteistimmen
-- Stabiles JSONL-Schema und Validierung
-- DIGRA-Anbindung
-- Ortserkennung und Vorbereitung für Karten
-- Bessere lokale HTML-Ansicht
-- Qualitätsprüfung mit Goldset
-- Git- und Datensicherheitsprüfungen
-- Themenverläufe über Sitzungen
-- Roadmap- und Produktdokumentation
+Die bisherigen MVP-Arbeitspakete sind als GitHub Issues dokumentiert. Umgesetzt sind unter anderem Abschnittserkennung, schriftliche Anfragen/Anträge, strukturierte Abstimmungen, JSONL-Schema, DIGRA-Anbindung, Ortserkennung mit Straßennamenabgleich, lokale HTML-Ansicht, Goldset-Tests, Git-Sicherheitscheck, Themenkandidaten und Roadmap-Dokumentation.

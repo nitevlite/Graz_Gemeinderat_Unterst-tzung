@@ -11,7 +11,7 @@ import uuid
 from .parser import AgendaRecord
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def write_sqlite(path: Path, records: list[AgendaRecord], summary: dict) -> None:
@@ -78,11 +78,75 @@ def create_schema(connection: sqlite3.Connection) -> None:
           digra_trefferwert REAL NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS meetings (
+          datum TEXT PRIMARY KEY,
+          eintraege INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS records (
+          eintrag_id TEXT PRIMARY KEY,
+          datum TEXT NOT NULL,
+          typ TEXT NOT NULL,
+          titel TEXT NOT NULL,
+          status TEXT NOT NULL,
+          ergebnisquelle TEXT NOT NULL,
+          FOREIGN KEY (eintrag_id) REFERENCES eintraege(eintrag_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS business_numbers (
+          eintrag_id TEXT NOT NULL,
+          wert TEXT NOT NULL,
+          FOREIGN KEY (eintrag_id) REFERENCES eintraege(eintrag_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS amounts (
+          eintrag_id TEXT NOT NULL,
+          wert TEXT NOT NULL,
+          FOREIGN KEY (eintrag_id) REFERENCES eintraege(eintrag_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS locations (
+          eintrag_id TEXT NOT NULL,
+          typ TEXT NOT NULL,
+          wert TEXT NOT NULL,
+          kontext TEXT NOT NULL,
+          confidence REAL NOT NULL,
+          FOREIGN KEY (eintrag_id) REFERENCES eintraege(eintrag_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS votes (
+          eintrag_id TEXT NOT NULL,
+          subject TEXT NOT NULL,
+          outcome TEXT NOT NULL,
+          approval_json TEXT NOT NULL,
+          against_json TEXT NOT NULL,
+          abstention_json TEXT NOT NULL,
+          FOREIGN KEY (eintrag_id) REFERENCES eintraege(eintrag_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS source_spans (
+          eintrag_id TEXT PRIMARY KEY,
+          quellenausschnitt TEXT NOT NULL,
+          roh_ergebnis TEXT NOT NULL,
+          FOREIGN KEY (eintrag_id) REFERENCES eintraege(eintrag_id)
+        );
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS eintraege_fts USING fts5(
+          titel,
+          ergebnis,
+          geschaeftszahlen,
+          orte,
+          content=''
+        );
+
         CREATE INDEX IF NOT EXISTS idx_eintraege_datum ON eintraege(datum);
         CREATE INDEX IF NOT EXISTS idx_eintraege_typ ON eintraege(typ);
         CREATE INDEX IF NOT EXISTS idx_eintraege_status ON eintraege(status);
         CREATE INDEX IF NOT EXISTS idx_eintraege_abschnitt ON eintraege(abschnitt);
         CREATE INDEX IF NOT EXISTS idx_eintraege_stueck ON eintraege(datum, stueck_nr);
+        CREATE INDEX IF NOT EXISTS idx_business_numbers_wert ON business_numbers(wert);
+        CREATE INDEX IF NOT EXISTS idx_locations_wert ON locations(wert);
+        CREATE INDEX IF NOT EXISTS idx_votes_outcome ON votes(outcome);
 
         CREATE TABLE IF NOT EXISTS zusammenfassung (
           schluessel TEXT PRIMARY KEY,
@@ -94,6 +158,14 @@ def create_schema(connection: sqlite3.Connection) -> None:
 
 def clear_existing_data(connection: sqlite3.Connection) -> None:
     connection.execute("DELETE FROM eintraege")
+    connection.execute("DELETE FROM meetings")
+    connection.execute("DELETE FROM records")
+    connection.execute("DELETE FROM business_numbers")
+    connection.execute("DELETE FROM amounts")
+    connection.execute("DELETE FROM locations")
+    connection.execute("DELETE FROM votes")
+    connection.execute("DELETE FROM source_spans")
+    connection.execute("DELETE FROM eintraege_fts")
     connection.execute("DELETE FROM zusammenfassung")
     connection.execute("DELETE FROM meta")
     connection.execute(
@@ -138,6 +210,7 @@ def insert_records(connection: sqlite3.Connection, records: list[AgendaRecord]) 
         """,
         rows,
     )
+    insert_normalized_tables(connection, records)
 
 
 def record_row(record: AgendaRecord) -> tuple:
@@ -165,4 +238,83 @@ def record_row(record: AgendaRecord) -> tuple:
         data["digra_business_number"],
         data["protocol_result_text"],
         data["digra_match_score"],
+    )
+
+
+def insert_normalized_tables(connection: sqlite3.Connection, records: list[AgendaRecord]) -> None:
+    data = [asdict(record) for record in records]
+    meeting_counts: dict[str, int] = {}
+    for record in data:
+        meeting_counts[record["meeting_date"]] = meeting_counts.get(record["meeting_date"], 0) + 1
+    connection.executemany(
+        "INSERT INTO meetings (datum, eintraege) VALUES (?, ?)",
+        sorted(meeting_counts.items()),
+    )
+    connection.executemany(
+        "INSERT INTO records (eintrag_id, datum, typ, titel, status, ergebnisquelle) VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            (
+                record["record_id"],
+                record["meeting_date"],
+                record["record_type"],
+                record["title"],
+                record["status"],
+                record["result_source"],
+            )
+            for record in data
+        ],
+    )
+    connection.executemany(
+        "INSERT INTO business_numbers (eintrag_id, wert) VALUES (?, ?)",
+        [(record["record_id"], value) for record in data for value in record["business_numbers"]],
+    )
+    connection.executemany(
+        "INSERT INTO amounts (eintrag_id, wert) VALUES (?, ?)",
+        [(record["record_id"], value) for record in data for value in record["amounts"]],
+    )
+    connection.executemany(
+        "INSERT INTO locations (eintrag_id, typ, wert, kontext, confidence) VALUES (?, ?, ?, ?, ?)",
+        [
+            (
+                record["record_id"],
+                str(location.get("type", "")),
+                str(location.get("value", "")),
+                str(location.get("context", "")),
+                float(location.get("confidence", 0)),
+            )
+            for record in data
+            for location in record.get("location_details", [])
+        ],
+    )
+    connection.executemany(
+        "INSERT INTO votes (eintrag_id, subject, outcome, approval_json, against_json, abstention_json) VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            (
+                record["record_id"],
+                str(vote.get("subject", "")),
+                str(vote.get("outcome", "")),
+                json.dumps(vote.get("approval", []), ensure_ascii=False),
+                json.dumps(vote.get("against", []), ensure_ascii=False),
+                json.dumps(vote.get("abstention", []), ensure_ascii=False),
+            )
+            for record in data
+            for vote in record["votes"]
+        ],
+    )
+    connection.executemany(
+        "INSERT INTO source_spans (eintrag_id, quellenausschnitt, roh_ergebnis) VALUES (?, ?, ?)",
+        [(record["record_id"], record["source_snippet"], record["raw_result_text"]) for record in data],
+    )
+    connection.executemany(
+        "INSERT INTO eintraege_fts (rowid, titel, ergebnis, geschaeftszahlen, orte) VALUES (?, ?, ?, ?, ?)",
+        [
+            (
+                index,
+                record["title"],
+                record["result_text"],
+                " ".join(record["business_numbers"]),
+                " ".join(record["locations"]),
+            )
+            for index, record in enumerate(data, start=1)
+        ],
     )

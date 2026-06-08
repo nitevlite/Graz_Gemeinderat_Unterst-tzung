@@ -50,6 +50,9 @@ def test_writes_records_to_sqlite(tmp_path):
         summary = connection.execute(
             "SELECT wert_json FROM zusammenfassung WHERE schluessel = 'records_total'"
         ).fetchone()[0]
+        normalized_count = connection.execute("SELECT count(*) FROM records").fetchone()[0]
+        vote_count = connection.execute("SELECT count(*) FROM votes").fetchone()[0]
+        fts_count = connection.execute("SELECT count(*) FROM eintraege_fts").fetchone()[0]
 
     assert row[0] == "2026-04-23"
     assert row[1] == "agenda_item"
@@ -63,5 +66,8 @@ def test_writes_records_to_sqlite(tmp_path):
     assert row[9] == ""
     assert row[10] == ""
     assert row[11] == 0.0
-    assert version == "3"
+    assert version == "4"
     assert json.loads(summary) == 1
+    assert normalized_count == 1
+    assert vote_count == 1
+    assert fts_count == 1

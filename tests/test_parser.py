@@ -26,6 +26,8 @@ def test_extracts_stk_record_with_status_amount_and_location():
     assert record.votes[0]["outcome"] == "accepted_unanimous"
     assert record.amounts == ["€ 52.500,-"]
     assert record.locations == ["Beispielgasse"]
+    assert record.location_details[0]["type"] == "street"
+    assert record.location_details[0]["value"] == "Beispielgasse"
     assert len(record.source_snippet) < 601
 
 
@@ -162,3 +164,18 @@ def test_extracts_following_against_line_without_colon():
 
     assert records[0].result_text == "Antrag: mehrheitlich angenommen\nDagegen: ÖVP, NEOS, FPÖ"
     assert records[0].votes[0]["against"] == ["ÖVP", "NEOS", "FPÖ"]
+
+
+def test_amounts_only_from_title_or_formal_motion_scope():
+    paragraphs = [
+        ParserParagraph("Tagesordnung", "Heading1", 1),
+        ParserParagraph("Stk. 8) A8-1 Sanierung Beispielgasse über € 10.000,-", "Heading2", 2),
+        ParserParagraph("In der Debatte werden € 999.999,- erwähnt.", "Normal", 3),
+        ParserParagraph("Es wird folgender Antrag gestellt:", "Normal", 4),
+        ParserParagraph("Für die Umsetzung werden € 20.000,- genehmigt.", "Normal", 5),
+        ParserParagraph("Der Antrag wurde einstimmig angenommen.", "Normal", 6),
+    ]
+
+    records = parse_protocol(paragraphs, "2026-04-23_Protokoll.docx")
+
+    assert records[0].amounts == ["€ 10.000,-", "€ 20.000,-"]
