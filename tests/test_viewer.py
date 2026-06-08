@@ -13,6 +13,7 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
                 "parser_confidence": 1.0,
                 "record_id": "test-record",
                 "record_type": "agenda_item",
+                "digra_url": "https://digra.graz.at/document?ref=b7b33fe0-443a-49c8-9e95-22a77851b9f9",
                 "result_text": "Antrag: mehrheitlich angenommen",
                 "raw_result_text": "Der Antrag wurde mehrstimmig angenommen.",
                 "section": "Tagesordnung",
@@ -55,7 +56,15 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "CSV Export" in html
     assert "graz-gemeinderat-treffer.csv" in html
     assert "topicsWrap" in html
+    assert "Graz-Karte" in html
+    assert "grazMap" in html
+    assert "nominatim.openstreetmap.org" in html
+    assert "openstreetmap.org" in html
     assert "DIGRA-Trefferwert" in html
+    assert "digraLink(record.digra_url" in html
+    assert "https://digra.graz.at/document?ref=b7b33fe0-443a-49c8-9e95-22a77851b9f9" in html
+    assert 'target="_blank"' in html
+    assert 'rel="noopener noreferrer"' in html
     assert "Quelldatei" in html
     assert "Geschäftszahlen" in html
     assert "agenda_item" not in html
@@ -83,6 +92,32 @@ def test_viewer_normalizes_file_labels_and_status_filter():
     assert record["quell_datei"] == "Protokoll 2024-11-14.docx"
     assert record["status"] == "angenommen (einstimmig)"
     assert record["status_filter"] == "Angenommen"
+
+
+def test_viewer_renders_locations_as_map_buttons():
+    html = build_html(
+        [
+            {
+                "agenda_item_no": 1,
+                "amounts": [],
+                "business_numbers": [],
+                "locations": ["Schönaugasse"],
+                "meeting_date": "2026-04-23",
+                "record_id": "test-record",
+                "record_type": "agenda_item",
+                "result_text": "Antrag: angenommen",
+                "section": "Tagesordnung",
+                "source_file": "test.docx",
+                "status": "accepted",
+                "title": "Test",
+            }
+        ],
+        {},
+    )
+
+    assert 'data-location="${escapeHtml(location)}"' in html
+    assert "focusLocation(locationButton.dataset.location" in html
+    assert "Schönaugasse" in html
 
 
 def test_viewer_can_embed_topic_candidates():

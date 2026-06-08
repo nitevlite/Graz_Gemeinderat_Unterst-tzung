@@ -92,6 +92,8 @@ python -m graz_protocols.viewer --records out\agenda_items_digra.jsonl --summary
 Der erzeugte Viewer entfernt Rohformulierungen, Quellenausschnitte und interne englische Typ-/Statuscodes aus den eingebetteten Einträgen.
 Ein Klick auf eine Tabellenzeile zeigt eine deutsche Detailansicht für den Eintrag, inklusive Ergebnisquelle und DIGRA-Link.
 Optional eingebettete Themenkandidaten erscheinen als einfache Themenverläufe oberhalb der Tabelle.
+Orte werden als klickbare Kartenelemente gerendert. Der Viewer nutzt Leaflet/OpenStreetMap und geocodiert Ortsnamen bei Bedarf online über Nominatim; Geocoding-Ergebnisse werden im Browser-LocalStorage gecacht.
+DIGRA-URLs werden als externe Links mit `target="_blank"` gerendert.
 
 DIGRA-Auditbericht bauen:
 
@@ -106,6 +108,15 @@ Themenkandidaten bauen:
 ```powershell
 python -m graz_protocols.cli topics --records out\agenda_items_digra.jsonl --output out\topic_candidates.json
 ```
+
+Optionale KI-Überschriften für Topics:
+
+```powershell
+$env:OPENAI_API_KEY="..."
+python -m graz_protocols.cli topics --records out\agenda_items_digra.jsonl --output out\topic_candidates.json --ai-headings --ai-limit 50
+```
+
+Ohne `--ai-headings` oder ohne API-Key bleibt die rein lokale regelbasierte Überschriftenerzeugung aktiv.
 
 ## Dokumentation aktuell halten
 

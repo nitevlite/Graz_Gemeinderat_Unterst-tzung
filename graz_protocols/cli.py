@@ -136,6 +136,13 @@ def build_parser() -> argparse.ArgumentParser:
     topics_cmd = subparsers.add_parser("topics", help="Topic-Kandidaten über mehrere Sitzungen erzeugen.")
     topics_cmd.add_argument("--records", type=Path, default=Path("out") / "agenda_items_digra.jsonl")
     topics_cmd.add_argument("--output", type=Path, default=Path("out") / "topic_candidates.json")
+    topics_cmd.add_argument(
+        "--ai-headings",
+        action="store_true",
+        help="Optionale KI-Unterstützung für bessere Themenüberschriften nutzen. Benötigt OPENAI_API_KEY.",
+    )
+    topics_cmd.add_argument("--ai-model", default="", help="Optionales OpenAI-Modell für --ai-headings.")
+    topics_cmd.add_argument("--ai-limit", type=int, default=50, help="Maximale Anzahl KI-beschrifteter Topics.")
     return parser
 
 
@@ -240,7 +247,17 @@ def run_topics(args: argparse.Namespace) -> int:
     if not args.records.exists():
         print(f"Eintragsdatei nicht gefunden: {args.records}", file=sys.stderr)
         return 1
-    write_topic_candidates(args.records, args.output)
+    try:
+        write_topic_candidates(
+            args.records,
+            args.output,
+            ai_headings=args.ai_headings,
+            ai_model=args.ai_model,
+            ai_limit=args.ai_limit,
+        )
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     print(f"Topic-Kandidaten nach {args.output} geschrieben.")
     return 0
 

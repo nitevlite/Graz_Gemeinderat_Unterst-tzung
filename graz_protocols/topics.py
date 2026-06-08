@@ -45,9 +45,20 @@ STOPWORDS = {
 }
 
 
-def write_topic_candidates(records_path: Path, output_path: Path) -> None:
+def write_topic_candidates(
+    records_path: Path,
+    output_path: Path,
+    *,
+    ai_headings: bool = False,
+    ai_model: str = "",
+    ai_limit: int = 50,
+) -> None:
     records = read_jsonl(records_path)
     candidates = build_topic_candidates(records)
+    if ai_headings:
+        from .ai_topics import DEFAULT_AI_MODEL, annotate_topic_headings
+
+        candidates = annotate_topic_headings(candidates, model=ai_model or DEFAULT_AI_MODEL, limit=ai_limit)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(candidates, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
 

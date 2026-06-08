@@ -75,6 +75,8 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Graz Gemeinderatsprotokolle</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     :root {{
       color-scheme: light;
@@ -340,6 +342,29 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     .detail-field span {{
       white-space: pre-wrap;
     }}
+    .link-button {{
+      appearance: none;
+      width: auto;
+      min-height: 0;
+      border: 0;
+      border-radius: 0;
+      padding: 0;
+      background: transparent;
+      color: var(--accent-dark);
+      cursor: pointer;
+      font: inherit;
+      font-weight: 650;
+      text-decoration: underline;
+    }}
+    .link-button:hover {{
+      background: transparent;
+      color: #0f3ca8;
+    }}
+    .link-list {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }}
     .detail-empty {{
       color: var(--muted);
     }}
@@ -358,6 +383,90 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       box-shadow: var(--shadow);
       padding: 14px;
       margin-bottom: 16px;
+    }}
+    .map-panel {{
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 14px;
+      margin-bottom: 16px;
+    }}
+    .map-head {{
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }}
+    .map-head h2 {{
+      margin: 0;
+      font-size: 16px;
+    }}
+    .map-status {{
+      color: var(--muted);
+      font-size: 12px;
+      text-align: right;
+    }}
+    .map-layout {{
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 260px;
+      gap: 12px;
+      min-height: 430px;
+    }}
+    #grazMap {{
+      min-height: 430px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #e2e8f0;
+    }}
+    .map-list {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: auto;
+      max-height: 430px;
+      background: #fbfdff;
+    }}
+    .map-place {{
+      width: 100%;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
+      background: transparent;
+      color: var(--ink);
+      display: block;
+      min-height: 0;
+      padding: 9px 10px;
+      text-align: left;
+    }}
+    .map-place:hover {{
+      background: var(--accent-tint);
+    }}
+    .map-place strong {{
+      display: block;
+      font-size: 13px;
+      margin-bottom: 2px;
+    }}
+    .map-place span {{
+      color: var(--muted);
+      font-size: 12px;
+    }}
+    .popup-list {{
+      display: grid;
+      gap: 6px;
+      max-width: 280px;
+    }}
+    .popup-list button {{
+      width: 100%;
+      min-height: 0;
+      padding: 5px 7px;
+      border-radius: 6px;
+      text-align: left;
+      background: white;
+      color: var(--accent-dark);
+      border: 1px solid #bfdbfe;
+      font-size: 12px;
     }}
     .topics h2 {{
       margin: 0 0 10px;
@@ -478,6 +587,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       .side-nav {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
       header, main {{ padding-left: 16px; padding-right: 16px; }}
       .toolbar {{ grid-template-columns: 1fr; }}
+      .map-layout {{ grid-template-columns: 1fr; }}
       .toolbar .wide {{ grid-column: auto; }}
       .stats {{ grid-template-columns: repeat(2, minmax(130px, 1fr)); }}
       .detail-grid {{ grid-template-columns: 1fr; }}
@@ -541,6 +651,16 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
           <label class="filter-cell"><span class="sr-label">Export</span><button id="csvExport" type="button">CSV Export</button></label>
         </section>
         <section class="detail" id="detailWrap"></section>
+        <section class="map-panel" id="mapSection">
+          <div class="map-head">
+            <h2>Graz-Karte</h2>
+            <div class="map-status" id="mapStatus">Orte werden bei Bedarf geladen.</div>
+          </div>
+          <div class="map-layout">
+            <div id="grazMap" aria-label="Karte mit erkannten Orten"></div>
+            <div class="map-list" id="mapPlaces"></div>
+          </div>
+        </section>
         <section class="topics" id="topicsWrap"></section>
         <div id="tableWrap"></div>
       </main>
@@ -562,8 +682,14 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     const csvExport = byId('csvExport');
     const tableWrap = byId('tableWrap');
     const detailWrap = byId('detailWrap');
+    const mapStatus = byId('mapStatus');
+    const mapPlaces = byId('mapPlaces');
     let sichtbareEintraege = [];
     let ausgewaehlterEintrag = null;
+    let grazMap = null;
+    let markerLayer = null;
+    const markersByLocation = new Map();
+    const locationIndex = buildLocationIndex(records);
 
     function escapeHtml(value) {{
       return String(value ?? '').replace(/[&<>"']/g, (char) => ({{
@@ -601,6 +727,26 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       return (values || []).filter(Boolean).join(', ') || '-';
     }}
 
+    function buildLocationIndex(allRecords) {{
+      const index = new Map();
+      allRecords.forEach((record) => {{
+        (record.orte || []).forEach((location) => {{
+          if (!location) return;
+          if (!index.has(location)) index.set(location, []);
+          index.get(location).push(record);
+        }});
+      }});
+      return index;
+    }}
+
+    function locationLinks(locations) {{
+      const values = (locations || []).filter(Boolean);
+      if (!values.length) return '-';
+      return `<span class="link-list">${{values.map((location) =>
+        `<button class="link-button" type="button" data-location="${{escapeHtml(location)}}">${{escapeHtml(location)}}</button>`
+      ).join('')}}</span>`;
+    }}
+
     function findRecordById(recordId) {{
       return records.find((record) => record.record_id === recordId) || null;
     }}
@@ -625,8 +771,122 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       element.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
     }}
 
+    function initMap() {{
+      if (!window.L) {{
+        mapStatus.textContent = 'Kartenbibliothek konnte nicht geladen werden.';
+        return;
+      }}
+      grazMap = L.map('grazMap').setView([47.0707, 15.4395], 12);
+      L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap'
+      }}).addTo(grazMap);
+      markerLayer = L.layerGroup().addTo(grazMap);
+      renderMapPlaces();
+      loadVisibleMapMarkers();
+    }}
+
+    function renderMapPlaces() {{
+      const places = [...locationIndex.entries()]
+        .map(([location, locationRecords]) => ({{ location, count: locationRecords.length }}))
+        .sort((a, b) => b.count - a.count || a.location.localeCompare(b.location, 'de-AT'))
+        .slice(0, 80);
+      if (!places.length) {{
+        mapPlaces.innerHTML = '<div class="empty">Keine Orte erkannt.</div>';
+        return;
+      }}
+      mapPlaces.innerHTML = places.map((place) => `
+        <button class="map-place" type="button" data-location="${{escapeHtml(place.location)}}">
+          <strong>${{escapeHtml(place.location)}}</strong>
+          <span>${{place.count}} Eintrag${{place.count === 1 ? '' : 'e'}}</span>
+        </button>
+      `).join('');
+    }}
+
+    async function loadVisibleMapMarkers() {{
+      const places = [...locationIndex.keys()].slice(0, 120);
+      let loaded = 0;
+      for (const place of places) {{
+        const coords = await geocodeLocation(place);
+        if (coords) {{
+          addLocationMarker(place, coords);
+          loaded += 1;
+          mapStatus.textContent = `${{loaded}} Orte auf der Karte`;
+        }}
+      }}
+    }}
+
+    async function geocodeLocation(location) {{
+      const cacheKey = `graz-location:${{location}}`;
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {{
+        try {{
+          return JSON.parse(cached);
+        }} catch {{
+          localStorage.removeItem(cacheKey);
+        }}
+      }}
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=at&q=${{encodeURIComponent(location + ', Graz, Österreich')}}`;
+      try {{
+        const response = await fetch(url);
+        if (!response.ok) return null;
+        const results = await response.json();
+        const first = results[0];
+        if (!first) return null;
+        const coords = {{ lat: Number(first.lat), lon: Number(first.lon) }};
+        if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lon)) return null;
+        localStorage.setItem(cacheKey, JSON.stringify(coords));
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        return coords;
+      }} catch {{
+        mapStatus.textContent = 'Online-Geocoding nicht verfügbar.';
+        return null;
+      }}
+    }}
+
+    function addLocationMarker(location, coords) {{
+      if (!grazMap || !markerLayer || markersByLocation.has(location)) return;
+      const locationRecords = locationIndex.get(location) || [];
+      const popupRecords = locationRecords.slice(0, 6).map((record) => `
+        <button type="button" data-popup-record-id="${{escapeHtml(record.record_id)}}">${{escapeHtml(record.datum)}} · ${{escapeHtml(record.titel)}}</button>
+      `).join('');
+      const marker = L.marker([coords.lat, coords.lon]).bindPopup(`
+        <strong>${{escapeHtml(location)}}</strong>
+        <div class="popup-list">${{popupRecords}}</div>
+      `);
+      marker.addTo(markerLayer);
+      markersByLocation.set(location, marker);
+    }}
+
+    async function focusLocation(location) {{
+      const coords = await geocodeLocation(location);
+      if (!coords || !grazMap) return;
+      addLocationMarker(location, coords);
+      const marker = markersByLocation.get(location);
+      grazMap.setView([coords.lat, coords.lon], 16);
+      if (marker) marker.openPopup();
+      setActiveNav('digra');
+      byId('mapSection').scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+    }}
+
     function detailField(label, value) {{
       return `<div class="detail-field"><strong>${{escapeHtml(label)}}</strong><span>${{escapeHtml(value || '-')}}</span></div>`;
+    }}
+
+    function digraLink(url, text = 'DIGRA öffnen') {{
+      const value = String(url || '');
+      if (!value.startsWith('https://digra.graz.at/')) {{
+        return '-';
+      }}
+      return `<a href="${{escapeHtml(value)}}" target="_blank" rel="noopener noreferrer">${{escapeHtml(text)}}</a>`;
+    }}
+
+    function detailLinkField(label, url) {{
+      return `<div class="detail-field"><strong>${{escapeHtml(label)}}</strong><span>${{digraLink(url)}}</span></div>`;
+    }}
+
+    function detailHtmlField(label, htmlValue) {{
+      return `<div class="detail-field"><strong>${{escapeHtml(label)}}</strong><span>${{htmlValue || '-'}}</span></div>`;
     }}
 
     function csvCell(value) {{
@@ -680,9 +940,9 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
           ${{detailField('Ergebnis', record.ergebnis)}}
           ${{detailField('DIGRA-Einlagezahl', record.digra_einlagezahl)}}
           ${{detailField('DIGRA-Trefferwert', record.digra_trefferwert)}}
-          ${{detailField('DIGRA-Link', record.digra_url)}}
+          ${{detailLinkField('DIGRA-Link', record.digra_url)}}
           ${{detailField('Beträge', joinList(record.betraege))}}
-          ${{detailField('Orte', joinList(record.orte))}}
+          ${{detailHtmlField('Orte', locationLinks(record.orte))}}
           ${{detailField('Quelldatei', record.quell_datei)}}
         </div>
       `;
@@ -763,8 +1023,8 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
           <td data-label="Geschäftszahl">${{escapeHtml((record.geschaeftszahlen || []).join(', '))}}</td>
           <td data-label="Titel" class="title">${{escapeHtml(record.titel)}}</td>
           <td data-label="Beträge" class="amount amount-col">${{escapeHtml((record.betraege || []).join(', '))}}</td>
-          <td data-label="Orte" class="places-col">${{escapeHtml((record.orte || []).join(', '))}}</td>
-          <td data-label="Ergebnisse" class="result results-col">${{escapeHtml(record.ergebnis || '')}}<br><span class="badge">${{escapeHtml(record.ergebnisquelle || '')}}</span></td>
+          <td data-label="Orte" class="places-col">${{locationLinks(record.orte)}}</td>
+          <td data-label="Ergebnisse" class="result results-col">${{escapeHtml(record.ergebnis || '')}}<br><span class="badge">${{escapeHtml(record.ergebnisquelle || '')}}</span> ${{record.digra_url ? digraLink(record.digra_url, 'DIGRA') : ''}}</td>
         </tr>
       `).join('');
 
@@ -799,10 +1059,31 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     [search, dateFilter, typeFilter, statusFilter, sourceFilter, amountFilter, fileFilter, sectionFilter].forEach((el) => el.addEventListener('input', render));
     csvExport.addEventListener('click', exportCsv);
     tableWrap.addEventListener('click', (event) => {{
+      const locationButton = event.target.closest('[data-location]');
+      if (locationButton) {{
+        event.stopPropagation();
+        focusLocation(locationButton.dataset.location || '');
+        return;
+      }}
       const row = event.target.closest('tr[data-index]');
       if (!row) return;
       ausgewaehlterEintrag = sichtbareEintraege[Number(row.dataset.index)] || null;
       renderDetail(ausgewaehlterEintrag);
+    }});
+    detailWrap.addEventListener('click', (event) => {{
+      const locationButton = event.target.closest('[data-location]');
+      if (!locationButton) return;
+      focusLocation(locationButton.dataset.location || '');
+    }});
+    mapPlaces.addEventListener('click', (event) => {{
+      const locationButton = event.target.closest('[data-location]');
+      if (!locationButton) return;
+      focusLocation(locationButton.dataset.location || '');
+    }});
+    byId('grazMap').addEventListener('click', (event) => {{
+      const recordButton = event.target.closest('[data-popup-record-id]');
+      if (!recordButton) return;
+      selectRecord(findRecordById(recordButton.dataset.popupRecordId));
     }});
     byId('topicsWrap').addEventListener('click', (event) => {{
       const step = event.target.closest('[data-record-id]');
@@ -821,7 +1102,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         const target = item.dataset.nav;
         if (target === 'overview') scrollToElement('overviewSection', 'overview');
         if (target === 'search') scrollToElement('searchSection', 'search');
-        if (target === 'digra') scrollToElement('topicsWrap', 'digra');
+        if (target === 'digra') scrollToElement('mapSection', 'digra');
         if (target === 'export') {{
           setActiveNav('export');
           exportCsv();
@@ -829,6 +1110,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       }});
     }});
     renderTopics();
+    initMap();
     render();
   </script>
 </body>

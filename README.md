@@ -119,7 +119,8 @@ Danach `viewer.html` im Browser öffnen. Die Datei ist erzeugte lokale Ausgabe u
 Der Viewer zeigt deutsche Typen, deutsche Statuswerte und einheitliche `Ergebnisse`, zum Beispiel `Antrag: mehrheitlich angenommen` plus Parteilisten wie `Dagegen: KFG, NEOS, FPÖ`.
 Ein Klick auf eine Tabellenzeile öffnet eine Detailansicht mit Titel, Ergebnis, Ergebnisquelle, DIGRA-Einlagezahl, DIGRA-Link, Geschäftszahlen, Beträgen, Orten und Quelldatei.
 Die aktuelle Trefferliste kann im Viewer als CSV exportiert werden. Filter gibt es unter anderem für Datum, Typ, Status, Ergebnisquelle, Beträge, Quelldatei und Abschnitt.
-Die Oberfläche ist als lokale App mit linker Navigation, KPI-Karten, Filterpanel, Detailansicht, Themenverläufen und Ergebnistabelle aufgebaut.
+Die Oberfläche ist als lokale App mit linker Navigation, KPI-Karten, Filterpanel, Detailansicht, Graz-Karte, Themenverläufen und Ergebnistabelle aufgebaut.
+Erkannte Orte sind anklickbar: der Viewer springt auf die Karte, lädt den Ort online über OpenStreetMap/Nominatim und zeigt die zugehörigen Einträge als Marker-Popup. DIGRA-Links öffnen direkt die jeweilige DIGRA-Dokumentseite.
 Originalformulierungen aus dem Protokoll werden im Viewer nicht angezeigt und bleiben nur in der ignorierten lokalen JSONL-Ausgabe als Rohspur erhalten.
 
 DIGRA-Auditbericht bauen:
@@ -137,6 +138,13 @@ python -m graz_protocols.cli topics --records out\agenda_items_digra.jsonl --out
 ```
 
 Die Kandidaten enthalten Confidence, Begründung und verknüpfte Einträge. Sie können im Viewer angezeigt und später manuell bestätigt werden.
+Optional kann eine KI bessere Themenüberschriften vorschlagen. Dafür muss `OPENAI_API_KEY` gesetzt sein:
+
+```powershell
+python -m graz_protocols.cli topics --records out\agenda_items_digra.jsonl --output out\topic_candidates.json --ai-headings --ai-limit 50
+```
+
+Die KI-Überschrift wird nachvollziehbar mit `rule_label`, `ai_label`, `ai_reason`, `ai_confidence` und `label_source` gespeichert.
 
 ## GitHub-Backlog
 

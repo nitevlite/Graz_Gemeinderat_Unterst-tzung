@@ -39,6 +39,7 @@ Aktuelle Module:
 - `graz_protocols/schema.py`: Validierung des JSONL-Datenmodells
 - `graz_protocols/street_names.py`: XLSX-Import und Normalisierung der Grazer Straßennamenliste
 - `graz_protocols/topics.py`: Themenkandidaten über Geschäftszahlen und Titel-Keywords
+- `graz_protocols/ai_topics.py`: optionale KI-Überschriften für Themenverläufe über die OpenAI Responses API
 - `graz_protocols/cli.py`: Stapelverarbeitung über die Kommandozeile
 - `graz_protocols/sqlite_export.py`: lokale SQLite-Ausgabe mit Tabelle `eintraege`, normalisierten Tabellen und FTS5
 - `graz_protocols/viewer.py`: erzeugte lokale Doppelklick-HTML-Ansicht
@@ -61,6 +62,8 @@ Aktuelle Ergebnisbehandlung:
 - Der lokale Viewer kann nach Ergebnisquelle filtern: `DIGRA`, `Protokoll`, `DIGRA fehlt`.
 - Der lokale Viewer kann nach Betragsvorkommen und Quelldatei filtern und die aktuelle Trefferliste als CSV exportieren.
 - Der lokale Viewer zeigt optional Themenverläufe aus `out\topic_candidates.json`.
+- Der lokale Viewer enthält eine Graz-Karte mit Leaflet/OpenStreetMap; Orte sind anklickbar, Marker-Popups führen zu den Einträgen.
+- DIGRA-Links werden im Viewer als anklickbare externe Links gerendert.
 - Rohformulierungen, Quellenausschnitte und interne englische Typ-/Statuscodes bleiben aus dem Viewer draußen.
 - Beträge werden nur aus Titel/Überschrift oder aus formalen Antrag-/Anfrageabschnitten übernommen, nicht aus beliebigen Debattenstellen.
 - Ortskandidaten werden optional gegen `Straßennamen_Graz.xlsx` geprüft; nicht passende Rede- oder Füllwörter werden nicht als Orte übernommen.
@@ -115,6 +118,7 @@ Letzter DIGRA-Lauf am 2026-06-08:
 - Viewer-Ausgabe: `viewer.html`
 - Audit-Ausgabe: `out\digra_audit.md`
 - Themenkandidaten: `out\topic_candidates.json`
+- Viewer-Karte: Online-Geocoding nur im Browser bei Bedarf, keine Koordinaten-Exporte im Git.
 
 Erzeugte Ausgabe ist absichtlich ignoriert.
 
