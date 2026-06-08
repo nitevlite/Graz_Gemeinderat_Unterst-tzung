@@ -54,12 +54,13 @@ Pytest läuft ohne Cache-Provider, damit keine lokalen Cache-Dateien entstehen.
 Parser-MVP ausführen:
 
 ```powershell
-python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items.jsonl --summary out\summary.json
+python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items.jsonl --summary out\summary.json --sqlite out\eintraege.sqlite
 ```
 
 Die Parser-Ausgabe ist lokales Arbeitsmaterial und wird von Git ignoriert.
 Der aktuelle Parser liest DOCX-Absatzformatvorlagen und erzeugt mehrere Eintragstypen, darunter schriftliche Anfragen und Anträge.
 Er erzeugt `result_text` als normalisierte Anzeige, `votes` für strukturierte Entscheidungsdetails und `raw_result_text` nur als lokale Rohspur in der ignorierten JSONL-Ausgabe.
+Mit `--sqlite` erzeugt er zusätzlich eine lokale SQLite-Datenbank mit deutscher Tabelle `eintraege`.
 
 Lokale HTML-Ansicht bauen:
 

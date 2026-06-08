@@ -8,6 +8,7 @@ import sys
 
 from .docx_text import read_docx_paragraph_blocks
 from .parser import AgendaRecord, parse_protocol
+from .sqlite_export import write_sqlite
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -47,6 +48,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=0,
         help="Optionale Höchstzahl zu parsenden DOCX-Dateien, praktisch während der Entwicklung.",
     )
+    parse_cmd.add_argument(
+        "--sqlite",
+        type=Path,
+        default=None,
+        help="Optionaler SQLite-Ausgabepfad, z. B. out/eintraege.sqlite.",
+    )
     return parser
 
 
@@ -81,11 +88,15 @@ def run_parse(args: argparse.Namespace) -> int:
     summary = build_summary(docx_files, records, errors)
     args.summary.parent.mkdir(parents=True, exist_ok=True)
     args.summary.write_text(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    if args.sqlite is not None:
+        write_sqlite(args.sqlite, records, summary)
 
     print(
         f"{summary['files_total']} DOCX-Dateien geparst, {summary['records_total']} Einträge "
         f"nach {args.output} geschrieben."
     )
+    if args.sqlite is not None:
+        print(f"SQLite-Datenbank nach {args.sqlite} geschrieben.")
     if errors:
         print(f"Dateien mit Fehlern: {len(errors)}", file=sys.stderr)
         return 1

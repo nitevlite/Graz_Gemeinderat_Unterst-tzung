@@ -62,11 +62,12 @@ Die Ausgabe bleibt lokal in ignorierten Dateien, nicht im Git.
 Lokalen Parser gegen die ignorierten DOCX-Arbeitskopien ausführen:
 
 ```powershell
-python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items.jsonl --summary out\summary.json
+python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items.jsonl --summary out\summary.json --sqlite out\eintraege.sqlite
 ```
 
 Der Parser schreibt JSONL-Einträge mit Sitzungsdatum, Stücknummer, Geschäftszahlen, Titel, Status, einheitlichem Ergebnistext, strukturierten Abstimmungsdetails, Beträgen, Ortshinweisen und kurzem Quellenausschnitt.
 Er nutzt DOCX-Absatzformatvorlagen, um echte Überschriften von Inhaltsverzeichnis-Einträgen zu unterscheiden.
+Optional erzeugt er zusätzlich eine lokale SQLite-Datenbank mit der Tabelle `eintraege`. Die SQLite-Datei bleibt wie JSONL und HTML ignoriert.
 
 Interne Eintragstypen:
 
@@ -103,7 +104,6 @@ Die nächsten Arbeitspakete liegen in GitHub Issues:
 - Schriftliche Anfragen und Anträge ohne `Stk.`-Nummer
 - Strukturierte Abstimmungsergebnisse und Parteistimmen
 - Stabiles JSONL-Schema und Validierung
-- SQLite-Ausgabe für Suche und Zeitachsen
 - DIGRA-Anbindung
 - Ortserkennung und Vorbereitung für Karten
 - Bessere lokale HTML-Ansicht

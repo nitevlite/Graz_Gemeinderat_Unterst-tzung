@@ -42,7 +42,7 @@ Der Viewer zeigt deutsche Typen und deutsche Statuswerte.
 Parser ausführen:
 
 ```powershell
-python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items.jsonl --summary out\summary.json
+python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items.jsonl --summary out\summary.json --sqlite out\eintraege.sqlite
 ```
 
 Der Ausgabeordner `out/` ist ignoriert und muss untracked bleiben.

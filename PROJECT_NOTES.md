@@ -35,6 +35,7 @@ Aktuelle Module:
 - `graz_protocols/docx_text.py`: DOCX-Textextraktion mit Standardbibliothek
 - `graz_protocols/parser.py`: Extraktion von Tagesordnungspunkten, Status, Beträgen, Geschäftszahlen und Ortshinweisen
 - `graz_protocols/cli.py`: Stapelverarbeitung über die Kommandozeile
+- `graz_protocols/sqlite_export.py`: lokale SQLite-Ausgabe mit Tabelle `eintraege`
 - `graz_protocols/viewer.py`: erzeugte lokale Doppelklick-HTML-Ansicht
 - `tests/test_parser.py`: bereinigte Parser-Tests
 - `tests/test_viewer.py`: Tests für deutsche Viewer-Anzeige und Rohtextschutz
@@ -69,6 +70,7 @@ Letzter lokaler Lauf am 2026-06-08:
   - `rejected_majority`: 43
   - `unknown`: 20
 - Ausgabe: `out/agenda_items.jsonl`
+- SQLite-Ausgabe: `out/eintraege.sqlite`
 
 Erzeugte Ausgabe ist absichtlich ignoriert.
 
@@ -79,7 +81,7 @@ Die Extraktionsqualität über die Abschnittserkennung hinaus verbessern:
 - DIGRA-Ergebnisse systematisch gegen Parser-Ergebnisse abgleichen
 - komplexe Änderungs- und Zusatzanträge besser trennen
 - Ortserkennung verbessern und geocoding-taugliche Ortsdatensätze erzeugen
-- SQLite-Ausgabe für Suche und Zeitachsen ergänzen
+- Zeitachsenabfragen auf der SQLite-Ausgabe aufbauen
 
 ## GitHub Issues
 
