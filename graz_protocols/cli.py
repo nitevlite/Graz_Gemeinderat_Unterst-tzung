@@ -97,9 +97,11 @@ def build_summary(docx_files: list[Path], records: list[AgendaRecord], errors: l
     section_counts = Counter(record.section or "unknown" for record in records)
     type_counts = Counter(record.record_type for record in records)
     file_counts = Counter(record.source_file for record in records)
+    records_with_votes = sum(1 for record in records if record.votes)
     return {
         "files_total": len(docx_files),
         "files_with_records": len(file_counts),
+        "records_with_votes": records_with_votes,
         "records_total": len(records),
         "records_by_file": dict(sorted(file_counts.items())),
         "records_by_section": dict(sorted(section_counts.items())),

@@ -58,7 +58,7 @@ def read_json(path: Path) -> dict:
 
 
 def build_html(records: list[dict], summary: dict) -> str:
-    data = json.dumps(records, ensure_ascii=False)
+    data = json.dumps([viewer_record(record) for record in records], ensure_ascii=False)
     summary_data = json.dumps(summary, ensure_ascii=False)
     return f"""<!doctype html>
 <html lang="de">
@@ -271,8 +271,7 @@ def build_html(records: list[dict], summary: dict) -> str:
         record.status,
         ...(record.amounts || []),
         ...(record.locations || []),
-        record.result_text,
-        record.source_snippet
+        record.result_text
       ].join(' ').toLocaleLowerCase('de-AT');
     }}
 
@@ -310,7 +309,7 @@ def build_html(records: list[dict], summary: dict) -> str:
           <td data-label="Titel" class="title">${{escapeHtml(record.title)}}</td>
           <td data-label="Beträge" class="amount">${{escapeHtml((record.amounts || []).join(', '))}}</td>
           <td data-label="Orte">${{escapeHtml((record.locations || []).join(', '))}}</td>
-          <td data-label="Ergebnisse" class="result">${{escapeHtml(record.result_text || record.status_text || record.source_snippet)}}</td>
+          <td data-label="Ergebnisse" class="result">${{escapeHtml(record.result_text || '')}}</td>
         </tr>
       `).join('');
 
@@ -344,6 +343,21 @@ def build_html(records: list[dict], summary: dict) -> str:
 </body>
 </html>
 """
+
+
+def viewer_record(record: dict) -> dict:
+    visible_record = dict(record)
+    visible_record.pop("raw_result_text", None)
+    visible_record.pop("source_snippet", None)
+    visible_record.pop("status_text", None)
+    visible_record["votes"] = [viewer_vote(vote) for vote in visible_record.get("votes", [])]
+    return visible_record
+
+
+def viewer_vote(vote: dict) -> dict:
+    visible_vote = dict(vote)
+    visible_vote.pop("raw_text", None)
+    return visible_vote
 
 
 if __name__ == "__main__":

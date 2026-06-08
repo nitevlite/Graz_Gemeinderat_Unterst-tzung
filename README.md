@@ -63,7 +63,7 @@ Run the local parser against ignored DOCX working copies:
 python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items.jsonl --summary out\summary.json
 ```
 
-The parser writes JSONL records with meeting date, agenda item number, business numbers, title, status, exact result text, amounts, location hints, and a short source snippet.
+The parser writes JSONL records with meeting date, agenda item number, business numbers, title, status, standardized result text, structured vote details, amounts, location hints, and a short source snippet.
 It uses DOCX paragraph style metadata to distinguish real headings from table-of-contents entries.
 
 Current record types:
@@ -83,7 +83,7 @@ python -m graz_protocols.viewer --records out\agenda_items.jsonl --summary out\s
 
 Then open `viewer.html` in a browser. The file is generated local output and ignored by Git.
 
-The viewer shows `Ergebnisse` instead of source snippets in the main table. Source snippets stay in the JSONL output for traceability.
+The viewer shows standardized `Ergebnisse`, for example `Antrag: mehrheitlich angenommen` plus party lists such as `Dagegen: KFG, NEOS, FPÖ`. Original protocol wording stays out of the viewer and remains only in ignored local JSONL fields for traceability.
 
 ## GitHub Backlog
 

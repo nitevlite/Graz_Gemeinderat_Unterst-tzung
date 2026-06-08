@@ -68,12 +68,49 @@ STATUS_PATTERNS = [
 FORMAL_RESULT_RE = re.compile(
     r"(?:"
     r"Der\s+(?:Antrag|Abänderungsantrag|Abaenderungsantrag|Zusatzantrag|Tagesordnungspunkt)"
-    r"[^.\n]{0,240}?\b(?:angenommen|abgelehnt|zugewiesen|vertagt)\.?"
+    r"[^.\n]{0,240}?\b(?:angenommen|abgelehnt|zugewiesen|vertagt)"
+    r"(?:\s*\((?:Gegen|Dagegen|Zustimmung|Enthaltung)\s*:?\s*[^)]{1,220}\))?\.?"
     r"|Der\s+geschäftsordnungsmäßigen\s+Behandlung\s+zugewiesen\.?"
     r")",
     re.IGNORECASE,
 )
-RESULT_DETAIL_RE = re.compile(r"^(?:Zustimmung|Dagegen|Enthaltung|Gegenstimmen?|Gegenprobe)\s*:", re.IGNORECASE)
+RESULT_DETAIL_RE = re.compile(
+    r"^(?:Zustimmung|Dagegen|Gegen|Enthaltung|Gegenstimmen?|Gegenprobe)\s*:?",
+    re.IGNORECASE,
+)
+RESULT_SUBJECT_RE = re.compile(
+    r"Der\s+(?P<subject>Antrag|Abänderungsantrag|Abaenderungsantrag|Zusatzantrag|Tagesordnungspunkt)",
+    re.IGNORECASE,
+)
+RESULT_OUTCOME_RE = re.compile(
+    r"\b(?P<modifier>einstimmig|mehrheitlich|mehrstimmig)?\s*(?P<decision>angenommen|abgelehnt|zugewiesen|vertagt)\b",
+    re.IGNORECASE,
+)
+PARTY_DETAIL_RE = re.compile(
+    r"^(?P<label>Zustimmung|Dagegen|Gegen|Enthaltung|Gegenstimmen?)\s*:?\s*(?P<parties>.+)$",
+    re.IGNORECASE,
+)
+PAREN_PARTY_DETAIL_RE = re.compile(
+    r"\((?P<label>Zustimmung|Dagegen|Gegen|Enthaltung|Gegenstimmen?)\s*:?\s*(?P<parties>[^)]+)\)",
+    re.IGNORECASE,
+)
+SUBJECT_LABELS = {
+    "motion": "Antrag",
+    "amendment": "Abänderungsantrag",
+    "additional_motion": "Zusatzantrag",
+    "agenda_item": "Tagesordnungspunkt",
+    "procedure": "Verfahren",
+}
+OUTCOME_LABELS = {
+    "accepted_unanimous": "einstimmig angenommen",
+    "accepted_majority": "mehrheitlich angenommen",
+    "accepted": "angenommen",
+    "rejected_majority": "mehrheitlich abgelehnt",
+    "rejected": "abgelehnt",
+    "assigned": "zugewiesen",
+    "postponed": "vertagt",
+    "unknown": "unbekannt",
+}
 
 
 @dataclass(frozen=True)
@@ -89,6 +126,8 @@ class AgendaRecord:
     status: str
     status_text: str
     result_text: str
+    raw_result_text: str
+    votes: list[dict[str, object]]
     amounts: list[str]
     locations: list[str]
     source_snippet: str
@@ -117,8 +156,10 @@ def parse_protocol(paragraphs: Iterable[str | ParagraphLike], source_file: str) 
         seen.add(key)
 
         chunk_text = "\n".join([chunk.heading, *chunk.body])
-        result_text = extract_result_text(chunk_text)
-        status, status_text = classify_status(result_text or chunk_text)
+        raw_result_text = extract_result_text(chunk_text)
+        status, status_text = classify_status(raw_result_text or chunk_text)
+        votes = extract_votes(raw_result_text, status)
+        result_text = format_result_text(votes, status, status_text)
         business_numbers = unique_preserve_order(
             normalize_business_number(match.group(0))
             for match in BUSINESS_NO_RE.finditer(heading_body)
@@ -139,7 +180,9 @@ def parse_protocol(paragraphs: Iterable[str | ParagraphLike], source_file: str) 
                 title=title,
                 status=status,
                 status_text=status_text,
-                result_text=result_text or status_text,
+                result_text=result_text,
+                raw_result_text=raw_result_text,
+                votes=votes,
                 amounts=amounts,
                 locations=locations,
                 source_snippet=make_snippet(chunk_text),
@@ -344,6 +387,136 @@ def extract_result_text(text: str) -> str:
     if not result_lines:
         return ""
     return "\n".join(unique_preserve_order(result_lines))
+
+
+def extract_votes(result_text: str, status: str = "unknown") -> list[dict[str, object]]:
+    if not result_text:
+        return []
+    lines = [line.strip() for line in result_text.splitlines() if line.strip()]
+    votes: list[dict[str, object]] = []
+    current: dict[str, object] | None = None
+    for line in lines:
+        subject_match = RESULT_SUBJECT_RE.search(line)
+        outcome_match = RESULT_OUTCOME_RE.search(line)
+        if subject_match and outcome_match:
+            if current is not None:
+                votes.append(current)
+            current = {
+                "subject": normalize_subject(subject_match.group("subject")),
+                "outcome": normalize_vote_outcome(outcome_match.group("modifier") or "", outcome_match.group("decision")),
+                "approval": [],
+                "against": [],
+                "abstention": [],
+                "raw_text": line,
+            }
+            for label, parties in extract_party_details_from_line(line):
+                apply_vote_parties(current, label, parties)
+            continue
+        detail_match = PARTY_DETAIL_RE.match(line)
+        if detail_match and current is not None:
+            apply_vote_parties(current, detail_match.group("label"), detail_match.group("parties"))
+            current["raw_text"] = f"{current['raw_text']}\n{line}"
+    if current is not None:
+        votes.append(current)
+    if not votes and status == "assigned":
+        return [
+            {
+                "subject": "procedure",
+                "outcome": "assigned",
+                "approval": [],
+                "against": [],
+                "abstention": [],
+                "raw_text": result_text,
+            }
+        ]
+    return votes
+
+
+def format_result_text(votes: list[dict[str, object]], status: str, status_text: str) -> str:
+    if votes:
+        return "\n\n".join(format_vote(vote) for vote in votes)
+    if status == "assigned":
+        return "Zugewiesen"
+    if status == "unknown":
+        return "Unbekannt"
+    return normalize_status_label(status, status_text)
+
+
+def format_vote(vote: dict[str, object]) -> str:
+    subject = SUBJECT_LABELS.get(str(vote.get("subject", "")), "Antrag")
+    outcome = OUTCOME_LABELS.get(str(vote.get("outcome", "")), str(vote.get("outcome", "")) or "unbekannt")
+    lines = [f"{subject}: {outcome}"]
+    approval = vote.get("approval")
+    against = vote.get("against")
+    abstention = vote.get("abstention")
+    if isinstance(approval, list) and approval:
+        lines.append(f"Zustimmung: {', '.join(str(item) for item in approval)}")
+    if isinstance(against, list) and against:
+        lines.append(f"Dagegen: {', '.join(str(item) for item in against)}")
+    if isinstance(abstention, list) and abstention:
+        lines.append(f"Enthaltung: {', '.join(str(item) for item in abstention)}")
+    return "\n".join(lines)
+
+
+def normalize_status_label(status: str, status_text: str = "") -> str:
+    return OUTCOME_LABELS.get(status, status_text or status)
+
+
+def extract_party_details_from_line(line: str) -> list[tuple[str, str]]:
+    return [(match.group("label"), match.group("parties")) for match in PAREN_PARTY_DETAIL_RE.finditer(line)]
+
+
+def apply_vote_parties(vote: dict[str, object], label: str, parties: str) -> None:
+    normalized_label = label.casefold()
+    target = "approval"
+    if normalized_label in {"dagegen", "gegen", "gegenstimmen"}:
+        target = "against"
+    elif normalized_label == "enthaltung":
+        target = "abstention"
+    existing = vote.get(target)
+    if not isinstance(existing, list):
+        existing = []
+    merged = unique_preserve_order([*existing, *split_party_names(parties)])
+    vote[target] = merged
+
+
+def split_party_names(value: str) -> list[str]:
+    cleaned = value.strip().strip(".;")
+    if not cleaned:
+        return []
+    pieces = re.split(r"\s*,\s*|\s+und\s+", cleaned)
+    return [piece.strip().strip(".;") for piece in pieces if piece.strip().strip(".;")]
+
+
+def normalize_subject(value: str) -> str:
+    normalized = value.casefold()
+    if normalized in {"abänderungsantrag", "abaenderungsantrag"}:
+        return "amendment"
+    if normalized == "zusatzantrag":
+        return "additional_motion"
+    if normalized == "tagesordnungspunkt":
+        return "agenda_item"
+    return "motion"
+
+
+def normalize_vote_outcome(modifier: str, decision: str) -> str:
+    mod = modifier.casefold()
+    dec = decision.casefold()
+    if dec == "zugewiesen":
+        return "assigned"
+    if dec == "vertagt":
+        return "postponed"
+    if dec == "angenommen":
+        if mod == "einstimmig":
+            return "accepted_unanimous"
+        if mod in {"mehrheitlich", "mehrstimmig"}:
+            return "accepted_majority"
+        return "accepted"
+    if dec == "abgelehnt":
+        if mod in {"mehrheitlich", "mehrstimmig"}:
+            return "rejected_majority"
+        return "rejected"
+    return dec
 
 
 def normalize_business_number(value: str) -> str:

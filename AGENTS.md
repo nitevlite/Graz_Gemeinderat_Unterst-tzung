@@ -34,7 +34,9 @@ It contains DOCX files copied from `E:\01_StadtGrazProtokolle\Archiv\...` plus a
 
 The parser MVP is implemented in `graz_protocols/` and tested with sanitized fixtures in `tests/`.
 It reads DOCX paragraph style metadata and currently emits `agenda_item`, `urgent_motion`, `written_question`, and `written_motion` records.
-Formal result lines are stored in `result_text`; keep this field focused on exact decision/result wording, not general source snippets.
+Keep `result_text` standardized for display, not copied from protocol wording.
+Keep original result formulations only in ignored local output fields such as `raw_result_text`.
+Use `votes` for structured decision details such as outcome, approval, against, and abstention parties.
 
 Use:
 

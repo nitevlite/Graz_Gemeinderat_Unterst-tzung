@@ -59,13 +59,15 @@ python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\age
 
 The parser output is local working data and ignored by Git.
 The current parser reads DOCX paragraph styles and emits multiple record types, including written questions and motions.
-It also emits `result_text`, which the viewer uses as its main result column.
+It emits normalized `result_text` for display, `votes` for structured decision details, and `raw_result_text` only as local traceability data in the ignored JSONL output.
 
 Build the local HTML viewer:
 
 ```powershell
 python -m graz_protocols.viewer --records out\agenda_items.jsonl --summary out\summary.json --output viewer.html
 ```
+
+The generated viewer intentionally removes raw source snippets and original result formulations from its embedded records.
 
 ## Documentation Maintenance
 

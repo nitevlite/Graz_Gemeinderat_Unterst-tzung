@@ -40,16 +40,20 @@ Current modules:
 
 Current result handling:
 
-- formal result lines are extracted into `result_text`
+- formal result lines are extracted into `raw_result_text` for local traceability
+- `result_text` is normalized for display, not copied from the protocol wording
+- structured vote details are emitted in `votes`
 - status classification prefers formal result lines over arbitrary words in speeches
-- legacy wording such as `mehrstimmig angenommen` is treated as majority acceptance
-- the local viewer shows `Ergebnisse` instead of the raw source snippet column
+- legacy wording such as `mehrstimmig angenommen` is normalized to majority acceptance
+- parenthetical party details such as `(Gegen KFG, NEOS, FPÖ)` are normalized into `Dagegen: ...`
+- the local viewer shows only standardized `Ergebnisse`, not raw source snippets or original result formulations
 
 Latest local run on 2026-06-08:
 
 - input: `graz_protokolle_arbeitskopie/`
 - files parsed: 18
 - records written: 1135
+- records with structured votes/results: 1053
 - record types:
   - `agenda_item`: 459
   - `urgent_motion`: 108
