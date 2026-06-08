@@ -988,19 +988,46 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       `;
     }}
 
+    function topicRecordMatchesFilters(record) {{
+      const meetingDate = String(record.meeting_date || '');
+      if (dateFilter.value && meetingDate !== dateFilter.value) return false;
+      if (yearFilter.value && !meetingDate.startsWith(yearFilter.value + '-')) return false;
+      const query = search.value.trim().toLocaleLowerCase('de-AT');
+      if (!query) return true;
+      const haystack = [
+        record.title,
+        record.result_text,
+        record.result_source,
+        record.record_id,
+      ].join(' ').toLocaleLowerCase('de-AT');
+      return haystack.includes(query);
+    }}
+
     function renderTopics() {{
       if (!topics.length) {{
         byId('topicsWrap').style.display = 'none';
         return;
       }}
-      const rendered = topics.slice(0, 8).map((topic) => {{
-        const timeline = (topic.records || []).slice(0, 6).map((record) => `
+      const visibleTopics = topics.map((topic) => ({{
+        ...topic,
+        visibleRecords: (topic.records || []).filter(topicRecordMatchesFilters),
+      }})).filter((topic) => topic.visibleRecords.length);
+
+      if (!visibleTopics.length) {{
+        byId('topicsWrap').style.display = '';
+        byId('topicsWrap').innerHTML = '<h2>Themenverläufe</h2><div class="empty">Keine Themen für diese Filter.</div>';
+        return;
+      }}
+
+      const rendered = visibleTopics.slice(0, 8).map((topic) => {{
+        const timeline = topic.visibleRecords.slice(0, 6).map((record) => `
           <button class="timeline-step" type="button" data-record-id="${{escapeHtml(record.record_id || '')}}">
             <span class="timeline-date">${{escapeHtml(record.meeting_date || '-')}}</span>
             <span class="timeline-title">${{escapeHtml(record.title || '-')}}</span>
             <span class="timeline-result">${{escapeHtml(record.result_text || record.result_source || '')}}</span>
           </button>
         `).join('');
+        const topicDates = [...new Set(topic.visibleRecords.map((record) => record.meeting_date).filter(Boolean))].sort();
         const news = (topic.news || []).slice(0, 3).map((item) => `
           <a href="${{escapeHtml(item.url || '')}}" target="_blank" rel="noopener noreferrer">${{escapeHtml(item.title || '')}}</a>
         `).join('');
@@ -1014,7 +1041,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
               <span class="badge">${{escapeHtml(topic.confidence || '')}}</span>
             </div>
             <div class="topic-meta">
-              Zeitstrahl: ${{escapeHtml((topic.dates || []).join(' bis '))}}
+              Zeitstrahl: ${{escapeHtml(topicDates.join(' bis '))}}
               ${{topic.business_number ? ` · Geschäftszahl: ${{escapeHtml(topic.business_number)}}` : ''}}
             </div>
             <div class="timeline">${{timeline}}</div>
@@ -1056,6 +1083,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       renderMapPlaces();
       loadVisibleMapMarkers();
       renderDetail(ausgewaehlterEintrag);
+      renderTopics();
 
       if (!sichtbareEintraege.length) {{
         tableWrap.innerHTML = '<div class="empty">Keine Treffer für diese Filter.</div>';
@@ -1158,7 +1186,6 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         }}
       }});
     }});
-    renderTopics();
     initMap();
     render();
   </script>

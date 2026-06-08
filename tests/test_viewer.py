@@ -62,6 +62,9 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "nominatim.openstreetmap.org" in html
     assert "openstreetmap.org" in html
     assert "currentLocationIndex = buildLocationIndex(sichtbareEintraege)" in html
+    assert "visibleTopics = topics.map" in html
+    assert "filter(topicRecordMatchesFilters)" in html
+    assert "renderTopics();" in html
     assert "DIGRA-Trefferwert" in html
     assert "digraLink(record.digra_url" in html
     assert "https://digra.graz.at/document?ref=b7b33fe0-443a-49c8-9e95-22a77851b9f9" in html
