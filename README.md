@@ -84,6 +84,7 @@ python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\age
 
 Dieser Modus nutzt das vorhandene Tool unter `E:\01_StadtGrazProtokolle\Digra_Export_Tool\app`, lädt DIGRA-Sitzungen und DIGRA-Dokumentseiten, extrahiert offizielle Ergebnisse nur aus dem Block `Beschlussvermerk` und cached die geladenen DIGRA-Daten lokal in `out\digra_cache.json`.
 DIGRA-Ergebnisse haben Vorrang. Wenn DIGRA keinen Beschlussvermerk liefert oder kein Ergebnis zugeordnet werden kann, bleibt das normalisierte Protokoll-Ergebnis als Fallback erhalten und die Ergebnisquelle steht auf `Protokoll`.
+Links zu DIGRA werden konservativ übernommen: unsichere Treffer werden nicht verlinkt, damit ein fehlender Link eher vorkommt als ein falscher Link.
 Mit `--street-names` wird die Ortserkennung gegen die Grazer Straßennamenliste gefiltert. Dadurch werden Füllwörter aus Reden nicht als Orte übernommen.
 Mit `--digra-results-only` kann man zusätzlich auditieren, wo DIGRA wirklich kein Ergebnis liefert.
 

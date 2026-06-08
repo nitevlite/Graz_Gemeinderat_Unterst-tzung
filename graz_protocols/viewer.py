@@ -408,6 +408,12 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       font-size: 12px;
       text-align: right;
     }}
+    .map-note {{
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 8px;
+      line-height: 1.4;
+    }}
     .map-layout {{
       display: grid;
       grid-template-columns: minmax(0, 1fr) 260px;
@@ -467,6 +473,12 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       color: var(--accent-dark);
       border: 1px solid #bfdbfe;
       font-size: 12px;
+    }}
+    .leaflet-interactive.place-dot {{
+      stroke: #1d4ed8;
+      stroke-width: 2;
+      fill: #2563eb;
+      fill-opacity: 0.8;
     }}
     .topics h2 {{
       margin: 0 0 10px;
@@ -660,6 +672,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
             <div id="grazMap" aria-label="Karte mit erkannten Orten"></div>
             <div class="map-list" id="mapPlaces"></div>
           </div>
+          <div class="map-note">Die Karte nutzt Online-Geocoding. Wenn ein Ort ungenau sitzt, liegt das meist an mehrdeutigen Ortsnamen oder daran, dass die Protokoll-Ortserkennung zu viel Kontext erwischt.</div>
         </section>
         <section class="topics" id="topicsWrap"></section>
         <div id="tableWrap"></div>
@@ -732,11 +745,16 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       allRecords.forEach((record) => {{
         (record.orte || []).forEach((location) => {{
           if (!location) return;
+          if (!mappableLocation(location)) return;
           if (!index.has(location)) index.set(location, []);
           index.get(location).push(record);
         }});
       }});
       return index;
+    }}
+
+    function mappableLocation(location) {{
+      return !/^(?:EZ\\s+|KG\\s+|Gdst\\.?\\s*Nr)/i.test(String(location || '').trim());
     }}
 
     function locationLinks(locations) {{
@@ -751,11 +769,14 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       return records.find((record) => record.record_id === recordId) || null;
     }}
 
-    function selectRecord(record) {{
+    function selectRecord(record, focusMap = false) {{
       if (!record) return;
       ausgewaehlterEintrag = record;
       renderDetail(record);
       detailWrap.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+      if (focusMap && (record.orte || []).length) {{
+        focusLocation(record.orte[0]);
+      }}
     }}
 
     function setActiveNav(target) {{
@@ -850,7 +871,14 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       const popupRecords = locationRecords.slice(0, 6).map((record) => `
         <button type="button" data-popup-record-id="${{escapeHtml(record.record_id)}}">${{escapeHtml(record.datum)}} · ${{escapeHtml(record.titel)}}</button>
       `).join('');
-      const marker = L.marker([coords.lat, coords.lon]).bindPopup(`
+      const marker = L.circleMarker([coords.lat, coords.lon], {{
+        radius: Math.min(11, 5 + Math.sqrt(locationRecords.length)),
+        color: '#1d4ed8',
+        weight: 2,
+        fillColor: '#2563eb',
+        fillOpacity: 0.78,
+        className: 'place-dot'
+      }}).bindPopup(`
         <strong>${{escapeHtml(location)}}</strong>
         <div class="popup-list">${{popupRecords}}</div>
       `);
@@ -1068,7 +1096,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       const row = event.target.closest('tr[data-index]');
       if (!row) return;
       ausgewaehlterEintrag = sichtbareEintraege[Number(row.dataset.index)] || null;
-      renderDetail(ausgewaehlterEintrag);
+      selectRecord(ausgewaehlterEintrag, true);
     }});
     detailWrap.addEventListener('click', (event) => {{
       const locationButton = event.target.closest('[data-location]');
@@ -1088,7 +1116,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     byId('topicsWrap').addEventListener('click', (event) => {{
       const step = event.target.closest('[data-record-id]');
       if (step) {{
-        selectRecord(findRecordById(step.dataset.recordId));
+        selectRecord(findRecordById(step.dataset.recordId), true);
         return;
       }}
       const action = event.target.closest('[data-topic-query]');

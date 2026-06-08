@@ -83,6 +83,7 @@ Er übernimmt aus DIGRA:
 Wichtig: Ergebnisse werden nicht aus beliebigen Wörtern im DIGRA-Dokumenttext abgeleitet. Nur ein `Beschlussvermerk` zählt als DIGRA-Ergebnis.
 Im Standardmodus `--digra` haben DIGRA-Beschlussvermerke Vorrang. Wo DIGRA wirklich kein Ergebnis liefert oder die Zuordnung nicht plausibel genug ist, wird das normalisierte Protokoll-Ergebnis als Fallback verwendet.
 Mit `--digra-results-only` werden nicht belegte Ergebnisse ausdrücklich als `DIGRA-Ergebnis fehlt` markiert; dieser Modus ist nur für Audits gedacht.
+DIGRA-Links werden konservativ zugeordnet: niedrige Titelähnlichkeiten werden verworfen, und Protokoll-Fallbacks behalten einen DIGRA-Link nur bei hoher Zuordnungssicherheit.
 
 Letzter lokaler Lauf am 2026-06-08:
 
@@ -109,9 +110,9 @@ Letzter DIGRA-Lauf am 2026-06-08:
 - Befehl: `python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra`
 - Aktueller Befehl mit Straßennamenabgleich: `python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra --street-names .\Straßennamen_Graz.xlsx`
 - DIGRA-Einträge geladen: 1675
-- lokalen Datensätzen zugeordnet: 951
-- Ergebnisse aus DIGRA-Beschlussvermerken übernommen: 412
-- Protokoll-Fallbacks, weil DIGRA kein plausibel zuordenbares Ergebnis liefert: 723
+- lokalen Datensätzen zugeordnet: 938
+- Ergebnisse aus DIGRA-Beschlussvermerken übernommen: 415
+- Protokoll-Fallbacks, weil DIGRA kein plausibel zuordenbares Ergebnis liefert: 720
 - Datensätze ohne DIGRA- oder Protokoll-Ergebnis: 5
 - Ausgabe: `out/agenda_items_digra.jsonl`
 - SQLite-Ausgabe: `out\eintraege_digra.sqlite`
@@ -119,6 +120,7 @@ Letzter DIGRA-Lauf am 2026-06-08:
 - Audit-Ausgabe: `out\digra_audit.md`
 - Themenkandidaten: `out\topic_candidates.json`
 - Viewer-Karte: Online-Geocoding nur im Browser bei Bedarf, keine Koordinaten-Exporte im Git.
+- DIGRA-Audit nach strengerer Zuordnung: keine Links mit Trefferwert unter 0,5.
 
 Erzeugte Ausgabe ist absichtlich ignoriert.
 

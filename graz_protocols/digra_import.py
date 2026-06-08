@@ -23,8 +23,10 @@ DIGRA_SOURCE = "digra"
 DIGRA_MISSING_SOURCE = "digra_fehlt"
 PROTOCOL_SOURCE = "protokoll"
 CACHE_VERSION = 2
-MIN_AGENDA_TITLE_SCORE = 0.35
-MIN_GENERIC_TITLE_SCORE = 0.44
+MIN_AGENDA_TITLE_SCORE = 0.5
+MIN_GENERIC_TITLE_SCORE = 0.55
+MIN_ORDER_TITLE_SCORE = 0.5
+MIN_FALLBACK_LINK_SCORE = 0.7
 
 BUSINESS_NUMBER_RE = re.compile(r"\b\d{1,6}/\d{1,4}\b")
 DATE_RE = re.compile(r"\b\d{1,2}\.\d{1,2}\.\d{4}\b")
@@ -113,8 +115,8 @@ def enrich_records_with_digra(
                     raw_result_text="",
                     votes=[],
                     result_source=DIGRA_MISSING_SOURCE,
-                    digra_url=entry.url if entry else "",
-                    digra_business_number=entry.business_number if entry else "",
+                    digra_url=entry.url if entry and match_score >= MIN_FALLBACK_LINK_SCORE else "",
+                    digra_business_number=entry.business_number if entry and match_score >= MIN_FALLBACK_LINK_SCORE else "",
                     protocol_result_text=record.result_text,
                     digra_match_score=match_score,
                 )
@@ -125,8 +127,8 @@ def enrich_records_with_digra(
             replace(
                 record,
                 result_source=PROTOCOL_SOURCE if record.result_text and record.result_text != "Unbekannt" else DIGRA_MISSING_SOURCE,
-                digra_url=entry.url if entry else "",
-                digra_business_number=entry.business_number if entry else "",
+                digra_url=entry.url if entry and match_score >= MIN_FALLBACK_LINK_SCORE else "",
+                digra_business_number=entry.business_number if entry and match_score >= MIN_FALLBACK_LINK_SCORE else "",
                 protocol_result_text=record.result_text,
                 digra_match_score=match_score,
             )
@@ -353,7 +355,7 @@ def find_best_digra_entry(
         return None, 0.0
     if score >= MIN_GENERIC_TITLE_SCORE:
         return best, score
-    if best.order_in_type == order_in_type and record.record_type != "agenda_item" and score >= 0.28:
+    if best.order_in_type == order_in_type and record.record_type != "agenda_item" and score >= MIN_ORDER_TITLE_SCORE:
         return best, score
     return None, 0.0
 
