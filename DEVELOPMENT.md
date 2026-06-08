@@ -53,6 +53,12 @@ python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\age
 
 The parser output is local working data and ignored by Git.
 
+Build the local HTML viewer:
+
+```powershell
+python -m graz_protocols.viewer --records out\agenda_items.jsonl --summary out\summary.json --output viewer.html
+```
+
 ## Documentation Maintenance
 
 Whenever the project changes, update the relevant Markdown file in the same work session:

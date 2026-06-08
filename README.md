@@ -66,3 +66,11 @@ python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\age
 The parser writes JSONL records with meeting date, agenda item number, business numbers, title, status, amounts, location hints, and a short source snippet.
 
 Generated output under `out/` is ignored and must not be committed.
+
+Build a local double-click HTML viewer:
+
+```powershell
+python -m graz_protocols.viewer --records out\agenda_items.jsonl --summary out\summary.json --output viewer.html
+```
+
+Then open `viewer.html` in a browser. The file is generated local output and ignored by Git.

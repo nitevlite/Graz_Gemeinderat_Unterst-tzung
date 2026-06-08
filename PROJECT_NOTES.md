@@ -35,6 +35,7 @@ Current modules:
 - `graz_protocols/docx_text.py`: stdlib DOCX text extraction
 - `graz_protocols/parser.py`: agenda item, status, amount, business-number, and location-hint extraction
 - `graz_protocols/cli.py`: batch parser CLI
+- `graz_protocols/viewer.py`: generated local double-click HTML viewer
 - `tests/test_parser.py`: sanitized parser tests
 
 Latest local run on 2026-06-08:

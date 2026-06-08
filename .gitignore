@@ -16,6 +16,7 @@ data/source/
 # Generated parser output and local caches.
 exports/
 out/
+viewer.html
 tmp/
 *.sqlite
 *.sqlite3
