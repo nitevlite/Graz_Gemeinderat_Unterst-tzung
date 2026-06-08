@@ -63,7 +63,9 @@ Aktuelle Ergebnisbehandlung:
 - Der lokale Viewer kann nach Betragsvorkommen und Quelldatei filtern und die aktuelle Trefferliste als CSV exportieren.
 - Der lokale Viewer zeigt optional Themenverläufe aus `out\topic_candidates.json`.
 - Der lokale Viewer enthält eine Graz-Karte mit Leaflet/OpenStreetMap; Orte sind anklickbar, Marker-Popups führen zu den Einträgen.
+- Der Jahresfilter wirkt auf Trefferliste, Themenverläufe und Karte.
 - DIGRA-Links werden im Viewer als anklickbare externe Links gerendert.
+- Stadt-Graz-Archivlinks werden als Quellenfallback unter `source_url` gespeichert und im Viewer verlinkt.
 - Rohformulierungen, Quellenausschnitte und interne englische Typ-/Statuscodes bleiben aus dem Viewer draußen.
 - Beträge werden nur aus Titel/Überschrift oder aus formalen Antrag-/Anfrageabschnitten übernommen, nicht aus beliebigen Debattenstellen.
 - Ortskandidaten werden optional gegen `Straßennamen_Graz.xlsx` geprüft; nicht passende Rede- oder Füllwörter werden nicht als Orte übernommen.
@@ -108,17 +110,20 @@ Letzter lokaler Lauf am 2026-06-08:
 Letzter DIGRA-Lauf am 2026-06-08:
 
 - Befehl: `python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra`
-- Aktueller Befehl mit Straßennamenabgleich: `python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra --street-names .\Straßennamen_Graz.xlsx`
+- Aktueller Befehl mit Straßennamenabgleich und Stadt-Graz-Archivlinks: `python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra --street-names .\Straßennamen_Graz.xlsx --city-archive-links`
 - DIGRA-Einträge geladen: 1675
 - lokalen Datensätzen zugeordnet: 938
 - Ergebnisse aus DIGRA-Beschlussvermerken übernommen: 415
 - Protokoll-Fallbacks, weil DIGRA kein plausibel zuordenbares Ergebnis liefert: 720
 - Datensätze ohne DIGRA- oder Protokoll-Ergebnis: 5
+- Stadt-Graz-Archivlinks geladen: 58
+- Stadt-Graz-Archivlinks angewendet: 145
 - Ausgabe: `out/agenda_items_digra.jsonl`
 - SQLite-Ausgabe: `out\eintraege_digra.sqlite`
 - Viewer-Ausgabe: `viewer.html`
 - Audit-Ausgabe: `out\digra_audit.md`
 - Themenkandidaten: `out\topic_candidates.json`
+- Topic-News: optional über Stadt-Graz-RSS mit `--city-news`
 - Viewer-Karte: Online-Geocoding nur im Browser bei Bedarf, keine Koordinaten-Exporte im Git.
 - DIGRA-Audit nach strengerer Zuordnung: keine Links mit Trefferwert unter 0,5.
 

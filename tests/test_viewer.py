@@ -51,6 +51,7 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "Lokale Doppelklick-Ansicht. Protokolldateien bleiben außerhalb von Git." not in html
     assert "Eintrag auswählen, um Details zu sehen." in html
     assert "Alle Quellen" in html
+    assert "Alle Jahre" in html
     assert "Alle Beträge" in html
     assert "Alle Dateien" in html
     assert "CSV Export" in html
@@ -60,6 +61,7 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "grazMap" in html
     assert "nominatim.openstreetmap.org" in html
     assert "openstreetmap.org" in html
+    assert "currentLocationIndex = buildLocationIndex(sichtbareEintraege)" in html
     assert "DIGRA-Trefferwert" in html
     assert "digraLink(record.digra_url" in html
     assert "https://digra.graz.at/document?ref=b7b33fe0-443a-49c8-9e95-22a77851b9f9" in html
@@ -107,6 +109,7 @@ def test_viewer_renders_locations_as_map_buttons():
                 "record_type": "agenda_item",
                 "result_text": "Antrag: angenommen",
                 "section": "Tagesordnung",
+                "source_url": "https://www.graz.at/cms/beitrag/test",
                 "source_file": "test.docx",
                 "status": "accepted",
                 "title": "Test",
@@ -117,6 +120,7 @@ def test_viewer_renders_locations_as_map_buttons():
 
     assert 'data-location="${escapeHtml(location)}"' in html
     assert "focusLocation(locationButton.dataset.location" in html
+    assert "Quelle öffnen" in html
     assert "Schönaugasse" in html
 
 
@@ -135,6 +139,7 @@ def test_viewer_can_embed_topic_candidates():
                     {"meeting_date": "2025-01-16", "title": "Auflage des Entwurfs"},
                     {"meeting_date": "2025-03-20", "title": "Beschluss"},
                 ],
+                "news": [{"title": "Gemeinderat beschließt Flächenwidmungsplan", "url": "https://www.graz.at/news"}],
                 "topic_id": "business-a-14-001665-2025",
             }
         ],
@@ -149,3 +154,5 @@ def test_viewer_can_embed_topic_candidates():
     assert "A 14-001665/2025" in html
     assert "gleiche Geschäftszahl-Basis" in html
     assert "Auflage des Entwurfs" in html
+    assert "Aktuelle Hinweise" in html
+    assert "Gemeinderat beschließt Flächenwidmungsplan" in html

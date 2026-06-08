@@ -7,6 +7,7 @@ import json
 import sys
 
 from .audit import write_audit_report
+from .city_sources import enrich_records_with_city_links
 from .docx_text import read_docx_paragraph_blocks
 from .digra_import import (
     DEFAULT_DIGRA_TOOL_PATH,
@@ -101,6 +102,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Ergebnisse nur aus DIGRA anzeigen; fehlende DIGRA-Ergebnisse ausdrücklich markieren.",
     )
+    parse_cmd.add_argument(
+        "--city-archive-links",
+        action="store_true",
+        help="Stadt-Graz-Archivlinks als Quellen-Fallback ergänzen.",
+    )
+    parse_cmd.add_argument(
+        "--city-archive-cache",
+        type=Path,
+        default=Path("out") / "city_archive_links.json",
+        help="Lokaler Cache für Stadt-Graz-Archivlinks. Standard: out/city_archive_links.json.",
+    )
     audit_cmd = subparsers.add_parser("audit", help="Markdown-Auditbericht für eine JSONL-Ausgabe erzeugen.")
     audit_cmd.add_argument(
         "--records",
@@ -143,6 +155,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     topics_cmd.add_argument("--ai-model", default="", help="Optionales OpenAI-Modell für --ai-headings.")
     topics_cmd.add_argument("--ai-limit", type=int, default=50, help="Maximale Anzahl KI-beschrifteter Topics.")
+    topics_cmd.add_argument(
+        "--city-news",
+        action="store_true",
+        help="Aktuelle Stadt-Graz-RSS-News als Hinweise zu Topic-Kandidaten ergänzen.",
+    )
     return parser
 
 
@@ -181,6 +198,13 @@ def run_parse(args: argparse.Namespace) -> int:
         except Exception as exc:  # pylint: disable=broad-except
             errors.append({"datei": "DIGRA", "fehler": str(exc)})
 
+    city_summary: dict = {}
+    if args.city_archive_links:
+        try:
+            records, city_summary = enrich_records_with_city_links(records, cache_path=args.city_archive_cache)
+        except Exception as exc:  # pylint: disable=broad-except
+            errors.append({"datei": "Stadt-Graz-Archiv", "fehler": str(exc)})
+
     records, validation_errors = validate_records(records)
     errors.extend(validation_errors)
 
@@ -192,6 +216,7 @@ def run_parse(args: argparse.Namespace) -> int:
 
     summary = build_summary(docx_files, records, errors)
     summary.update(digra_summary)
+    summary.update(city_summary)
     args.summary.parent.mkdir(parents=True, exist_ok=True)
     args.summary.write_text(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
     if args.sqlite is not None:
@@ -254,6 +279,7 @@ def run_topics(args: argparse.Namespace) -> int:
             ai_headings=args.ai_headings,
             ai_model=args.ai_model,
             ai_limit=args.ai_limit,
+            city_news=args.city_news,
         )
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)

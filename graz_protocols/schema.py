@@ -6,7 +6,7 @@ from typing import Any
 from .parser import AgendaRecord
 
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 VALID_RECORD_TYPES = {"agenda_item", "urgent_motion", "written_question", "written_motion"}
 VALID_STATUSES = {
     "accepted",
@@ -37,6 +37,7 @@ REQUIRED_FIELDS = {
     "location_details": list,
     "source_snippet": str,
     "parser_confidence": float,
+    "source_url": str,
 }
 
 

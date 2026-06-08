@@ -79,13 +79,14 @@ Optional erzeugt er zusätzlich eine lokale SQLite-Datenbank mit der Tabelle `ei
 Parser mit DIGRA-Abgleich ausführen:
 
 ```powershell
-python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra --street-names .\Straßennamen_Graz.xlsx
+python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra --street-names .\Straßennamen_Graz.xlsx --city-archive-links
 ```
 
 Dieser Modus nutzt das vorhandene Tool unter `E:\01_StadtGrazProtokolle\Digra_Export_Tool\app`, lädt DIGRA-Sitzungen und DIGRA-Dokumentseiten, extrahiert offizielle Ergebnisse nur aus dem Block `Beschlussvermerk` und cached die geladenen DIGRA-Daten lokal in `out\digra_cache.json`.
 DIGRA-Ergebnisse haben Vorrang. Wenn DIGRA keinen Beschlussvermerk liefert oder kein Ergebnis zugeordnet werden kann, bleibt das normalisierte Protokoll-Ergebnis als Fallback erhalten und die Ergebnisquelle steht auf `Protokoll`.
 Links zu DIGRA werden konservativ übernommen: unsichere Treffer werden nicht verlinkt, damit ein fehlender Link eher vorkommt als ein falscher Link.
 Mit `--street-names` wird die Ortserkennung gegen die Grazer Straßennamenliste gefiltert. Dadurch werden Füllwörter aus Reden nicht als Orte übernommen.
+Mit `--city-archive-links` werden passende Stadt-Graz-Archivlinks als Quellenfallback ergänzt, besonders für Datensätze ohne sicheren DIGRA-Link.
 Mit `--digra-results-only` kann man zusätzlich auditieren, wo DIGRA wirklich kein Ergebnis liefert.
 
 DIGRA-Sitzungen direkt aus dem Export-Tool abfragen:
@@ -121,7 +122,7 @@ Der Viewer zeigt deutsche Typen, deutsche Statuswerte und einheitliche `Ergebnis
 Ein Klick auf eine Tabellenzeile öffnet eine Detailansicht mit Titel, Ergebnis, Ergebnisquelle, DIGRA-Einlagezahl, DIGRA-Link, Geschäftszahlen, Beträgen, Orten und Quelldatei.
 Die aktuelle Trefferliste kann im Viewer als CSV exportiert werden. Filter gibt es unter anderem für Datum, Typ, Status, Ergebnisquelle, Beträge, Quelldatei und Abschnitt.
 Die Oberfläche ist als lokale App mit linker Navigation, KPI-Karten, Filterpanel, Detailansicht, Graz-Karte, Themenverläufen und Ergebnistabelle aufgebaut.
-Erkannte Orte sind anklickbar: der Viewer springt auf die Karte, lädt den Ort online über OpenStreetMap/Nominatim und zeigt die zugehörigen Einträge als Marker-Popup. DIGRA-Links öffnen direkt die jeweilige DIGRA-Dokumentseite.
+Erkannte Orte sind anklickbar: der Viewer springt auf die Karte, lädt den Ort online über OpenStreetMap/Nominatim und zeigt die zugehörigen Einträge als Marker-Popup. Der Jahresfilter aktualisiert Tabelle, Themen und Karte gemeinsam. DIGRA-Links öffnen direkt die jeweilige DIGRA-Dokumentseite; Stadt-Graz-Links öffnen die Archivquelle.
 Originalformulierungen aus dem Protokoll werden im Viewer nicht angezeigt und bleiben nur in der ignorierten lokalen JSONL-Ausgabe als Rohspur erhalten.
 
 DIGRA-Auditbericht bauen:
@@ -135,10 +136,10 @@ Der Bericht zeigt DIGRA-Ergebnisse, Protokoll-Fallbacks, fehlende Ergebnisse und
 Themenkandidaten über mehrere Sitzungen erzeugen:
 
 ```powershell
-python -m graz_protocols.cli topics --records out\agenda_items_digra.jsonl --output out\topic_candidates.json
+python -m graz_protocols.cli topics --records out\agenda_items_digra.jsonl --output out\topic_candidates.json --city-news
 ```
 
-Die Kandidaten enthalten Confidence, Begründung und verknüpfte Einträge. Sie können im Viewer angezeigt und später manuell bestätigt werden.
+Die Kandidaten enthalten Confidence, Begründung, verknüpfte Einträge und optional aktuelle Stadt-Graz-RSS-Hinweise. Sie können im Viewer angezeigt und später manuell bestätigt werden.
 Optional kann eine KI bessere Themenüberschriften vorschlagen. Dafür muss `OPENAI_API_KEY` gesetzt sein:
 
 ```powershell

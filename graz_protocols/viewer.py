@@ -211,7 +211,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     }}
     .toolbar {{
       display: grid;
-      grid-template-columns: minmax(260px, 1.4fr) repeat(4, minmax(130px, 1fr)) minmax(128px, 0.8fr);
+      grid-template-columns: minmax(260px, 1.4fr) repeat(5, minmax(120px, 1fr)) minmax(128px, 0.8fr);
       gap: 12px;
       background: var(--panel);
       border: 1px solid var(--line);
@@ -653,6 +653,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         </section>
         <section class="toolbar" id="searchSection" aria-label="Filter">
           <label class="filter-cell wide"><span class="sr-label">Suche</span><input id="search" type="search" placeholder="Thema, Straße, Geschäftszahl, Betrag"></label>
+          <label class="filter-cell"><span class="sr-label">Jahr</span><select id="yearFilter"><option value="">Alle Jahre</option></select></label>
           <label class="filter-cell"><span class="sr-label">Datum</span><select id="dateFilter"><option value="">Alle Daten</option></select></label>
           <label class="filter-cell"><span class="sr-label">Typ</span><select id="typeFilter"><option value="">Alle Typen</option></select></label>
           <label class="filter-cell"><span class="sr-label">Status</span><select id="statusFilter"><option value="">Alle Status</option></select></label>
@@ -685,6 +686,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     const topics = {topics_data};
     const byId = (id) => document.getElementById(id);
     const search = byId('search');
+    const yearFilter = byId('yearFilter');
     const dateFilter = byId('dateFilter');
     const typeFilter = byId('typeFilter');
     const statusFilter = byId('statusFilter');
@@ -702,7 +704,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     let grazMap = null;
     let markerLayer = null;
     const markersByLocation = new Map();
-    const locationIndex = buildLocationIndex(records);
+    let currentLocationIndex = buildLocationIndex(records);
 
     function escapeHtml(value) {{
       return String(value ?? '').replace(/[&<>"']/g, (char) => ({{
@@ -808,7 +810,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     }}
 
     function renderMapPlaces() {{
-      const places = [...locationIndex.entries()]
+      const places = [...currentLocationIndex.entries()]
         .map(([location, locationRecords]) => ({{ location, count: locationRecords.length }}))
         .sort((a, b) => b.count - a.count || a.location.localeCompare(b.location, 'de-AT'))
         .slice(0, 80);
@@ -825,7 +827,10 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     }}
 
     async function loadVisibleMapMarkers() {{
-      const places = [...locationIndex.keys()].slice(0, 120);
+      if (!markerLayer) return;
+      markerLayer.clearLayers();
+      markersByLocation.clear();
+      const places = [...currentLocationIndex.keys()].slice(0, 120);
       let loaded = 0;
       for (const place of places) {{
         const coords = await geocodeLocation(place);
@@ -867,7 +872,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
 
     function addLocationMarker(location, coords) {{
       if (!grazMap || !markerLayer || markersByLocation.has(location)) return;
-      const locationRecords = locationIndex.get(location) || [];
+      const locationRecords = currentLocationIndex.get(location) || [];
       const popupRecords = locationRecords.slice(0, 6).map((record) => `
         <button type="button" data-popup-record-id="${{escapeHtml(record.record_id)}}">${{escapeHtml(record.datum)}} · ${{escapeHtml(record.titel)}}</button>
       `).join('');
@@ -906,6 +911,12 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       if (!value.startsWith('https://digra.graz.at/')) {{
         return '-';
       }}
+      return `<a href="${{escapeHtml(value)}}" target="_blank" rel="noopener noreferrer">${{escapeHtml(text)}}</a>`;
+    }}
+
+    function externalLink(url, text) {{
+      const value = String(url || '');
+      if (!value.startsWith('https://')) return '-';
       return `<a href="${{escapeHtml(value)}}" target="_blank" rel="noopener noreferrer">${{escapeHtml(text)}}</a>`;
     }}
 
@@ -969,6 +980,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
           ${{detailField('DIGRA-Einlagezahl', record.digra_einlagezahl)}}
           ${{detailField('DIGRA-Trefferwert', record.digra_trefferwert)}}
           ${{detailLinkField('DIGRA-Link', record.digra_url)}}
+          ${{detailHtmlField('Stadt-Graz-Link', externalLink(record.source_url, 'Quelle öffnen'))}}
           ${{detailField('Beträge', joinList(record.betraege))}}
           ${{detailHtmlField('Orte', locationLinks(record.orte))}}
           ${{detailField('Quelldatei', record.quell_datei)}}
@@ -989,6 +1001,9 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
             <span class="timeline-result">${{escapeHtml(record.result_text || record.result_source || '')}}</span>
           </button>
         `).join('');
+        const news = (topic.news || []).slice(0, 3).map((item) => `
+          <a href="${{escapeHtml(item.url || '')}}" target="_blank" rel="noopener noreferrer">${{escapeHtml(item.title || '')}}</a>
+        `).join('');
         return `
           <article class="topic">
             <div class="topic-head">
@@ -1003,6 +1018,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
               ${{topic.business_number ? ` · Geschäftszahl: ${{escapeHtml(topic.business_number)}}` : ''}}
             </div>
             <div class="timeline">${{timeline}}</div>
+            ${{news ? `<div class="topic-meta">Aktuelle Hinweise: ${{news}}</div>` : ''}}
             <button class="topic-action" type="button" data-topic-query="${{escapeHtml(topic.label || '')}}">Einträge dazu filtern</button>
           </article>
         `;
@@ -1014,6 +1030,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       const query = search.value.trim().toLocaleLowerCase('de-AT');
       return records.filter((record) => {{
         if (dateFilter.value && record.datum !== dateFilter.value) return false;
+        if (yearFilter.value && !String(record.datum || '').startsWith(yearFilter.value + '-')) return false;
         if (typeFilter.value && record.typ !== typeFilter.value) return false;
         if (statusFilter.value && record.status_filter !== statusFilter.value) return false;
         if (sourceFilter.value && record.ergebnisquelle !== sourceFilter.value) return false;
@@ -1035,6 +1052,9 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       byId('totalCount').textContent = records.length;
       byId('fileCount').textContent = summary.dateien_mit_eintraegen ?? new Set(records.map((r) => r.quell_datei)).size;
       byId('digraCount').textContent = summary.digra_ergebnisse ?? records.filter((r) => r.ergebnisquelle === 'DIGRA').length;
+      currentLocationIndex = buildLocationIndex(sichtbareEintraege);
+      renderMapPlaces();
+      loadVisibleMapMarkers();
       renderDetail(ausgewaehlterEintrag);
 
       if (!sichtbareEintraege.length) {{
@@ -1078,13 +1098,14 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       `;
     }}
 
+    fillSelect(yearFilter, records.map((record) => String(record.datum || '').slice(0, 4)));
     fillSelect(dateFilter, records.map((record) => record.datum));
     fillSelect(typeFilter, records.map((record) => record.typ));
     fillSelect(statusFilter, records.map((record) => record.status_filter));
     fillSelect(sourceFilter, records.map((record) => record.ergebnisquelle));
     fillSelect(fileFilter, records.map((record) => record.quell_datei));
     fillSelect(sectionFilter, records.map((record) => record.abschnitt));
-    [search, dateFilter, typeFilter, statusFilter, sourceFilter, amountFilter, fileFilter, sectionFilter].forEach((el) => el.addEventListener('input', render));
+    [search, yearFilter, dateFilter, typeFilter, statusFilter, sourceFilter, amountFilter, fileFilter, sectionFilter].forEach((el) => el.addEventListener('input', render));
     csvExport.addEventListener('click', exportCsv);
     tableWrap.addEventListener('click', (event) => {{
       const locationButton = event.target.closest('[data-location]');
@@ -1162,6 +1183,7 @@ def viewer_record(record: dict) -> dict:
         "digra_url": record.get("digra_url", ""),
         "digra_einlagezahl": record.get("digra_business_number", ""),
         "digra_trefferwert": format_score(record.get("digra_match_score", 0)),
+        "source_url": record.get("source_url", ""),
         "betraege": record.get("amounts", []),
         "orte": record.get("locations", []),
         "quell_datei": german_source_file(str(record.get("source_file", ""))),
@@ -1195,6 +1217,7 @@ def viewer_topic(topic: dict) -> dict:
             for record in topic.get("records", [])
             if isinstance(record, dict)
         ],
+        "news": topic.get("news", []),
     }
 
 

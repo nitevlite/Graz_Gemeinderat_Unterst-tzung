@@ -154,6 +154,7 @@ class AgendaRecord:
     digra_business_number: str = ""
     protocol_result_text: str = ""
     digra_match_score: float = 0.0
+    source_url: str = ""
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False, sort_keys=True)

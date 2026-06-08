@@ -67,7 +67,7 @@ Mit `--sqlite` erzeugt er zusätzlich eine lokale SQLite-Datenbank mit deutscher
 DIGRA-Abgleich ausführen:
 
 ```powershell
-python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra --street-names .\Straßennamen_Graz.xlsx
+python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra --street-names .\Straßennamen_Graz.xlsx --city-archive-links
 ```
 
 Dieser Lauf nutzt `E:\01_StadtGrazProtokolle\Digra_Export_Tool\app`.
@@ -75,6 +75,7 @@ Die DIGRA-Daten werden in `out\digra_cache.json` gecacht und bleiben ignoriertes
 DIGRA-Beschlussvermerke haben Vorrang; wo DIGRA wirklich kein Ergebnis liefert, wird das normalisierte Protokoll-Ergebnis als Fallback verwendet.
 `--digra-results-only` ist nur für Audits gedacht und markiert fehlende DIGRA-Beschlussvermerke als `DIGRA-Ergebnis fehlt`.
 `--street-names` filtert Ortskandidaten gegen die lokale Grazer Straßennamenliste.
+`--city-archive-links` ergänzt Stadt-Graz-Archivlinks als Quellenfallback.
 
 DIGRA-Sitzungen und einzelne DIGRA-Exporte:
 
@@ -93,6 +94,7 @@ Der erzeugte Viewer entfernt Rohformulierungen, Quellenausschnitte und interne e
 Ein Klick auf eine Tabellenzeile zeigt eine deutsche Detailansicht für den Eintrag, inklusive Ergebnisquelle und DIGRA-Link.
 Optional eingebettete Themenkandidaten erscheinen als einfache Themenverläufe oberhalb der Tabelle.
 Orte werden als klickbare Kartenelemente gerendert. Der Viewer nutzt Leaflet/OpenStreetMap und geocodiert Ortsnamen bei Bedarf online über Nominatim; Geocoding-Ergebnisse werden im Browser-LocalStorage gecacht.
+Der Jahresfilter wirkt auf Tabelle, Themen und Karte gemeinsam.
 DIGRA-URLs werden als externe Links mit `target="_blank"` gerendert.
 
 DIGRA-Auditbericht bauen:
@@ -106,7 +108,7 @@ Der Bericht ist lokale erzeugte Ausgabe. Er listet Fallbacks, fehlende Ergebniss
 Themenkandidaten bauen:
 
 ```powershell
-python -m graz_protocols.cli topics --records out\agenda_items_digra.jsonl --output out\topic_candidates.json
+python -m graz_protocols.cli topics --records out\agenda_items_digra.jsonl --output out\topic_candidates.json --city-news
 ```
 
 Optionale KI-Überschriften für Topics:

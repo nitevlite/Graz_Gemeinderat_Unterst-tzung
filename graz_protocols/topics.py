@@ -52,6 +52,7 @@ def write_topic_candidates(
     ai_headings: bool = False,
     ai_model: str = "",
     ai_limit: int = 50,
+    city_news: bool = False,
 ) -> None:
     records = read_jsonl(records_path)
     candidates = build_topic_candidates(records)
@@ -59,6 +60,10 @@ def write_topic_candidates(
         from .ai_topics import DEFAULT_AI_MODEL, annotate_topic_headings
 
         candidates = annotate_topic_headings(candidates, model=ai_model or DEFAULT_AI_MODEL, limit=ai_limit)
+    if city_news:
+        from .city_sources import enrich_topics_with_news, fetch_news_items
+
+        candidates = enrich_topics_with_news(candidates, fetch_news_items())
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(candidates, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
 

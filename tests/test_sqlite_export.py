@@ -42,7 +42,7 @@ def test_writes_records_to_sqlite(tmp_path):
         row = connection.execute(
             """
             SELECT datum, typ, stueck_nr, titel, ergebnis, geschaeftszahlen_json, abstimmungen_json,
-                   ergebnisquelle, digra_url, digra_einlagezahl, protokoll_ergebnis, digra_trefferwert
+                   ergebnisquelle, digra_url, digra_einlagezahl, protokoll_ergebnis, digra_trefferwert, source_url
             FROM eintraege
             """
         ).fetchone()
@@ -66,7 +66,8 @@ def test_writes_records_to_sqlite(tmp_path):
     assert row[9] == ""
     assert row[10] == ""
     assert row[11] == 0.0
-    assert version == "4"
+    assert row[12] == ""
+    assert version == "5"
     assert json.loads(summary) == 1
     assert normalized_count == 1
     assert vote_count == 1
