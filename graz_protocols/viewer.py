@@ -4,6 +4,7 @@ from pathlib import Path
 import argparse
 import html
 import json
+import re
 import sys
 
 
@@ -145,6 +146,9 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       margin-bottom: 20px;
     }}
     .side-item {{
+      width: 100%;
+      min-height: auto;
+      border: 0;
       border-radius: 8px;
       color: #334155;
       display: flex;
@@ -153,9 +157,16 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       padding: 10px 11px;
       font-size: 14px;
       font-weight: 600;
+      background: transparent;
+      cursor: pointer;
+      text-align: left;
     }}
     .side-item.active {{
       background: var(--accent-tint);
+      color: var(--accent-dark);
+    }}
+    .side-item:hover {{
+      background: #f1f5f9;
       color: var(--accent-dark);
     }}
     .side-dot {{
@@ -280,6 +291,9 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     tbody tr:last-child td {{ border-bottom: 0; }}
     tr:hover td {{ background: #f8fbff; }}
     .title {{ min-width: 280px; font-weight: 600; }}
+    .amount-col {{ width: 110px; max-width: 130px; }}
+    .places-col {{ min-width: 220px; max-width: 320px; }}
+    .results-col {{ min-width: 300px; width: 28%; }}
     .result {{
       color: var(--muted);
       max-width: 520px;
@@ -356,7 +370,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     .topic {{
       border: 1px solid var(--line);
       border-radius: 8px;
-      padding: 10px 11px;
+      padding: 12px;
       background: #fbfdff;
     }}
     .topic-head {{
@@ -366,17 +380,84 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       font-weight: 700;
       margin-bottom: 5px;
     }}
+    .topic-label {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }}
     .topic-meta {{
       color: var(--muted);
       font-size: 12px;
+      margin-bottom: 12px;
+    }}
+    .timeline {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 10px;
+      position: relative;
+    }}
+    .timeline-step {{
+      appearance: none;
+      text-align: left;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      color: var(--ink);
+      min-height: 94px;
+      padding: 10px 11px 10px 34px;
+      position: relative;
+      cursor: pointer;
+      box-shadow: none;
+    }}
+    .timeline-step:hover {{
+      background: var(--accent-tint);
+      border-color: #bfdbfe;
+    }}
+    .timeline-step::before {{
+      content: "";
+      position: absolute;
+      left: 12px;
+      top: 14px;
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px var(--accent-soft);
+    }}
+    .timeline-date {{
+      display: block;
+      color: var(--accent-dark);
+      font-size: 12px;
+      font-weight: 750;
+      margin-bottom: 5px;
+    }}
+    .timeline-title {{
+      display: block;
+      color: #1e293b;
+      font-size: 13px;
+      font-weight: 650;
+      line-height: 1.3;
       margin-bottom: 7px;
     }}
-    .topic-records {{
-      margin: 0;
-      padding-left: 18px;
-      color: #334155;
+    .timeline-result {{
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.3;
+    }}
+    .topic-action {{
+      margin-top: 10px;
+      width: auto;
+      min-height: 32px;
+      padding: 5px 10px;
       font-size: 13px;
-      line-height: 1.45;
+      background: white;
+      color: var(--accent-dark);
+      border-color: #bfdbfe;
+    }}
+    .topic-action:hover {{
+      background: var(--accent-tint);
     }}
     .sr-label {{
       display: block;
@@ -426,12 +507,11 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         </div>
       </div>
       <nav class="side-nav" aria-label="Ansichten">
-        <div class="side-item active"><span class="side-dot"></span>Übersicht</div>
-        <div class="side-item"><span class="side-dot"></span>Suche</div>
-        <div class="side-item"><span class="side-dot"></span>DIGRA</div>
-        <div class="side-item"><span class="side-dot"></span>Export</div>
+        <button class="side-item active" type="button" data-nav="overview"><span class="side-dot"></span>Übersicht</button>
+        <button class="side-item" type="button" data-nav="search"><span class="side-dot"></span>Suche</button>
+        <button class="side-item" type="button" data-nav="digra"><span class="side-dot"></span>DIGRA</button>
+        <button class="side-item" type="button" data-nav="export"><span class="side-dot"></span>Export</button>
       </nav>
-      <div class="side-note">Lokale Doppelklick-Ansicht. Protokolldateien bleiben außerhalb von Git.</div>
     </aside>
     <div class="content-shell">
       <header>
@@ -443,13 +523,13 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         </div>
       </header>
       <main>
-        <section class="stats">
+        <section class="stats" id="overviewSection">
           <div class="stat"><b id="visibleCount">0</b><span>sichtbare Treffer</span></div>
           <div class="stat"><b id="totalCount">0</b><span>Einträge gesamt</span></div>
           <div class="stat"><b id="fileCount">0</b><span>Dateien mit Einträgen</span></div>
           <div class="stat"><b id="digraCount">0</b><span>DIGRA-Ergebnisse</span></div>
         </section>
-        <section class="toolbar" aria-label="Filter">
+        <section class="toolbar" id="searchSection" aria-label="Filter">
           <label class="filter-cell wide"><span class="sr-label">Suche</span><input id="search" type="search" placeholder="Thema, Straße, Geschäftszahl, Betrag"></label>
           <label class="filter-cell"><span class="sr-label">Datum</span><select id="dateFilter"><option value="">Alle Daten</option></select></label>
           <label class="filter-cell"><span class="sr-label">Typ</span><select id="typeFilter"><option value="">Alle Typen</option></select></label>
@@ -521,6 +601,30 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       return (values || []).filter(Boolean).join(', ') || '-';
     }}
 
+    function findRecordById(recordId) {{
+      return records.find((record) => record.record_id === recordId) || null;
+    }}
+
+    function selectRecord(record) {{
+      if (!record) return;
+      ausgewaehlterEintrag = record;
+      renderDetail(record);
+      detailWrap.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+    }}
+
+    function setActiveNav(target) {{
+      document.querySelectorAll('[data-nav]').forEach((item) => {{
+        item.classList.toggle('active', item.dataset.nav === target);
+      }});
+    }}
+
+    function scrollToElement(elementId, navTarget) {{
+      const element = byId(elementId);
+      if (!element) return;
+      setActiveNav(navTarget);
+      element.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+    }}
+
     function detailField(label, value) {{
       return `<div class="detail-field"><strong>${{escapeHtml(label)}}</strong><span>${{escapeHtml(value || '-')}}</span></div>`;
     }}
@@ -590,17 +694,25 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         return;
       }}
       const rendered = topics.slice(0, 8).map((topic) => {{
-        const records = (topic.records || []).slice(0, 4).map((record) =>
-          `<li>${{escapeHtml(record.meeting_date || '-')}}: ${{escapeHtml(record.title || '-')}}</li>`
-        ).join('');
+        const timeline = (topic.records || []).slice(0, 6).map((record) => `
+          <button class="timeline-step" type="button" data-record-id="${{escapeHtml(record.record_id || '')}}">
+            <span class="timeline-date">${{escapeHtml(record.meeting_date || '-')}}</span>
+            <span class="timeline-title">${{escapeHtml(record.title || '-')}}</span>
+            <span class="timeline-result">${{escapeHtml(record.result_text || record.result_source || '')}}</span>
+          </button>
+        `).join('');
         return `
           <article class="topic">
             <div class="topic-head">
-              <span>${{escapeHtml(topic.label || 'Thema')}}</span>
+              <span class="topic-label">
+                <span>${{escapeHtml(topic.label || 'Thema')}}</span>
+                <span class="badge">${{escapeHtml(topic.reason || '')}}</span>
+              </span>
               <span class="badge">${{escapeHtml(topic.confidence || '')}}</span>
             </div>
-            <div class="topic-meta">${{escapeHtml(topic.reason || '')}} · ${{escapeHtml((topic.dates || []).join(' bis '))}}</div>
-            <ul class="topic-records">${{records}}</ul>
+            <div class="topic-meta">Zeitstrahl: ${{escapeHtml((topic.dates || []).join(' bis '))}}</div>
+            <div class="timeline">${{timeline}}</div>
+            <button class="topic-action" type="button" data-topic-query="${{escapeHtml(topic.label || '')}}">Einträge dazu filtern</button>
           </article>
         `;
       }}).join('');
@@ -612,7 +724,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       return records.filter((record) => {{
         if (dateFilter.value && record.datum !== dateFilter.value) return false;
         if (typeFilter.value && record.typ !== typeFilter.value) return false;
-        if (statusFilter.value && record.status !== statusFilter.value) return false;
+        if (statusFilter.value && record.status_filter !== statusFilter.value) return false;
         if (sourceFilter.value && record.ergebnisquelle !== sourceFilter.value) return false;
         if (amountFilter.value === 'mit' && !(record.betraege || []).length) return false;
         if (amountFilter.value === 'ohne' && (record.betraege || []).length) return false;
@@ -647,9 +759,9 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
           <td data-label="Status"><span class="badge">${{escapeHtml(record.status || '')}}</span></td>
           <td data-label="Geschäftszahl">${{escapeHtml((record.geschaeftszahlen || []).join(', '))}}</td>
           <td data-label="Titel" class="title">${{escapeHtml(record.titel)}}</td>
-          <td data-label="Beträge" class="amount">${{escapeHtml((record.betraege || []).join(', '))}}</td>
-          <td data-label="Orte">${{escapeHtml((record.orte || []).join(', '))}}</td>
-          <td data-label="Ergebnisse" class="result">${{escapeHtml(record.ergebnis || '')}}<br><span class="badge">${{escapeHtml(record.ergebnisquelle || '')}}</span></td>
+          <td data-label="Beträge" class="amount amount-col">${{escapeHtml((record.betraege || []).join(', '))}}</td>
+          <td data-label="Orte" class="places-col">${{escapeHtml((record.orte || []).join(', '))}}</td>
+          <td data-label="Ergebnisse" class="result results-col">${{escapeHtml(record.ergebnis || '')}}<br><span class="badge">${{escapeHtml(record.ergebnisquelle || '')}}</span></td>
         </tr>
       `).join('');
 
@@ -677,7 +789,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
 
     fillSelect(dateFilter, records.map((record) => record.datum));
     fillSelect(typeFilter, records.map((record) => record.typ));
-    fillSelect(statusFilter, records.map((record) => record.status));
+    fillSelect(statusFilter, records.map((record) => record.status_filter));
     fillSelect(sourceFilter, records.map((record) => record.ergebnisquelle));
     fillSelect(fileFilter, records.map((record) => record.quell_datei));
     fillSelect(sectionFilter, records.map((record) => record.abschnitt));
@@ -689,6 +801,30 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       ausgewaehlterEintrag = sichtbareEintraege[Number(row.dataset.index)] || null;
       renderDetail(ausgewaehlterEintrag);
     }});
+    byId('topicsWrap').addEventListener('click', (event) => {{
+      const step = event.target.closest('[data-record-id]');
+      if (step) {{
+        selectRecord(findRecordById(step.dataset.recordId));
+        return;
+      }}
+      const action = event.target.closest('[data-topic-query]');
+      if (action) {{
+        search.value = action.dataset.topicQuery || '';
+        render();
+      }}
+    }});
+    document.querySelectorAll('[data-nav]').forEach((item) => {{
+      item.addEventListener('click', () => {{
+        const target = item.dataset.nav;
+        if (target === 'overview') scrollToElement('overviewSection', 'overview');
+        if (target === 'search') scrollToElement('searchSection', 'search');
+        if (target === 'digra') scrollToElement('topicsWrap', 'digra');
+        if (target === 'export') {{
+          setActiveNav('export');
+          exportCsv();
+        }}
+      }});
+    }});
     renderTopics();
     render();
   </script>
@@ -699,6 +835,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
 
 def viewer_record(record: dict) -> dict:
     return {
+        "record_id": record.get("record_id", ""),
         "datum": record.get("meeting_date", ""),
         "typ": german_record_type(str(record.get("record_type", ""))),
         "abschnitt": record.get("section", ""),
@@ -706,6 +843,7 @@ def viewer_record(record: dict) -> dict:
         "geschaeftszahlen": record.get("business_numbers", []),
         "titel": record.get("title", ""),
         "status": german_status(str(record.get("status", ""))),
+        "status_filter": german_status_filter(str(record.get("status", ""))),
         "ergebnis": record.get("result_text", ""),
         "ergebnisquelle": german_result_source(str(record.get("result_source", ""))),
         "digra_url": record.get("digra_url", ""),
@@ -713,7 +851,7 @@ def viewer_record(record: dict) -> dict:
         "digra_trefferwert": format_score(record.get("digra_match_score", 0)),
         "betraege": record.get("amounts", []),
         "orte": record.get("locations", []),
-        "quell_datei": record.get("source_file", ""),
+        "quell_datei": german_source_file(str(record.get("source_file", ""))),
     }
 
 
@@ -736,6 +874,9 @@ def viewer_topic(topic: dict) -> dict:
             {
                 "meeting_date": record.get("meeting_date", ""),
                 "title": record.get("title", ""),
+                "record_id": record.get("record_id", ""),
+                "result_source": german_result_source(str(record.get("result_source", ""))),
+                "result_text": record.get("result_text", ""),
             }
             for record in topic.get("records", [])
             if isinstance(record, dict)
@@ -754,8 +895,8 @@ def german_record_type(value: str) -> str:
 
 def german_status(value: str) -> str:
     return {
-        "accepted_unanimous": "einstimmig angenommen",
-        "accepted_majority": "mehrheitlich angenommen",
+        "accepted_unanimous": "angenommen (einstimmig)",
+        "accepted_majority": "angenommen (mehrheitlich)",
         "accepted": "angenommen",
         "rejected_majority": "mehrheitlich abgelehnt",
         "rejected": "abgelehnt",
@@ -765,12 +906,33 @@ def german_status(value: str) -> str:
     }.get(value, value)
 
 
+def german_status_filter(value: str) -> str:
+    if value in {"accepted_unanimous", "accepted_majority", "accepted"}:
+        return "Angenommen"
+    if value in {"rejected_majority", "rejected"}:
+        return "Abgelehnt"
+    return german_status(value).capitalize()
+
+
 def german_result_source(value: str) -> str:
     return {
         "digra": "DIGRA",
         "digra_fehlt": "DIGRA fehlt",
         "protokoll": "Protokoll",
     }.get(value, value or "Protokoll")
+
+
+def german_source_file(value: str) -> str:
+    match = re.search(r"(?P<date>\d{4}-\d{2}-\d{2})", value)
+    if match:
+        return f"Protokoll {match.group('date')}.docx"
+    fallback = re.search(r"(?P<day>\d{2})[._-](?P<month>\d{2})[._-](?P<year>\d{2,4})", value)
+    if fallback:
+        year = fallback.group("year")
+        if len(year) == 2:
+            year = f"20{year}"
+        return f"Protokoll {year}-{fallback.group('month')}-{fallback.group('day')}.docx"
+    return value
 
 
 def format_score(value: object) -> str:
