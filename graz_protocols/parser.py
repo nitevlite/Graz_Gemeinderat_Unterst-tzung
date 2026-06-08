@@ -59,12 +59,21 @@ SECTION_HEADINGS = {
 STATUS_PATTERNS = [
     ("assigned", re.compile(r"geschäftsordnungsmäßigen Behandlung zugewiesen", re.IGNORECASE)),
     ("accepted_unanimous", re.compile(r"einstimmig angenommen", re.IGNORECASE)),
-    ("accepted_majority", re.compile(r"mehrheitlich angenommen", re.IGNORECASE)),
-    ("rejected_majority", re.compile(r"mehrheitlich abgelehnt", re.IGNORECASE)),
+    ("accepted_majority", re.compile(r"mehr(?:heitlich|stimmig) angenommen", re.IGNORECASE)),
+    ("rejected_majority", re.compile(r"mehr(?:heitlich|stimmig) abgelehnt", re.IGNORECASE)),
     ("accepted", re.compile(r"\bangenommen\b", re.IGNORECASE)),
     ("rejected", re.compile(r"\babgelehnt\b", re.IGNORECASE)),
     ("postponed", re.compile(r"\bvertagt\b", re.IGNORECASE)),
 ]
+FORMAL_RESULT_RE = re.compile(
+    r"(?:"
+    r"Der\s+(?:Antrag|Abänderungsantrag|Abaenderungsantrag|Zusatzantrag|Tagesordnungspunkt)"
+    r"[^.\n]{0,240}?\b(?:angenommen|abgelehnt|zugewiesen|vertagt)\.?"
+    r"|Der\s+geschäftsordnungsmäßigen\s+Behandlung\s+zugewiesen\.?"
+    r")",
+    re.IGNORECASE,
+)
+RESULT_DETAIL_RE = re.compile(r"^(?:Zustimmung|Dagegen|Enthaltung|Gegenstimmen?|Gegenprobe)\s*:", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -79,6 +88,7 @@ class AgendaRecord:
     title: str
     status: str
     status_text: str
+    result_text: str
     amounts: list[str]
     locations: list[str]
     source_snippet: str
@@ -107,7 +117,8 @@ def parse_protocol(paragraphs: Iterable[str | ParagraphLike], source_file: str) 
         seen.add(key)
 
         chunk_text = "\n".join([chunk.heading, *chunk.body])
-        status, status_text = classify_status(chunk_text)
+        result_text = extract_result_text(chunk_text)
+        status, status_text = classify_status(result_text or chunk_text)
         business_numbers = unique_preserve_order(
             normalize_business_number(match.group(0))
             for match in BUSINESS_NO_RE.finditer(heading_body)
@@ -128,6 +139,7 @@ def parse_protocol(paragraphs: Iterable[str | ParagraphLike], source_file: str) 
                 title=title,
                 status=status,
                 status_text=status_text,
+                result_text=result_text or status_text,
                 amounts=amounts,
                 locations=locations,
                 source_snippet=make_snippet(chunk_text),
@@ -314,6 +326,24 @@ def classify_status(text: str) -> tuple[str, str]:
         if match:
             return status, match.group(0)
     return "unknown", ""
+
+
+def extract_result_text(text: str) -> str:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    result_lines: list[str] = []
+    for index, line in enumerate(lines):
+        matches = [match.group(0).strip() for match in FORMAL_RESULT_RE.finditer(line)]
+        if not matches:
+            continue
+        result_lines.extend(matches)
+        for follow in lines[index + 1 : index + 4]:
+            if RESULT_DETAIL_RE.match(follow):
+                result_lines.append(follow)
+                continue
+            break
+    if not result_lines:
+        return ""
+    return "\n".join(unique_preserve_order(result_lines))
 
 
 def normalize_business_number(value: str) -> str:

@@ -160,14 +160,11 @@ def build_html(records: list[dict], summary: dict) -> str:
     }}
     th {{
       background: #e9eee6;
-      position: sticky;
-      top: 67px;
-      z-index: 1;
       font-size: 13px;
     }}
     tr:hover td {{ background: #fbfcfa; }}
     .title {{ min-width: 280px; font-weight: 600; }}
-    .snippet {{
+    .result {{
       color: var(--muted);
       max-width: 520px;
       line-height: 1.35;
@@ -274,6 +271,7 @@ def build_html(records: list[dict], summary: dict) -> str:
         record.status,
         ...(record.amounts || []),
         ...(record.locations || []),
+        record.result_text,
         record.source_snippet
       ].join(' ').toLocaleLowerCase('de-AT');
     }}
@@ -312,7 +310,7 @@ def build_html(records: list[dict], summary: dict) -> str:
           <td data-label="Titel" class="title">${{escapeHtml(record.title)}}</td>
           <td data-label="Beträge" class="amount">${{escapeHtml((record.amounts || []).join(', '))}}</td>
           <td data-label="Orte">${{escapeHtml((record.locations || []).join(', '))}}</td>
-          <td data-label="Quelle" class="snippet">${{escapeHtml(record.source_snippet)}}</td>
+          <td data-label="Ergebnisse" class="result">${{escapeHtml(record.result_text || record.status_text || record.source_snippet)}}</td>
         </tr>
       `).join('');
 
@@ -328,7 +326,7 @@ def build_html(records: list[dict], summary: dict) -> str:
               <th>Titel</th>
               <th>Beträge</th>
               <th>Orte</th>
-              <th>Quelle</th>
+              <th>Ergebnisse</th>
             </tr>
           </thead>
           <tbody>${{rows}}</tbody>

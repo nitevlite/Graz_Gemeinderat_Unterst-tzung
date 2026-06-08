@@ -59,6 +59,7 @@ python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\age
 
 The parser output is local working data and ignored by Git.
 The current parser reads DOCX paragraph styles and emits multiple record types, including written questions and motions.
+It also emits `result_text`, which the viewer uses as its main result column.
 
 Build the local HTML viewer:
 

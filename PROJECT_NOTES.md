@@ -38,6 +38,13 @@ Current modules:
 - `graz_protocols/viewer.py`: generated local double-click HTML viewer
 - `tests/test_parser.py`: sanitized parser tests
 
+Current result handling:
+
+- formal result lines are extracted into `result_text`
+- status classification prefers formal result lines over arbitrary words in speeches
+- legacy wording such as `mehrstimmig angenommen` is treated as majority acceptance
+- the local viewer shows `Ergebnisse` instead of the raw source snippet column
+
 Latest local run on 2026-06-08:
 
 - input: `graz_protokolle_arbeitskopie/`
@@ -48,6 +55,12 @@ Latest local run on 2026-06-08:
   - `urgent_motion`: 108
   - `written_question`: 235
   - `written_motion`: 333
+- status distribution:
+  - `accepted_majority`: 181
+  - `accepted_unanimous`: 317
+  - `assigned`: 571
+  - `rejected_majority`: 43
+  - `unknown`: 20
 - output: `out/agenda_items.jsonl`
 
 Generated output is intentionally ignored.

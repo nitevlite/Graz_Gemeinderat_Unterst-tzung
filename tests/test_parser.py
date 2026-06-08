@@ -21,6 +21,7 @@ def test_extracts_stk_record_with_status_amount_and_location():
     assert record.business_numbers == ["A8-055598/2023-8"]
     assert "Sanierung Beispielgasse" in record.title
     assert record.status == "accepted_unanimous"
+    assert record.result_text == "Der Antrag wurde einstimmig angenommen."
     assert record.amounts == ["€ 52.500,-"]
     assert record.locations == ["Beispielgasse"]
     assert len(record.source_snippet) < 601
@@ -68,6 +69,7 @@ def test_extracts_written_question_heading_without_stk_number():
     assert records[0].section == "Anfragen (schriftlich)"
     assert records[0].title == "Aufträge an Beispiel Sicherheitsdienst GmbH"
     assert records[0].status == "assigned"
+    assert records[0].result_text == "Der geschäftsordnungsmäßigen Behandlung zugewiesen."
 
 
 def test_uses_docx_heading_style_to_skip_toc_entries():
@@ -83,3 +85,33 @@ def test_uses_docx_heading_style_to_skip_toc_entries():
     assert len(records) == 1
     assert records[0].record_type == "agenda_item"
     assert records[0].status == "accepted_unanimous"
+
+
+def test_prefers_formal_result_over_words_in_speech():
+    paragraphs = [
+        ParserParagraph("Dringlichkeitsanträge", "Heading1", 1),
+        ParserParagraph("SOS Öffentlicher Verkehr", "Heading2", 2),
+        ParserParagraph("In meiner Rede sage ich, dass etwas angenommen werden könnte.", "Normal", 3),
+        ParserParagraph("Der Antrag wurde mehrheitlich abgelehnt.", "Normal", 4),
+        ParserParagraph("Zustimmung: KFG", "Normal", 5),
+        ParserParagraph("Dagegen: KPÖ, SPÖ, Grüne", "Normal", 6),
+    ]
+
+    records = parse_protocol(paragraphs, "2026-04-23_Protokoll.docx")
+
+    assert len(records) == 1
+    assert records[0].status == "rejected_majority"
+    assert "Der Antrag wurde mehrheitlich abgelehnt." in records[0].result_text
+    assert "Dagegen: KPÖ, SPÖ, Grüne" in records[0].result_text
+
+
+def test_classifies_legacy_mehrstimmig_as_majority():
+    paragraphs = [
+        ParserParagraph("Tagesordnung", "Heading1", 1),
+        ParserParagraph("Stk. 16) A8-018561/2006-134 Kunsthaus Graz GmbH", "Heading2", 2),
+        ParserParagraph("Der Antrag wurde mehrstimmig angenommen", "Normal", 3),
+    ]
+
+    records = parse_protocol(paragraphs, "2025-03-20_Protokoll.docx")
+
+    assert records[0].status == "accepted_majority"
