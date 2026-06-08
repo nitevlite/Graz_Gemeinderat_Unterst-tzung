@@ -82,6 +82,14 @@ python -m graz_protocols.viewer --records out\agenda_items_digra.jsonl --summary
 Der erzeugte Viewer entfernt Rohformulierungen, Quellenausschnitte und interne englische Typ-/Statuscodes aus den eingebetteten Einträgen.
 Ein Klick auf eine Tabellenzeile zeigt eine deutsche Detailansicht für den Eintrag, inklusive Ergebnisquelle und DIGRA-Link.
 
+DIGRA-Auditbericht bauen:
+
+```powershell
+python -m graz_protocols.cli audit --records out\agenda_items_digra.jsonl --summary out\summary_digra.json --output out\digra_audit.md
+```
+
+Der Bericht ist lokale erzeugte Ausgabe. Er listet Fallbacks, fehlende Ergebnisse und niedrige DIGRA-Trefferwerte, damit die Zuordnung gezielt verbessert werden kann.
+
 ## Dokumentation aktuell halten
 
 Wenn sich das Projekt ändert, die passende Markdown-Datei im selben Arbeitsdurchlauf aktualisieren:

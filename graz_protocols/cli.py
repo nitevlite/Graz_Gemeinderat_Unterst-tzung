@@ -6,6 +6,7 @@ from pathlib import Path
 import json
 import sys
 
+from .audit import write_audit_report
 from .docx_text import read_docx_paragraph_blocks
 from .digra_import import DEFAULT_DIGRA_TOOL_PATH, enrich_records_with_digra
 from .parser import AgendaRecord, parse_protocol
@@ -18,6 +19,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "parse":
         return run_parse(args)
+    if args.command == "audit":
+        return run_audit(args)
     parser.print_help()
     return 2
 
@@ -76,6 +79,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--digra-results-only",
         action="store_true",
         help="Ergebnisse nur aus DIGRA anzeigen; fehlende DIGRA-Ergebnisse ausdrücklich markieren.",
+    )
+    audit_cmd = subparsers.add_parser("audit", help="Markdown-Auditbericht für eine JSONL-Ausgabe erzeugen.")
+    audit_cmd.add_argument(
+        "--records",
+        type=Path,
+        default=Path("out") / "agenda_items_digra.jsonl",
+        help="JSONL-Datei mit Einträgen. Standard: out/agenda_items_digra.jsonl.",
+    )
+    audit_cmd.add_argument(
+        "--summary",
+        type=Path,
+        default=Path("out") / "summary_digra.json",
+        help="JSON-Zusammenfassung. Standard: out/summary_digra.json.",
+    )
+    audit_cmd.add_argument(
+        "--output",
+        type=Path,
+        default=Path("out") / "digra_audit.md",
+        help="Markdown-Ausgabepfad. Standard: out/digra_audit.md.",
     )
     return parser
 
@@ -136,6 +158,15 @@ def run_parse(args: argparse.Namespace) -> int:
     if errors:
         print(f"Dateien mit Fehlern: {len(errors)}", file=sys.stderr)
         return 1
+    return 0
+
+
+def run_audit(args: argparse.Namespace) -> int:
+    if not args.records.exists():
+        print(f"Eintragsdatei nicht gefunden: {args.records}", file=sys.stderr)
+        return 1
+    write_audit_report(args.records, args.summary, args.output)
+    print(f"Auditbericht nach {args.output} geschrieben.")
     return 0
 
 

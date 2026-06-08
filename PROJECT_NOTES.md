@@ -35,6 +35,7 @@ Aktuelle Module:
 - `graz_protocols/docx_text.py`: DOCX-Textextraktion mit Standardbibliothek
 - `graz_protocols/parser.py`: Extraktion von Tagesordnungspunkten, Status, Beträgen, Geschäftszahlen und Ortshinweisen
 - `graz_protocols/digra_import.py`: DIGRA-Abgleich über das vorhandene DIGRA-Export-Tool, Sitzungssuche, Dokumentlinks und Beschlussvermerk-Ergebnisse
+- `graz_protocols/audit.py`: Markdown-Auditbericht für Ergebnisquellen, Fallbacks und niedrige DIGRA-Trefferwerte
 - `graz_protocols/cli.py`: Stapelverarbeitung über die Kommandozeile
 - `graz_protocols/sqlite_export.py`: lokale SQLite-Ausgabe mit Tabelle `eintraege`
 - `graz_protocols/viewer.py`: erzeugte lokale Doppelklick-HTML-Ansicht
@@ -51,7 +52,8 @@ Aktuelle Ergebnisbehandlung:
 - Ältere Formulierungen wie `mehrstimmig angenommen` werden zu mehrheitlicher Annahme normalisiert.
 - Parteiangaben wie `(Gegen KFG, NEOS, FPÖ)` werden zu `Dagegen: ...` normalisiert.
 - Der lokale Viewer zeigt deutsche Typen, deutsche Statuswerte und nur vereinheitlichte `Ergebnisse`.
-- Der lokale Viewer hat eine Detailansicht pro Eintrag mit Titel, Ergebnis, Ergebnisquelle, DIGRA-Einlagezahl, DIGRA-Link, Geschäftszahlen, Beträgen, Orten und Quelldatei.
+- Der lokale Viewer hat eine Detailansicht pro Eintrag mit Titel, Ergebnis, Ergebnisquelle, DIGRA-Einlagezahl, DIGRA-Trefferwert, DIGRA-Link, Geschäftszahlen, Beträgen, Orten und Quelldatei.
+- Der lokale Viewer kann nach Ergebnisquelle filtern: `DIGRA`, `Protokoll`, `DIGRA fehlt`.
 - Rohformulierungen, Quellenausschnitte und interne englische Typ-/Statuscodes bleiben aus dem Viewer draußen.
 
 ## DIGRA-Abgleich
@@ -101,6 +103,7 @@ Letzter DIGRA-Lauf am 2026-06-08:
 - Ausgabe: `out/agenda_items_digra.jsonl`
 - SQLite-Ausgabe: `out\eintraege_digra.sqlite`
 - Viewer-Ausgabe: `viewer.html`
+- Audit-Ausgabe: `out\digra_audit.md`
 
 Erzeugte Ausgabe ist absichtlich ignoriert.
 

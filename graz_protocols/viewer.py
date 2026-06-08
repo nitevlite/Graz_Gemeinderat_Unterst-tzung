@@ -105,7 +105,7 @@ def build_html(records: list[dict], summary: dict) -> str:
     }}
     .toolbar {{
       display: grid;
-      grid-template-columns: minmax(220px, 1fr) 170px 170px 170px 150px;
+      grid-template-columns: minmax(220px, 1fr) 165px 165px 165px 165px 150px;
       gap: 10px;
       padding: 14px 28px;
       background: #eef2eb;
@@ -254,6 +254,7 @@ def build_html(records: list[dict], summary: dict) -> str:
     <select id="dateFilter"><option value="">Alle Daten</option></select>
     <select id="typeFilter"><option value="">Alle Typen</option></select>
     <select id="statusFilter"><option value="">Alle Status</option></select>
+    <select id="sourceFilter"><option value="">Alle Quellen</option></select>
     <select id="sectionFilter"><option value="">Alle Abschnitte</option></select>
   </section>
   <main>
@@ -274,6 +275,7 @@ def build_html(records: list[dict], summary: dict) -> str:
     const dateFilter = byId('dateFilter');
     const typeFilter = byId('typeFilter');
     const statusFilter = byId('statusFilter');
+    const sourceFilter = byId('sourceFilter');
     const sectionFilter = byId('sectionFilter');
     const tableWrap = byId('tableWrap');
     const detailWrap = byId('detailWrap');
@@ -351,6 +353,7 @@ def build_html(records: list[dict], summary: dict) -> str:
         if (dateFilter.value && record.datum !== dateFilter.value) return false;
         if (typeFilter.value && record.typ !== typeFilter.value) return false;
         if (statusFilter.value && record.status !== statusFilter.value) return false;
+        if (sourceFilter.value && record.ergebnisquelle !== sourceFilter.value) return false;
         if (sectionFilter.value && record.abschnitt !== sectionFilter.value) return false;
         if (query && !recordHaystack(record).includes(query)) return false;
         return true;
@@ -410,8 +413,9 @@ def build_html(records: list[dict], summary: dict) -> str:
     fillSelect(dateFilter, records.map((record) => record.datum));
     fillSelect(typeFilter, records.map((record) => record.typ));
     fillSelect(statusFilter, records.map((record) => record.status));
+    fillSelect(sourceFilter, records.map((record) => record.ergebnisquelle));
     fillSelect(sectionFilter, records.map((record) => record.abschnitt));
-    [search, dateFilter, typeFilter, statusFilter, sectionFilter].forEach((el) => el.addEventListener('input', render));
+    [search, dateFilter, typeFilter, statusFilter, sourceFilter, sectionFilter].forEach((el) => el.addEventListener('input', render));
     tableWrap.addEventListener('click', (event) => {{
       const row = event.target.closest('tr[data-index]');
       if (!row) return;

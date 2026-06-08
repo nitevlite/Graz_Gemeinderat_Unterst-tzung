@@ -106,6 +106,14 @@ Der Viewer zeigt deutsche Typen, deutsche Statuswerte und einheitliche `Ergebnis
 Ein Klick auf eine Tabellenzeile öffnet eine Detailansicht mit Titel, Ergebnis, Ergebnisquelle, DIGRA-Einlagezahl, DIGRA-Link, Geschäftszahlen, Beträgen, Orten und Quelldatei.
 Originalformulierungen aus dem Protokoll werden im Viewer nicht angezeigt und bleiben nur in der ignorierten lokalen JSONL-Ausgabe als Rohspur erhalten.
 
+DIGRA-Auditbericht bauen:
+
+```powershell
+python -m graz_protocols.cli audit --records out\agenda_items_digra.jsonl --summary out\summary_digra.json --output out\digra_audit.md
+```
+
+Der Bericht zeigt DIGRA-Ergebnisse, Protokoll-Fallbacks, fehlende Ergebnisse und niedrige DIGRA-Trefferwerte. Er bleibt als erzeugte lokale Ausgabe unter `out/` ignoriert.
+
 ## GitHub-Backlog
 
 Repository:
