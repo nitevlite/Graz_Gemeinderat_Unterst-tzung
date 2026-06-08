@@ -1,0 +1,37 @@
+# Local protocol material. Never commit or push these files.
+graz_protokolle_arbeitskopie/
+protokolle/
+archive/
+data/raw/
+data/source/
+
+# Council documents and exports can contain unpublished or sensitive material.
+*.docx
+*.doc
+*.pdf
+*.xlsx
+*.xls
+*.odt
+
+# Generated parser output and local caches.
+exports/
+out/
+tmp/
+*.sqlite
+*.sqlite3
+*.db
+*.jsonl
+
+# Python and tooling.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# OS/editor noise.
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
