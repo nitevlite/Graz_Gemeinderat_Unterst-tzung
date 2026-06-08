@@ -6,9 +6,11 @@ Vor dem Staging:
 
 ```powershell
 git status --short
+python scripts\check_git_safety.py
 ```
 
 Nur Quellcode und Dokumentation stagen. Niemals Protokolldateien oder erzeugte rohe Extraktionsausgaben stagen.
+Der Sicherheitscheck läuft zusätzlich in GitHub Actions bei Push und Pull Request.
 
 GitHub-Remote:
 

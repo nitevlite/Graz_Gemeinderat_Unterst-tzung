@@ -39,6 +39,7 @@ Aktuelle Module:
 - `graz_protocols/cli.py`: Stapelverarbeitung über die Kommandozeile
 - `graz_protocols/sqlite_export.py`: lokale SQLite-Ausgabe mit Tabelle `eintraege`
 - `graz_protocols/viewer.py`: erzeugte lokale Doppelklick-HTML-Ansicht
+- `scripts/check_git_safety.py`: lokaler und CI-fähiger Sicherheitscheck gegen versehentlich committed Quellen-/Exportdaten
 - `tests/test_parser.py`: bereinigte Parser-Tests
 - `tests/test_digra_import.py`: Test, dass DIGRA-Ergebnisse nur aus dem `Beschlussvermerk` extrahiert werden
 - `tests/test_viewer.py`: Tests für deutsche Viewer-Anzeige und Rohtextschutz
@@ -118,7 +119,7 @@ Die Extraktionsqualität über die Abschnittserkennung hinaus verbessern:
 
 ## GitHub Issues
 
-Am 2026-06-08 im privaten GitHub-Repository angelegt:
+Am 2026-06-08 im privaten GitHub-Repository angelegt. Issue #10 wurde umgesetzt: lokales Check-Script plus GitHub Action sichern verbotene Dateitypen, lokale Datenordner und große Dateien ab.
 
 - https://github.com/nitevlite/graz-council-protocol-explorer/issues/1
 - https://github.com/nitevlite/graz-council-protocol-explorer/issues/2

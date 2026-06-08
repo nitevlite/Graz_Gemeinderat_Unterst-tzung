@@ -5,6 +5,13 @@
 Gemeinderatsprotokolle und roh heruntergeladene Dokumente dürfen niemals ins Git gepusht werden.
 
 Die `.gitignore` schließt typische Protokollordner und Dokumentformate aus. Das allein reicht aber nicht. Vor jedem Staging oder Commit immer `git status --short` prüfen.
+Zusätzlich gibt es einen technischen Check:
+
+```powershell
+python scripts\check_git_safety.py
+```
+
+Der Check prüft den Git-Index und verfolgte Dateien auf verbotene Protokoll-/Exportformate, lokale Datenordner und große Dateien.
 
 ## Im Git erlaubt
 
@@ -37,6 +44,17 @@ Für erzeugte Extraktionsergebnisse ignorierte Ausgabeorte verwenden:
 - `exports/`
 - `*.sqlite`
 - `*.jsonl`
+
+## Technischer Git-Check
+
+Der Check blockiert unter anderem:
+
+- `*.docx`, `*.doc`, `*.pdf`, `*.xlsx`, `*.xls`, `*.odt`
+- `*.jsonl`, `*.sqlite`, `*.sqlite3`, `*.db`
+- `out/`, `exports/`, `data/raw/`, `data/source/`, `graz_protokolle_arbeitskopie/`
+- verfolgte Dateien über 1 MB
+
+Die GitHub Action `checks` führt denselben Check bei Push und Pull Request aus.
 
 ## Bereinigte Fixtures
 
