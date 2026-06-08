@@ -62,14 +62,24 @@ Der aktuelle Parser liest DOCX-Absatzformatvorlagen und erzeugt mehrere Eintrags
 Er erzeugt `result_text` als normalisierte Anzeige, `votes` für strukturierte Entscheidungsdetails und `raw_result_text` nur als lokale Rohspur in der ignorierten JSONL-Ausgabe.
 Mit `--sqlite` erzeugt er zusätzlich eine lokale SQLite-Datenbank mit deutscher Tabelle `eintraege`.
 
+DIGRA-Abgleich ausführen:
+
+```powershell
+python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra --digra-results-only
+```
+
+Dieser Lauf nutzt `E:\01_StadtGrazProtokolle\Digra_Export_Tool\app`.
+Die DIGRA-Daten werden in `out\digra_cache.json` gecacht und bleiben ignoriertes lokales Arbeitsmaterial.
+`--digra-results-only` verhindert, dass Protokoll-Ergebnisse als Ergebnis angezeigt werden; fehlende DIGRA-Beschlussvermerke werden als `DIGRA-Ergebnis fehlt` markiert.
+
 Lokale HTML-Ansicht bauen:
 
 ```powershell
-python -m graz_protocols.viewer --records out\agenda_items.jsonl --summary out\summary.json --output viewer.html
+python -m graz_protocols.viewer --records out\agenda_items_digra.jsonl --summary out\summary_digra.json --output viewer.html
 ```
 
 Der erzeugte Viewer entfernt Rohformulierungen, Quellenausschnitte und interne englische Typ-/Statuscodes aus den eingebetteten Einträgen.
-Ein Klick auf eine Tabellenzeile zeigt eine deutsche Detailansicht für den Eintrag.
+Ein Klick auf eine Tabellenzeile zeigt eine deutsche Detailansicht für den Eintrag, inklusive Ergebnisquelle und DIGRA-Link.
 
 ## Dokumentation aktuell halten
 

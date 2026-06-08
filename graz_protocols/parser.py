@@ -132,6 +132,10 @@ class AgendaRecord:
     locations: list[str]
     source_snippet: str
     parser_confidence: float
+    result_source: str = "protokoll"
+    digra_url: str = ""
+    digra_business_number: str = ""
+    protocol_result_text: str = ""
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False, sort_keys=True)

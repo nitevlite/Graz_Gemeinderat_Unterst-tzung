@@ -59,6 +59,12 @@ Die Ausgabe bleibt lokal in ignorierten Dateien, nicht im Git.
 
 ## Bedienung
 
+Abhängigkeiten installieren:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
 Lokalen Parser gegen die ignorierten DOCX-Arbeitskopien ausführen:
 
 ```powershell
@@ -68,6 +74,15 @@ python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\age
 Der Parser schreibt JSONL-Einträge mit Sitzungsdatum, Stücknummer, Geschäftszahlen, Titel, Status, einheitlichem Ergebnistext, strukturierten Abstimmungsdetails, Beträgen, Ortshinweisen und kurzem Quellenausschnitt.
 Er nutzt DOCX-Absatzformatvorlagen, um echte Überschriften von Inhaltsverzeichnis-Einträgen zu unterscheiden.
 Optional erzeugt er zusätzlich eine lokale SQLite-Datenbank mit der Tabelle `eintraege`. Die SQLite-Datei bleibt wie JSONL und HTML ignoriert.
+
+Parser mit DIGRA-Abgleich ausführen:
+
+```powershell
+python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra --digra-results-only
+```
+
+Dieser Modus nutzt das vorhandene Tool unter `E:\01_StadtGrazProtokolle\Digra_Export_Tool\app`, lädt DIGRA-Sitzungen und DIGRA-Dokumentseiten, extrahiert offizielle Ergebnisse nur aus dem Block `Beschlussvermerk` und cached die geladenen DIGRA-Daten lokal in `out\digra_cache.json`.
+Mit `--digra-results-only` werden Protokoll-Ergebnisse nicht als Ergebnis angezeigt. Wenn DIGRA keinen Beschlussvermerk liefert oder kein Ergebnis zugeordnet werden kann, steht im Ergebnisfeld ausdrücklich `DIGRA-Ergebnis fehlt`.
 
 Interne Eintragstypen:
 
@@ -81,13 +96,13 @@ Die erzeugte Ausgabe unter `out/` ist ignoriert und darf nicht committed werden.
 Lokale Doppelklick-HTML-Ansicht bauen:
 
 ```powershell
-python -m graz_protocols.viewer --records out\agenda_items.jsonl --summary out\summary.json --output viewer.html
+python -m graz_protocols.viewer --records out\agenda_items_digra.jsonl --summary out\summary_digra.json --output viewer.html
 ```
 
 Danach `viewer.html` im Browser öffnen. Die Datei ist erzeugte lokale Ausgabe und wird von Git ignoriert.
 
 Der Viewer zeigt deutsche Typen, deutsche Statuswerte und einheitliche `Ergebnisse`, zum Beispiel `Antrag: mehrheitlich angenommen` plus Parteilisten wie `Dagegen: KFG, NEOS, FPÖ`.
-Ein Klick auf eine Tabellenzeile öffnet eine Detailansicht mit Titel, Ergebnis, Geschäftszahlen, Beträgen, Orten und Quelldatei.
+Ein Klick auf eine Tabellenzeile öffnet eine Detailansicht mit Titel, Ergebnis, Ergebnisquelle, DIGRA-Einlagezahl, DIGRA-Link, Geschäftszahlen, Beträgen, Orten und Quelldatei.
 Originalformulierungen aus dem Protokoll werden im Viewer nicht angezeigt und bleiben nur in der ignorierten lokalen JSONL-Ausgabe als Rohspur erhalten.
 
 ## GitHub-Backlog

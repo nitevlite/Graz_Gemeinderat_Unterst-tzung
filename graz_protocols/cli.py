@@ -7,6 +7,7 @@ import json
 import sys
 
 from .docx_text import read_docx_paragraph_blocks
+from .digra_import import DEFAULT_DIGRA_TOOL_PATH, enrich_records_with_digra
 from .parser import AgendaRecord, parse_protocol
 from .sqlite_export import write_sqlite
 
@@ -54,6 +55,28 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optionaler SQLite-Ausgabepfad, z. B. out/eintraege.sqlite.",
     )
+    parse_cmd.add_argument(
+        "--digra",
+        action="store_true",
+        help="DIGRA-Dokumentseiten über das vorhandene DIGRA-Export-Tool einbeziehen.",
+    )
+    parse_cmd.add_argument(
+        "--digra-tool-path",
+        type=Path,
+        default=DEFAULT_DIGRA_TOOL_PATH,
+        help=f"Pfad zum app-Ordner des DIGRA-Export-Tools. Standard: {DEFAULT_DIGRA_TOOL_PATH}.",
+    )
+    parse_cmd.add_argument(
+        "--digra-cache",
+        type=Path,
+        default=Path("out") / "digra_cache.json",
+        help="Lokaler Cache für DIGRA-Einträge. Standard: out/digra_cache.json.",
+    )
+    parse_cmd.add_argument(
+        "--digra-results-only",
+        action="store_true",
+        help="Ergebnisse nur aus DIGRA anzeigen; fehlende DIGRA-Ergebnisse ausdrücklich markieren.",
+    )
     return parser
 
 
@@ -79,6 +102,18 @@ def run_parse(args: argparse.Namespace) -> int:
         except Exception as exc:  # pylint: disable=broad-except
             errors.append({"datei": path.name, "fehler": str(exc)})
 
+    digra_summary: dict = {}
+    if args.digra or args.digra_results_only:
+        try:
+            records, digra_summary = enrich_records_with_digra(
+                records,
+                tool_path=args.digra_tool_path,
+                cache_path=args.digra_cache,
+                results_only=args.digra_results_only,
+            )
+        except Exception as exc:  # pylint: disable=broad-except
+            errors.append({"datei": "DIGRA", "fehler": str(exc)})
+
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", encoding="utf-8") as handle:
         for record in records:
@@ -86,6 +121,7 @@ def run_parse(args: argparse.Namespace) -> int:
             handle.write("\n")
 
     summary = build_summary(docx_files, records, errors)
+    summary.update(digra_summary)
     args.summary.parent.mkdir(parents=True, exist_ok=True)
     args.summary.write_text(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
     if args.sqlite is not None:

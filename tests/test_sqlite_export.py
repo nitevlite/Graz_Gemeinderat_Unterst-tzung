@@ -41,7 +41,8 @@ def test_writes_records_to_sqlite(tmp_path):
     with sqlite3.connect(db_path) as connection:
         row = connection.execute(
             """
-            SELECT datum, typ, stueck_nr, titel, ergebnis, geschaeftszahlen_json, abstimmungen_json
+            SELECT datum, typ, stueck_nr, titel, ergebnis, geschaeftszahlen_json, abstimmungen_json,
+                   ergebnisquelle, digra_url, digra_einlagezahl, protokoll_ergebnis
             FROM eintraege
             """
         ).fetchone()
@@ -57,5 +58,9 @@ def test_writes_records_to_sqlite(tmp_path):
     assert row[4] == "Antrag: mehrheitlich angenommen\nDagegen: KFG"
     assert json.loads(row[5]) == ["A8-1"]
     assert json.loads(row[6])[0]["against"] == ["KFG"]
-    assert version == "1"
+    assert row[7] == "protokoll"
+    assert row[8] == ""
+    assert row[9] == ""
+    assert row[10] == ""
+    assert version == "2"
     assert json.loads(summary) == 1

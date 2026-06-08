@@ -34,10 +34,12 @@ Aktuelle Module:
 
 - `graz_protocols/docx_text.py`: DOCX-Textextraktion mit Standardbibliothek
 - `graz_protocols/parser.py`: Extraktion von Tagesordnungspunkten, Status, Beträgen, Geschäftszahlen und Ortshinweisen
+- `graz_protocols/digra_import.py`: DIGRA-Abgleich über das vorhandene DIGRA-Export-Tool, Sitzungssuche, Dokumentlinks und Beschlussvermerk-Ergebnisse
 - `graz_protocols/cli.py`: Stapelverarbeitung über die Kommandozeile
 - `graz_protocols/sqlite_export.py`: lokale SQLite-Ausgabe mit Tabelle `eintraege`
 - `graz_protocols/viewer.py`: erzeugte lokale Doppelklick-HTML-Ansicht
 - `tests/test_parser.py`: bereinigte Parser-Tests
+- `tests/test_digra_import.py`: Test, dass DIGRA-Ergebnisse nur aus dem `Beschlussvermerk` extrahiert werden
 - `tests/test_viewer.py`: Tests für deutsche Viewer-Anzeige und Rohtextschutz
 
 Aktuelle Ergebnisbehandlung:
@@ -49,8 +51,23 @@ Aktuelle Ergebnisbehandlung:
 - Ältere Formulierungen wie `mehrstimmig angenommen` werden zu mehrheitlicher Annahme normalisiert.
 - Parteiangaben wie `(Gegen KFG, NEOS, FPÖ)` werden zu `Dagegen: ...` normalisiert.
 - Der lokale Viewer zeigt deutsche Typen, deutsche Statuswerte und nur vereinheitlichte `Ergebnisse`.
-- Der lokale Viewer hat eine Detailansicht pro Eintrag mit Titel, Ergebnis, Geschäftszahlen, Beträgen, Orten und Quelldatei.
+- Der lokale Viewer hat eine Detailansicht pro Eintrag mit Titel, Ergebnis, Ergebnisquelle, DIGRA-Einlagezahl, DIGRA-Link, Geschäftszahlen, Beträgen, Orten und Quelldatei.
 - Rohformulierungen, Quellenausschnitte und interne englische Typ-/Statuscodes bleiben aus dem Viewer draußen.
+
+## DIGRA-Abgleich
+
+Der aktuelle DIGRA-Abgleich nutzt `E:\01_StadtGrazProtokolle\Digra_Export_Tool\app` als bestehende technische Basis.
+Er übernimmt aus DIGRA:
+
+- Sitzung und Datum
+- Reiter/Abschnitt
+- Reihenfolge der Einträge
+- DIGRA-Einlagezahl
+- DIGRA-Dokumentlink
+- offizielles Ergebnis aus `Beschlussvermerk`, wenn vorhanden
+
+Wichtig: Ergebnisse werden nicht aus beliebigen Wörtern im DIGRA-Dokumenttext abgeleitet. Nur ein `Beschlussvermerk` zählt als DIGRA-Ergebnis.
+Mit `--digra-results-only` werden nicht belegte Ergebnisse ausdrücklich als `DIGRA-Ergebnis fehlt` markiert.
 
 Letzter lokaler Lauf am 2026-06-08:
 
@@ -71,6 +88,17 @@ Letzter lokaler Lauf am 2026-06-08:
   - `unknown`: 20
 - Ausgabe: `out/agenda_items.jsonl`
 - SQLite-Ausgabe: `out/eintraege.sqlite`
+
+Letzter DIGRA-Lauf am 2026-06-08:
+
+- Befehl: `python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra --digra-results-only`
+- DIGRA-Einträge geladen: 1675
+- lokalen Datensätzen zugeordnet: 990
+- Ergebnisse aus DIGRA-Beschlussvermerken übernommen: 237
+- Datensätze ohne DIGRA-Ergebnis im Ergebnisfeld markiert: 898
+- Ausgabe: `out/agenda_items_digra.jsonl`
+- SQLite-Ausgabe: `out\eintraege_digra.sqlite`
+- Viewer-Ausgabe: `viewer.html`
 
 Erzeugte Ausgabe ist absichtlich ignoriert.
 

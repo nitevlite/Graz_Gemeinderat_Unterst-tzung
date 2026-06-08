@@ -246,7 +246,7 @@ def build_html(records: list[dict], summary: dict) -> str:
     <div class="meta">
       <span>Lokale HTML-Ansicht</span>
       <span>Keine Protokolle im Git</span>
-      <span>Quelle: lokale Parser-Ausgabe</span>
+      <span>Quelle: lokale Parser-Ausgabe plus DIGRA-Abgleich</span>
     </div>
   </header>
   <section class="toolbar">
@@ -261,7 +261,7 @@ def build_html(records: list[dict], summary: dict) -> str:
       <div class="stat"><b id="visibleCount">0</b><span>sichtbare Treffer</span></div>
       <div class="stat"><b id="totalCount">0</b><span>Einträge gesamt</span></div>
       <div class="stat"><b id="fileCount">0</b><span>Dateien mit Einträgen</span></div>
-      <div class="stat"><b id="unklarCount">0</b><span>unklarer Status</span></div>
+      <div class="stat"><b id="digraCount">0</b><span>DIGRA-Ergebnisse</span></div>
     </section>
     <section class="detail" id="detailWrap"></section>
     <div id="tableWrap"></div>
@@ -306,7 +306,9 @@ def build_html(records: list[dict], summary: dict) -> str:
         record.status,
         ...(record.betraege || []),
         ...(record.orte || []),
-        record.ergebnis
+        record.ergebnis,
+        record.ergebnisquelle,
+        record.digra_einlagezahl
       ].join(' ').toLocaleLowerCase('de-AT');
     }}
 
@@ -331,10 +333,13 @@ def build_html(records: list[dict], summary: dict) -> str:
           ${{detailField('Stück', record.stueck_nr)}}
           ${{detailField('Status', record.status)}}
           ${{detailField('Geschäftszahlen', joinList(record.geschaeftszahlen))}}
-          ${{detailField('Quelldatei', record.quell_datei)}}
+          ${{detailField('Ergebnisquelle', record.ergebnisquelle)}}
           ${{detailField('Ergebnis', record.ergebnis)}}
+          ${{detailField('DIGRA-Einlagezahl', record.digra_einlagezahl)}}
+          ${{detailField('DIGRA-Link', record.digra_url)}}
           ${{detailField('Beträge', joinList(record.betraege))}}
           ${{detailField('Orte', joinList(record.orte))}}
+          ${{detailField('Quelldatei', record.quell_datei)}}
         </div>
       `;
     }}
@@ -359,7 +364,7 @@ def build_html(records: list[dict], summary: dict) -> str:
       byId('visibleCount').textContent = sichtbareEintraege.length;
       byId('totalCount').textContent = records.length;
       byId('fileCount').textContent = summary.dateien_mit_eintraegen ?? new Set(records.map((r) => r.quell_datei)).size;
-      byId('unklarCount').textContent = summary.unklare_eintraege ?? records.filter((r) => r.status === 'unklar').length;
+      byId('digraCount').textContent = summary.digra_ergebnisse ?? records.filter((r) => r.ergebnisquelle === 'DIGRA').length;
       renderDetail(ausgewaehlterEintrag);
 
       if (!sichtbareEintraege.length) {{
@@ -377,7 +382,7 @@ def build_html(records: list[dict], summary: dict) -> str:
           <td data-label="Titel" class="title">${{escapeHtml(record.titel)}}</td>
           <td data-label="Beträge" class="amount">${{escapeHtml((record.betraege || []).join(', '))}}</td>
           <td data-label="Orte">${{escapeHtml((record.orte || []).join(', '))}}</td>
-          <td data-label="Ergebnisse" class="result">${{escapeHtml(record.ergebnis || '')}}</td>
+          <td data-label="Ergebnisse" class="result">${{escapeHtml(record.ergebnis || '')}}<br><span class="badge">${{escapeHtml(record.ergebnisquelle || '')}}</span></td>
         </tr>
       `).join('');
 
@@ -429,6 +434,9 @@ def viewer_record(record: dict) -> dict:
         "titel": record.get("title", ""),
         "status": german_status(str(record.get("status", ""))),
         "ergebnis": record.get("result_text", ""),
+        "ergebnisquelle": german_result_source(str(record.get("result_source", ""))),
+        "digra_url": record.get("digra_url", ""),
+        "digra_einlagezahl": record.get("digra_business_number", ""),
         "betraege": record.get("amounts", []),
         "orte": record.get("locations", []),
         "quell_datei": record.get("source_file", ""),
@@ -439,6 +447,7 @@ def viewer_summary(summary: dict) -> dict:
     return {
         "dateien_mit_eintraegen": summary.get("files_with_records", 0),
         "unklare_eintraege": summary.get("records_by_status", {}).get("unknown", 0),
+        "digra_ergebnisse": summary.get("digra_results_used", 0),
     }
 
 
@@ -462,6 +471,14 @@ def german_status(value: str) -> str:
         "postponed": "vertagt",
         "unknown": "unklar",
     }.get(value, value)
+
+
+def german_result_source(value: str) -> str:
+    return {
+        "digra": "DIGRA",
+        "digra_fehlt": "DIGRA fehlt",
+        "protokoll": "Protokoll",
+    }.get(value, value or "Protokoll")
 
 
 if __name__ == "__main__":
