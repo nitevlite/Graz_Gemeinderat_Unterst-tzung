@@ -1,80 +1,80 @@
-# Development
+# Entwicklung
 
-## Git Hygiene
+## Git-Regeln
 
-Before staging:
+Vor dem Staging:
 
 ```powershell
 git status --short
 ```
 
-Only stage source and documentation files. Never stage protocol files or generated raw extraction output.
+Nur Quellcode und Dokumentation stagen. Niemals Protokolldateien oder erzeugte rohe Extraktionsausgaben stagen.
 
-GitHub remote:
+GitHub-Remote:
 
 ```text
 origin https://github.com/nitevlite/graz-council-protocol-explorer.git
 ```
 
-Recommended staging pattern:
+Empfohlenes Staging-Muster:
 
 ```powershell
 git add .gitignore AGENTS.md README.md DATA_POLICY.md PROJECT_NOTES.md DEVELOPMENT.md
 ```
 
-## Local Data
+## Lokale Daten
 
-Keep source documents in ignored folders. The current local working folder is:
+Quelldokumente bleiben in ignorierten Ordnern. Der aktuelle lokale Arbeitsordner ist:
 
 ```text
 graz_protokolle_arbeitskopie/
 ```
 
-## Parser Output
+## Parser-Ausgabe
 
-Write generated data to ignored paths such as:
+Erzeugte Daten in ignorierte Pfade schreiben, zum Beispiel:
 
 ```text
 out/
 exports/
 ```
 
-Do not commit generated databases or JSONL files unless they are tiny sanitized fixtures.
+Erzeugte Datenbanken oder JSONL-Dateien nicht committen, außer es sind winzige bereinigte Testfixtures.
 
-## Commands
+## Befehle
 
-Run tests:
+Tests ausführen:
 
 ```powershell
 python -m pytest -q
 ```
 
-Pytest is configured without its cache provider to avoid local cache churn.
+Pytest läuft ohne Cache-Provider, damit keine lokalen Cache-Dateien entstehen.
 
-Run the parser MVP:
+Parser-MVP ausführen:
 
 ```powershell
 python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items.jsonl --summary out\summary.json
 ```
 
-The parser output is local working data and ignored by Git.
-The current parser reads DOCX paragraph styles and emits multiple record types, including written questions and motions.
-It emits normalized `result_text` for display, `votes` for structured decision details, and `raw_result_text` only as local traceability data in the ignored JSONL output.
+Die Parser-Ausgabe ist lokales Arbeitsmaterial und wird von Git ignoriert.
+Der aktuelle Parser liest DOCX-Absatzformatvorlagen und erzeugt mehrere Eintragstypen, darunter schriftliche Anfragen und Anträge.
+Er erzeugt `result_text` als normalisierte Anzeige, `votes` für strukturierte Entscheidungsdetails und `raw_result_text` nur als lokale Rohspur in der ignorierten JSONL-Ausgabe.
 
-Build the local HTML viewer:
+Lokale HTML-Ansicht bauen:
 
 ```powershell
 python -m graz_protocols.viewer --records out\agenda_items.jsonl --summary out\summary.json --output viewer.html
 ```
 
-The generated viewer intentionally removes raw source snippets and original result formulations from its embedded records.
+Der erzeugte Viewer entfernt Rohformulierungen, Quellenausschnitte und interne englische Typ-/Statuscodes aus den eingebetteten Einträgen.
 
-## Documentation Maintenance
+## Dokumentation aktuell halten
 
-Whenever the project changes, update the relevant Markdown file in the same work session:
+Wenn sich das Projekt ändert, die passende Markdown-Datei im selben Arbeitsdurchlauf aktualisieren:
 
-- `AGENTS.md` for agent rules and workflow constraints
-- `DATA_POLICY.md` for data handling rules
-- `PROJECT_NOTES.md` for architecture direction and project state
-- `README.md` for user-facing project purpose
-- `DEVELOPMENT.md` for commands and local workflow
+- `AGENTS.md` für Agentenregeln und Arbeitsbeschränkungen
+- `DATA_POLICY.md` für Datenregeln
+- `PROJECT_NOTES.md` für Architektur, Richtung und Projektstand
+- `README.md` für Zweck und Bedienung
+- `DEVELOPMENT.md` für Befehle und lokalen Ablauf

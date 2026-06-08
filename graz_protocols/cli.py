@@ -23,29 +23,29 @@ def main(argv: list[str] | None = None) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="graz-protocols",
-        description="Extract structured, source-linked records from local Graz council DOCX protocols.",
+        description="Extrahiert strukturierte Einträge aus lokalen Grazer Gemeinderatsprotokollen im DOCX-Format.",
     )
     subparsers = parser.add_subparsers(dest="command")
 
-    parse_cmd = subparsers.add_parser("parse", help="Parse DOCX protocols from a local directory.")
-    parse_cmd.add_argument("input_dir", type=Path, help="Directory containing local DOCX protocols.")
+    parse_cmd = subparsers.add_parser("parse", help="DOCX-Protokolle aus einem lokalen Ordner parsen.")
+    parse_cmd.add_argument("input_dir", type=Path, help="Ordner mit lokalen DOCX-Protokollen.")
     parse_cmd.add_argument(
         "--output",
         type=Path,
         default=Path("out") / "agenda_items.jsonl",
-        help="JSONL output path. Defaults to out/agenda_items.jsonl.",
+        help="JSONL-Ausgabepfad. Standard: out/agenda_items.jsonl.",
     )
     parse_cmd.add_argument(
         "--summary",
         type=Path,
         default=Path("out") / "summary.json",
-        help="Summary JSON output path. Defaults to out/summary.json.",
+        help="JSON-Ausgabepfad für die Zusammenfassung. Standard: out/summary.json.",
     )
     parse_cmd.add_argument(
         "--limit",
         type=int,
         default=0,
-        help="Optional maximum number of DOCX files to parse, useful during development.",
+        help="Optionale Höchstzahl zu parsenden DOCX-Dateien, praktisch während der Entwicklung.",
     )
     return parser
 
@@ -53,14 +53,14 @@ def build_parser() -> argparse.ArgumentParser:
 def run_parse(args: argparse.Namespace) -> int:
     input_dir: Path = args.input_dir
     if not input_dir.exists() or not input_dir.is_dir():
-        print(f"Input directory not found: {input_dir}", file=sys.stderr)
+        print(f"Eingabeordner nicht gefunden: {input_dir}", file=sys.stderr)
         return 1
 
     docx_files = sorted(input_dir.glob("*.docx"))
     if args.limit and args.limit > 0:
         docx_files = docx_files[: args.limit]
     if not docx_files:
-        print(f"No DOCX files found in {input_dir}", file=sys.stderr)
+        print(f"Keine DOCX-Dateien in {input_dir} gefunden.", file=sys.stderr)
         return 1
 
     records: list[AgendaRecord] = []
@@ -70,7 +70,7 @@ def run_parse(args: argparse.Namespace) -> int:
             paragraphs = read_docx_paragraph_blocks(path)
             records.extend(parse_protocol(paragraphs, path.name))
         except Exception as exc:  # pylint: disable=broad-except
-            errors.append({"file": path.name, "error": str(exc)})
+            errors.append({"datei": path.name, "fehler": str(exc)})
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", encoding="utf-8") as handle:
@@ -83,11 +83,11 @@ def run_parse(args: argparse.Namespace) -> int:
     args.summary.write_text(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
 
     print(
-        f"Parsed {summary['files_total']} DOCX files, wrote {summary['records_total']} records "
-        f"to {args.output}."
+        f"{summary['files_total']} DOCX-Dateien geparst, {summary['records_total']} Einträge "
+        f"nach {args.output} geschrieben."
     )
     if errors:
-        print(f"Files with errors: {len(errors)}", file=sys.stderr)
+        print(f"Dateien mit Fehlern: {len(errors)}", file=sys.stderr)
         return 1
     return 0
 

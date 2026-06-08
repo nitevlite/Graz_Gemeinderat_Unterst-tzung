@@ -1,91 +1,93 @@
-# Graz Council Protocol Explorer
+# Grazer Gemeinderatsprotokoll-Explorer
 
-Working project for turning Gemeinderatsprotokolle der Stadt Graz into a searchable, structured, and source-linked decision register.
+Arbeitsprojekt, um Gemeinderatsprotokolle der Stadt Graz in ein durchsuchbares, strukturiertes und quellnahes Entscheidungsregister zu überführen.
 
-## Goal
+## Ziel
 
-Build a system that can answer questions like:
+Das System soll später Fragen beantworten wie:
 
-- What was approved?
-- Where did it happen?
-- Which agenda item, business number, person, party, amount, and date are involved?
-- What is the original source text?
-- How did a topic evolve across meetings?
+- Was wurde genehmigt?
+- Wo betrifft die Entscheidung ein Grundstück, eine Straße, einen Platz oder einen Betrag?
+- Welche Tagesordnungspunkte, Geschäftszahlen, Personen, Parteien, Beträge und Daten hängen daran?
+- Wo steht die ursprüngliche Quelle?
+- Wie entwickelt sich ein Thema über mehrere Sitzungen?
 
-## Data Policy
+## Datenregeln
 
-Protocol files are local working material and must not be committed or pushed.
+Protokolldateien sind lokales Arbeitsmaterial und dürfen nicht committed oder gepusht werden.
 
-The repository may contain:
+Ins Repository dürfen:
 
-- parser code
-- extraction rules
-- tests
-- documentation
-- sanitized fixtures
+- Parser-Code
+- Extraktionsregeln
+- Tests
+- Dokumentation
+- bereinigte Mini-Testdaten
 
-The repository must not contain:
+Nicht ins Repository dürfen:
 
-- full DOCX/PDF protocols
-- downloaded council documents
-- raw DIGRA exports
-- local archive copies
-- unsanitized extracted full text
+- vollständige DOCX-/PDF-Protokolle
+- heruntergeladene Gemeinderatsdokumente
+- rohe DIGRA-Exporte
+- lokale Archivkopien
+- unbereinigter extrahierter Volltext
 
-## Current Input Sources
+## Aktuelle Quellen
 
-- Local archive files under `E:\01_StadtGrazProtokolle\Archiv\...`
+- Lokale Archivdateien unter `E:\01_StadtGrazProtokolle\Archiv\...`
 - DIGRA Public: `https://digra.graz.at/timetable`
-- Graz council archive pages: `https://www.graz.at/cms/beitrag/10142612/7768104`
-- Existing helper project: `E:\01_StadtGrazProtokolle\Digra_Export_Tool`
+- Archivseiten der Stadt Graz: `https://www.graz.at/cms/beitrag/10142612/7768104`
+- Bestehendes Hilfsprojekt: `E:\01_StadtGrazProtokolle\Digra_Export_Tool`
 
-## First MVP
+## Erstes MVP
 
-Extract structured records from local DOCX files:
+Das MVP extrahiert strukturierte Einträge aus lokalen DOCX-Dateien:
 
-- meeting date
-- section
-- agenda item number
-- business number
-- title
-- status phrase
-- money amounts
-- place references
-- short source snippet
+- Sitzungsdatum
+- Abschnitt
+- Stücknummer
+- Geschäftszahl
+- Titel
+- Status
+- einheitlich formuliertes Ergebnis
+- strukturierte Abstimmungsdetails
+- Geldbeträge
+- Orts- und Grundstückshinweise
+- kurzer Quellenausschnitt für lokale Nachvollziehbarkeit
 
-Output should be a local ignored database or JSONL file, not committed.
+Die Ausgabe bleibt lokal in ignorierten Dateien, nicht im Git.
 
-## MVP CLI
+## Bedienung
 
-Run the local parser against ignored DOCX working copies:
+Lokalen Parser gegen die ignorierten DOCX-Arbeitskopien ausführen:
 
 ```powershell
 python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items.jsonl --summary out\summary.json
 ```
 
-The parser writes JSONL records with meeting date, agenda item number, business numbers, title, status, standardized result text, structured vote details, amounts, location hints, and a short source snippet.
-It uses DOCX paragraph style metadata to distinguish real headings from table-of-contents entries.
+Der Parser schreibt JSONL-Einträge mit Sitzungsdatum, Stücknummer, Geschäftszahlen, Titel, Status, einheitlichem Ergebnistext, strukturierten Abstimmungsdetails, Beträgen, Ortshinweisen und kurzem Quellenausschnitt.
+Er nutzt DOCX-Absatzformatvorlagen, um echte Überschriften von Inhaltsverzeichnis-Einträgen zu unterscheiden.
 
-Current record types:
+Interne Eintragstypen:
 
 - `agenda_item`
 - `urgent_motion`
 - `written_question`
 - `written_motion`
 
-Generated output under `out/` is ignored and must not be committed.
+Die erzeugte Ausgabe unter `out/` ist ignoriert und darf nicht committed werden.
 
-Build a local double-click HTML viewer:
+Lokale Doppelklick-HTML-Ansicht bauen:
 
 ```powershell
 python -m graz_protocols.viewer --records out\agenda_items.jsonl --summary out\summary.json --output viewer.html
 ```
 
-Then open `viewer.html` in a browser. The file is generated local output and ignored by Git.
+Danach `viewer.html` im Browser öffnen. Die Datei ist erzeugte lokale Ausgabe und wird von Git ignoriert.
 
-The viewer shows standardized `Ergebnisse`, for example `Antrag: mehrheitlich angenommen` plus party lists such as `Dagegen: KFG, NEOS, FPÖ`. Original protocol wording stays out of the viewer and remains only in ignored local JSONL fields for traceability.
+Der Viewer zeigt deutsche Typen, deutsche Statuswerte und einheitliche `Ergebnisse`, zum Beispiel `Antrag: mehrheitlich angenommen` plus Parteilisten wie `Dagegen: KFG, NEOS, FPÖ`. Originalformulierungen aus dem Protokoll werden im Viewer nicht angezeigt und bleiben nur in der ignorierten lokalen JSONL-Ausgabe als Rohspur erhalten.
 
-## GitHub Backlog
+## GitHub-Backlog
 
 Repository:
 
@@ -93,17 +95,17 @@ Repository:
 https://github.com/nitevlite/graz-council-protocol-explorer
 ```
 
-Current next-work backlog is tracked in GitHub Issues:
+Die nächsten Arbeitspakete liegen in GitHub Issues:
 
-- Parser section detection and TOC separation
-- Written questions and motions without `Stk.` numbers
-- Structured vote results and party votes
-- Stable JSONL schema and validation
-- SQLite output for search and timelines
-- DIGRA integration
-- Location extraction and map readiness
-- Better local HTML viewer
-- Goldset-based parser quality checks
-- Git/data-safety checks
-- Topic timelines across meetings
-- Roadmap/product documentation
+- Abschnittserkennung und Trennung vom Inhaltsverzeichnis
+- Schriftliche Anfragen und Anträge ohne `Stk.`-Nummer
+- Strukturierte Abstimmungsergebnisse und Parteistimmen
+- Stabiles JSONL-Schema und Validierung
+- SQLite-Ausgabe für Suche und Zeitachsen
+- DIGRA-Anbindung
+- Ortserkennung und Vorbereitung für Karten
+- Bessere lokale HTML-Ansicht
+- Qualitätsprüfung mit Goldset
+- Git- und Datensicherheitsprüfungen
+- Themenverläufe über Sitzungen
+- Roadmap- und Produktdokumentation

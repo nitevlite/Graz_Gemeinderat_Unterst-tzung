@@ -1,10 +1,10 @@
 # AGENTS.md
 
-## Project Rule: Do Not Commit Protocols
+## Projektregel: Keine Protokolle committen
 
-Never commit, stage, or push Gemeinderatsprotokolle, downloaded council documents, local archive copies, or derived raw document exports.
+Gemeinderatsprotokolle, heruntergeladene Gemeinderatsdokumente, lokale Archivkopien und daraus abgeleitete rohe Dokumentexporte niemals committen, stagen oder pushen.
 
-This includes:
+Das betrifft insbesondere:
 
 - `graz_protokolle_arbeitskopie/`
 - `protokolle/`
@@ -13,35 +13,36 @@ This includes:
 - `data/source/`
 - `*.docx`, `*.doc`, `*.pdf`, `*.xlsx`, `*.xls`, `*.odt`
 
-Only commit source code, documentation, parser definitions, tests, and sanitized example fixtures.
+Nur Quellcode, Dokumentation, Parserdefinitionen, Tests und bereinigte Beispiel-Fixtures committen.
 
-## Working Notes
+## Arbeitsnotizen
 
-- Keep this file and the other project Markdown files current when project direction, data policy, commands, or architecture changes.
-- Before any commit, run `git status --short` and confirm no protocol files are staged.
-- If sample data is needed, create small sanitized text fixtures that do not contain full protocol content.
-- Treat source documents as local working material, not repository content.
+- Diese Datei und die anderen Projekt-Markdown-Dateien aktuell halten, wenn sich Richtung, Datenregeln, Befehle oder Architektur ändern.
+- Vor jedem Commit `git status --short` ausführen und prüfen, dass keine Protokolldateien gestaged sind.
+- Wenn Beispieldaten nötig sind, kleine bereinigte Textfixtures erstellen, die keinen vollständigen Protokollinhalt enthalten.
+- Quelldokumente als lokales Arbeitsmaterial behandeln, nicht als Repository-Inhalt.
 
-## Current Local Data
+## Aktuelle lokale Daten
 
-The current workspace contains a local, ignored protocol working copy:
+Der aktuelle Workspace enthält eine lokale, ignorierte Protokoll-Arbeitskopie:
 
 - `graz_protokolle_arbeitskopie/`
 
-It contains DOCX files copied from `E:\01_StadtGrazProtokolle\Archiv\...` plus a local `manifest.json`. This directory is intentionally ignored by Git.
+Der Ordner enthält DOCX-Dateien aus `E:\01_StadtGrazProtokolle\Archiv\...` plus eine lokale `manifest.json`. Dieser Ordner ist absichtlich von Git ignoriert.
 
-## Current MVP
+## Aktuelles MVP
 
-The parser MVP is implemented in `graz_protocols/` and tested with sanitized fixtures in `tests/`.
-It reads DOCX paragraph style metadata and currently emits `agenda_item`, `urgent_motion`, `written_question`, and `written_motion` records.
-Keep `result_text` standardized for display, not copied from protocol wording.
-Keep original result formulations only in ignored local output fields such as `raw_result_text`.
-Use `votes` for structured decision details such as outcome, approval, against, and abstention parties.
+Das Parser-MVP liegt in `graz_protocols/` und wird mit bereinigten Fixtures in `tests/` geprüft.
+Es liest DOCX-Absatzformatvorlagen und erzeugt aktuell die internen Typen `agenda_item`, `urgent_motion`, `written_question` und `written_motion`.
+`result_text` bleibt für die Anzeige standardisiert und wird nicht aus dem Protokollwortlaut kopiert.
+Originalformulierungen bleiben nur in ignorierten lokalen Ausgabefeldern wie `raw_result_text`.
+`votes` enthält strukturierte Entscheidungsdetails wie Ergebnis, Zustimmung, Gegenstimmen und Enthaltungen.
+Der Viewer zeigt deutsche Typen und deutsche Statuswerte.
 
-Use:
+Parser ausführen:
 
 ```powershell
 python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items.jsonl --summary out\summary.json
 ```
 
-The output directory `out/` is ignored and must remain untracked.
+Der Ausgabeordner `out/` ist ignoriert und muss untracked bleiben.

@@ -1,43 +1,43 @@
-# Data Policy
+# Datenregeln
 
-## Non-Negotiable Rule
+## Nicht verhandelbare Regel
 
-Gemeinderatsprotokolle and raw downloaded documents must never be pushed to Git.
+Gemeinderatsprotokolle und roh heruntergeladene Dokumente dürfen niemals ins Git gepusht werden.
 
-The `.gitignore` is configured to exclude common protocol locations and document formats, but this is not enough by itself. Always check `git status --short` before staging or committing.
+Die `.gitignore` schließt typische Protokollordner und Dokumentformate aus. Das allein reicht aber nicht. Vor jedem Staging oder Commit immer `git status --short` prüfen.
 
-## Allowed In Git
+## Im Git erlaubt
 
-- source code
-- tests
-- documentation
-- extraction schemas
-- small sanitized fixtures
-- metadata-only examples without full protocol text
+- Quellcode
+- Tests
+- Dokumentation
+- Extraktionsschemata
+- kleine bereinigte Fixtures
+- reine Metadatenbeispiele ohne vollständigen Protokolltext
 
-## Not Allowed In Git
+## Im Git verboten
 
-- DOCX/PDF/XLSX protocol files
-- full extracted protocol text
-- raw DIGRA exports
-- local archive manifests containing sensitive absolute paths, unless explicitly sanitized
-- generated databases with source content
+- DOCX-/PDF-/XLSX-Protokolldateien
+- vollständig extrahierter Protokolltext
+- rohe DIGRA-Exporte
+- lokale Archiv-Manifeste mit sensiblen absoluten Pfaden, außer sie wurden ausdrücklich bereinigt
+- erzeugte Datenbanken mit Quelleninhalt
 
-## Local Working Data
+## Lokale Arbeitsdaten
 
-Use ignored directories for real source material:
+Für echtes Quellenmaterial ignorierte Ordner verwenden:
 
 - `graz_protokolle_arbeitskopie/`
 - `data/raw/`
 - `data/source/`
 
-Use ignored output locations for generated extraction results:
+Für erzeugte Extraktionsergebnisse ignorierte Ausgabeorte verwenden:
 
 - `out/`
 - `exports/`
 - `*.sqlite`
 - `*.jsonl`
 
-## Sanitized Fixtures
+## Bereinigte Fixtures
 
-When tests need examples, create short artificial snippets that preserve structure but do not copy full protocol content.
+Wenn Tests Beispiele brauchen, kurze künstliche Ausschnitte erstellen, die die Struktur erhalten, aber keinen vollständigen Protokollinhalt kopieren.

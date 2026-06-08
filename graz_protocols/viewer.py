@@ -10,36 +10,36 @@ import sys
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="graz-protocols-viewer",
-        description="Build a local double-click HTML viewer for parser output.",
+        description="Erzeugt eine lokale Doppelklick-HTML-Ansicht für die Parser-Ausgabe.",
     )
     parser.add_argument(
         "--records",
         type=Path,
         default=Path("out") / "agenda_items.jsonl",
-        help="JSONL records file. Defaults to out/agenda_items.jsonl.",
+        help="JSONL-Datei mit Einträgen. Standard: out/agenda_items.jsonl.",
     )
     parser.add_argument(
         "--summary",
         type=Path,
         default=Path("out") / "summary.json",
-        help="Summary JSON file. Defaults to out/summary.json.",
+        help="JSON-Datei mit Zusammenfassung. Standard: out/summary.json.",
     )
     parser.add_argument(
         "--output",
         type=Path,
         default=Path("viewer.html"),
-        help="HTML output file. Defaults to viewer.html.",
+        help="HTML-Ausgabedatei. Standard: viewer.html.",
     )
     args = parser.parse_args(argv)
 
     if not args.records.exists():
-        print(f"Records file not found: {args.records}", file=sys.stderr)
+        print(f"Eintragsdatei nicht gefunden: {args.records}", file=sys.stderr)
         return 1
 
     records = read_jsonl(args.records)
     summary = read_json(args.summary) if args.summary.exists() else {}
     args.output.write_text(build_html(records, summary), encoding="utf-8")
-    print(f"Wrote {args.output} with {len(records)} records.")
+    print(f"{args.output} mit {len(records)} Einträgen geschrieben.")
     return 0
 
 
@@ -59,7 +59,7 @@ def read_json(path: Path) -> dict:
 
 def build_html(records: list[dict], summary: dict) -> str:
     data = json.dumps([viewer_record(record) for record in records], ensure_ascii=False)
-    summary_data = json.dumps(summary, ensure_ascii=False)
+    summary_data = json.dumps(viewer_summary(summary), ensure_ascii=False)
     return f"""<!doctype html>
 <html lang="de">
 <head>
@@ -215,7 +215,7 @@ def build_html(records: list[dict], summary: dict) -> str:
     <div class="meta">
       <span>Lokale HTML-Ansicht</span>
       <span>Keine Protokolle im Git</span>
-      <span>Quelle: Parser-Output aus <code>out/agenda_items.jsonl</code></span>
+      <span>Quelle: lokale Parser-Ausgabe</span>
     </div>
   </header>
   <section class="toolbar">
@@ -228,9 +228,9 @@ def build_html(records: list[dict], summary: dict) -> str:
   <main>
     <section class="stats">
       <div class="stat"><b id="visibleCount">0</b><span>sichtbare Treffer</span></div>
-      <div class="stat"><b id="totalCount">0</b><span>Records gesamt</span></div>
-      <div class="stat"><b id="fileCount">0</b><span>Dateien mit Records</span></div>
-      <div class="stat"><b id="unknownCount">0</b><span>unklarer Status</span></div>
+      <div class="stat"><b id="totalCount">0</b><span>Einträge gesamt</span></div>
+      <div class="stat"><b id="fileCount">0</b><span>Dateien mit Einträgen</span></div>
+      <div class="stat"><b id="unklarCount">0</b><span>unklarer Status</span></div>
     </section>
     <div id="tableWrap"></div>
   </main>
@@ -262,26 +262,26 @@ def build_html(records: list[dict], summary: dict) -> str:
 
     function recordHaystack(record) {{
       return [
-        record.meeting_date,
-        record.record_type,
-        record.section,
-        record.agenda_item_no,
-        ...(record.business_numbers || []),
-        record.title,
+        record.datum,
+        record.typ,
+        record.abschnitt,
+        record.stueck_nr,
+        ...(record.geschaeftszahlen || []),
+        record.titel,
         record.status,
-        ...(record.amounts || []),
-        ...(record.locations || []),
-        record.result_text
+        ...(record.betraege || []),
+        ...(record.orte || []),
+        record.ergebnis
       ].join(' ').toLocaleLowerCase('de-AT');
     }}
 
     function filteredRecords() {{
       const query = search.value.trim().toLocaleLowerCase('de-AT');
       return records.filter((record) => {{
-        if (dateFilter.value && record.meeting_date !== dateFilter.value) return false;
-        if (typeFilter.value && record.record_type !== typeFilter.value) return false;
+        if (dateFilter.value && record.datum !== dateFilter.value) return false;
+        if (typeFilter.value && record.typ !== typeFilter.value) return false;
         if (statusFilter.value && record.status !== statusFilter.value) return false;
-        if (sectionFilter.value && record.section !== sectionFilter.value) return false;
+        if (sectionFilter.value && record.abschnitt !== sectionFilter.value) return false;
         if (query && !recordHaystack(record).includes(query)) return false;
         return true;
       }});
@@ -291,8 +291,8 @@ def build_html(records: list[dict], summary: dict) -> str:
       const visible = filteredRecords();
       byId('visibleCount').textContent = visible.length;
       byId('totalCount').textContent = records.length;
-      byId('fileCount').textContent = summary.files_with_records ?? new Set(records.map((r) => r.source_file)).size;
-      byId('unknownCount').textContent = summary.records_by_status?.unknown ?? records.filter((r) => r.status === 'unknown').length;
+      byId('fileCount').textContent = summary.dateien_mit_eintraegen ?? new Set(records.map((r) => r.quell_datei)).size;
+      byId('unklarCount').textContent = summary.unklare_eintraege ?? records.filter((r) => r.status === 'unklar').length;
 
       if (!visible.length) {{
         tableWrap.innerHTML = '<div class="empty">Keine Treffer für diese Filter.</div>';
@@ -301,15 +301,15 @@ def build_html(records: list[dict], summary: dict) -> str:
 
       const rows = visible.map((record) => `
         <tr>
-          <td data-label="Datum">${{escapeHtml(record.meeting_date)}}</td>
-          <td data-label="Typ"><span class="badge">${{escapeHtml(record.record_type || '')}}</span></td>
-          <td data-label="Stk.">${{escapeHtml(record.agenda_item_no)}}</td>
-          <td data-label="Status"><span class="badge">${{escapeHtml(record.status)}}</span></td>
-          <td data-label="Geschäftszahl">${{escapeHtml((record.business_numbers || []).join(', '))}}</td>
-          <td data-label="Titel" class="title">${{escapeHtml(record.title)}}</td>
-          <td data-label="Beträge" class="amount">${{escapeHtml((record.amounts || []).join(', '))}}</td>
-          <td data-label="Orte">${{escapeHtml((record.locations || []).join(', '))}}</td>
-          <td data-label="Ergebnisse" class="result">${{escapeHtml(record.result_text || '')}}</td>
+          <td data-label="Datum">${{escapeHtml(record.datum)}}</td>
+          <td data-label="Typ"><span class="badge">${{escapeHtml(record.typ || '')}}</span></td>
+          <td data-label="Stk.">${{escapeHtml(record.stueck_nr)}}</td>
+          <td data-label="Status"><span class="badge">${{escapeHtml(record.status || '')}}</span></td>
+          <td data-label="Geschäftszahl">${{escapeHtml((record.geschaeftszahlen || []).join(', '))}}</td>
+          <td data-label="Titel" class="title">${{escapeHtml(record.titel)}}</td>
+          <td data-label="Beträge" class="amount">${{escapeHtml((record.betraege || []).join(', '))}}</td>
+          <td data-label="Orte">${{escapeHtml((record.orte || []).join(', '))}}</td>
+          <td data-label="Ergebnisse" class="result">${{escapeHtml(record.ergebnis || '')}}</td>
         </tr>
       `).join('');
 
@@ -333,10 +333,10 @@ def build_html(records: list[dict], summary: dict) -> str:
       `;
     }}
 
-    fillSelect(dateFilter, records.map((record) => record.meeting_date));
-    fillSelect(typeFilter, records.map((record) => record.record_type));
+    fillSelect(dateFilter, records.map((record) => record.datum));
+    fillSelect(typeFilter, records.map((record) => record.typ));
     fillSelect(statusFilter, records.map((record) => record.status));
-    fillSelect(sectionFilter, records.map((record) => record.section));
+    fillSelect(sectionFilter, records.map((record) => record.abschnitt));
     [search, dateFilter, typeFilter, statusFilter, sectionFilter].forEach((el) => el.addEventListener('input', render));
     render();
   </script>
@@ -346,18 +346,48 @@ def build_html(records: list[dict], summary: dict) -> str:
 
 
 def viewer_record(record: dict) -> dict:
-    visible_record = dict(record)
-    visible_record.pop("raw_result_text", None)
-    visible_record.pop("source_snippet", None)
-    visible_record.pop("status_text", None)
-    visible_record["votes"] = [viewer_vote(vote) for vote in visible_record.get("votes", [])]
-    return visible_record
+    return {
+        "datum": record.get("meeting_date", ""),
+        "typ": german_record_type(str(record.get("record_type", ""))),
+        "abschnitt": record.get("section", ""),
+        "stueck_nr": record.get("agenda_item_no", ""),
+        "geschaeftszahlen": record.get("business_numbers", []),
+        "titel": record.get("title", ""),
+        "status": german_status(str(record.get("status", ""))),
+        "ergebnis": record.get("result_text", ""),
+        "betraege": record.get("amounts", []),
+        "orte": record.get("locations", []),
+        "quell_datei": record.get("source_file", ""),
+    }
 
 
-def viewer_vote(vote: dict) -> dict:
-    visible_vote = dict(vote)
-    visible_vote.pop("raw_text", None)
-    return visible_vote
+def viewer_summary(summary: dict) -> dict:
+    return {
+        "dateien_mit_eintraegen": summary.get("files_with_records", 0),
+        "unklare_eintraege": summary.get("records_by_status", {}).get("unknown", 0),
+    }
+
+
+def german_record_type(value: str) -> str:
+    return {
+        "agenda_item": "Tagesordnungspunkt",
+        "urgent_motion": "Dringlichkeitsantrag",
+        "written_question": "Schriftliche Anfrage",
+        "written_motion": "Schriftlicher Antrag",
+    }.get(value, value)
+
+
+def german_status(value: str) -> str:
+    return {
+        "accepted_unanimous": "einstimmig angenommen",
+        "accepted_majority": "mehrheitlich angenommen",
+        "accepted": "angenommen",
+        "rejected_majority": "mehrheitlich abgelehnt",
+        "rejected": "abgelehnt",
+        "assigned": "zugewiesen",
+        "postponed": "vertagt",
+        "unknown": "unklar",
+    }.get(value, value)
 
 
 if __name__ == "__main__":
