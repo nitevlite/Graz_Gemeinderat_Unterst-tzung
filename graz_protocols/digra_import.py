@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
+from difflib import SequenceMatcher
 from pathlib import Path
 import importlib
 import json
@@ -21,6 +22,9 @@ DEFAULT_DIGRA_TOOL_PATH = Path(r"E:\01_StadtGrazProtokolle\Digra_Export_Tool\app
 DIGRA_SOURCE = "digra"
 DIGRA_MISSING_SOURCE = "digra_fehlt"
 PROTOCOL_SOURCE = "protokoll"
+CACHE_VERSION = 2
+MIN_AGENDA_TITLE_SCORE = 0.35
+MIN_GENERIC_TITLE_SCORE = 0.44
 
 BUSINESS_NUMBER_RE = re.compile(r"\b\d{1,6}/\d{1,4}\b")
 DATE_RE = re.compile(r"\b\d{1,2}\.\d{1,2}\.\d{4}\b")
@@ -30,7 +34,7 @@ OUTCOME_LINE_RE = re.compile(
     re.IGNORECASE,
 )
 PARTY_NOTE_RE = re.compile(
-    r"\b(?P<label>Zustimmung|Dagegen|Gegen|Enthaltung|Gegenstimmen?)\s*:?\s*(?P<parties>[^.;\n]+)",
+    r"\b(?P<label>Zustimmung|Dagegen|Gegen|Enthaltung|Gegenstimmen?)\s*:\s*(?P<parties>[^.;\n]+)",
     re.IGNORECASE,
 )
 
@@ -60,19 +64,27 @@ def enrich_records_with_digra(
 ) -> tuple[list[AgendaRecord], dict]:
     dates = sorted({record.meeting_date for record in records if record.meeting_date})
     entries = load_or_fetch_entries(dates, tool_path, cache_path)
-    index = build_match_index(entries)
+    entries_by_type = group_entries_by_type(entries)
     type_counts: dict[tuple[str, str], int] = {}
+    used_urls: set[str] = set()
     enriched: list[AgendaRecord] = []
     matched = 0
     matched_with_result = 0
+    protocol_fallbacks = 0
 
     for record in records:
         key = (record.meeting_date, record.record_type)
         order = type_counts.get(key, 0) + 1
         type_counts[key] = order
-        entry = index.get((record.meeting_date, record.record_type, order))
+        entry, match_score = find_best_digra_entry(
+            record,
+            entries_by_type.get((record.meeting_date, record.record_type), []),
+            used_urls,
+            order,
+        )
         if entry is not None:
             matched += 1
+            used_urls.add(entry.url)
         if entry is not None and entry.result_text:
             matched_with_result += 1
             enriched.append(
@@ -87,6 +99,7 @@ def enrich_records_with_digra(
                     digra_url=entry.url,
                     digra_business_number=entry.business_number,
                     protocol_result_text=record.result_text,
+                    digra_match_score=match_score,
                 )
             )
             continue
@@ -103,16 +116,19 @@ def enrich_records_with_digra(
                     digra_url=entry.url if entry else "",
                     digra_business_number=entry.business_number if entry else "",
                     protocol_result_text=record.result_text,
+                    digra_match_score=match_score,
                 )
             )
             continue
+        protocol_fallbacks += 1
         enriched.append(
             replace(
                 record,
-                result_source=PROTOCOL_SOURCE,
+                result_source=PROTOCOL_SOURCE if record.result_text and record.result_text != "Unbekannt" else DIGRA_MISSING_SOURCE,
                 digra_url=entry.url if entry else "",
                 digra_business_number=entry.business_number if entry else "",
                 protocol_result_text=record.result_text,
+                digra_match_score=match_score,
             )
         )
 
@@ -120,7 +136,9 @@ def enrich_records_with_digra(
         "digra_entries_total": len(entries),
         "digra_records_matched": matched,
         "digra_results_used": matched_with_result,
+        "digra_protocol_fallbacks": protocol_fallbacks,
         "digra_results_only": results_only,
+        "digra_match_strategy": "agenda_item_no_or_title_similarity",
     }
     return enriched, summary
 
@@ -129,7 +147,7 @@ def load_or_fetch_entries(dates: list[str], tool_path: Path, cache_path: Path | 
     if cache_path is not None and cache_path.exists():
         payload = json.loads(cache_path.read_text(encoding="utf-8"))
         cached_dates = set(payload.get("dates", []))
-        if set(dates).issubset(cached_dates):
+        if payload.get("cache_version") == CACHE_VERSION and set(dates).issubset(cached_dates):
             return [DigraEntry(**entry) for entry in payload.get("entries", [])]
 
     entries = fetch_digra_entries(dates, tool_path)
@@ -137,7 +155,7 @@ def load_or_fetch_entries(dates: list[str], tool_path: Path, cache_path: Path | 
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         cache_path.write_text(
             json.dumps(
-                {"dates": dates, "entries": [asdict(entry) for entry in entries]},
+                {"cache_version": CACHE_VERSION, "dates": dates, "entries": [asdict(entry) for entry in entries]},
                 ensure_ascii=False,
                 indent=2,
                 sort_keys=True,
@@ -262,8 +280,88 @@ def fetch_digra_result(exporter, session, url: str) -> DigraResult:
     return DigraResult(status, format_result_text(votes, status, outcome_line), raw_result_text, votes, document_title)
 
 
-def build_match_index(entries: Iterable[DigraEntry]) -> dict[tuple[str, str, int], DigraEntry]:
-    return {(entry.meeting_date, entry.record_type, entry.order_in_type): entry for entry in entries}
+def group_entries_by_type(entries: Iterable[DigraEntry]) -> dict[tuple[str, str], list[DigraEntry]]:
+    grouped: dict[tuple[str, str], list[DigraEntry]] = {}
+    for entry in entries:
+        grouped.setdefault((entry.meeting_date, entry.record_type), []).append(entry)
+    return grouped
+
+
+def find_best_digra_entry(
+    record: AgendaRecord,
+    candidates: list[DigraEntry],
+    used_urls: set[str],
+    order_in_type: int,
+) -> tuple[DigraEntry | None, float]:
+    available = [entry for entry in candidates if entry.url not in used_urls]
+    if not available:
+        return None, 0.0
+
+    if record.record_type == "agenda_item":
+        numbered = [entry for entry in available if entry.agenda_item_no == record.agenda_item_no]
+        if numbered:
+            best_numbered, numbered_score = best_by_title(
+                record,
+                numbered,
+                order_in_type,
+                minimum=MIN_AGENDA_TITLE_SCORE,
+                use_order_bonus=False,
+            )
+            if best_numbered is not None:
+                return best_numbered, numbered_score
+
+    best, score = best_by_title(record, available, order_in_type, minimum=0.0)
+    if best is None:
+        return None, 0.0
+    if score >= MIN_GENERIC_TITLE_SCORE:
+        return best, score
+    if best.order_in_type == order_in_type and record.record_type != "agenda_item" and score >= 0.28:
+        return best, score
+    return None, 0.0
+
+
+def best_by_title(
+    record: AgendaRecord,
+    candidates: list[DigraEntry],
+    order_in_type: int,
+    minimum: float,
+    use_order_bonus: bool = True,
+) -> tuple[DigraEntry | None, float]:
+    best: DigraEntry | None = None
+    best_score = 0.0
+    for entry in candidates:
+        title_score = title_similarity(record.title, entry.title)
+        order_bonus = 0.08 if use_order_bonus and entry.order_in_type == order_in_type else 0.0
+        score = min(title_score + order_bonus, 1.0)
+        if score > best_score:
+            best = entry
+            best_score = score
+    if best is None or best_score < minimum:
+        return None, 0.0
+    return best, round(best_score, 3)
+
+
+def title_similarity(left: str, right: str) -> float:
+    left_norm = normalize_match_text(left)
+    right_norm = normalize_match_text(right)
+    if not left_norm or not right_norm:
+        return 0.0
+    sequence_score = SequenceMatcher(None, left_norm, right_norm).ratio()
+    left_tokens = set(left_norm.split())
+    right_tokens = set(right_norm.split())
+    overlap = len(left_tokens & right_tokens) / max(len(left_tokens), 1)
+    return max(sequence_score, overlap)
+
+
+def normalize_match_text(value: str) -> str:
+    value = value.casefold()
+    value = re.sub(r"\b[a-zäöüß]{0,5}\d+[a-z]?[-_/]?\d+(?:[-_/]\d+)*\b", " ", value)
+    value = re.sub(r"\b\d{1,6}/\d{1,4}\b", " ", value)
+    value = re.sub(r"€|\beuro\b|\d+[.,]?\d*", " ", value)
+    value = re.sub(r"[^\wäöüß]+", " ", value)
+    stopwords = {"der", "die", "das", "und", "von", "für", "fuer", "im", "in", "am", "an", "zu", "zur", "zum"}
+    tokens = [token for token in value.split() if len(token) > 2 and token not in stopwords]
+    return " ".join(tokens)
 
 
 def flatten_blocks(blocks: list[list[str]]) -> list[str]:

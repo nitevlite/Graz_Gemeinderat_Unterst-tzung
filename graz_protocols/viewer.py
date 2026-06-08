@@ -336,6 +336,7 @@ def build_html(records: list[dict], summary: dict) -> str:
           ${{detailField('Ergebnisquelle', record.ergebnisquelle)}}
           ${{detailField('Ergebnis', record.ergebnis)}}
           ${{detailField('DIGRA-Einlagezahl', record.digra_einlagezahl)}}
+          ${{detailField('DIGRA-Trefferwert', record.digra_trefferwert)}}
           ${{detailField('DIGRA-Link', record.digra_url)}}
           ${{detailField('Beträge', joinList(record.betraege))}}
           ${{detailField('Orte', joinList(record.orte))}}
@@ -437,6 +438,7 @@ def viewer_record(record: dict) -> dict:
         "ergebnisquelle": german_result_source(str(record.get("result_source", ""))),
         "digra_url": record.get("digra_url", ""),
         "digra_einlagezahl": record.get("digra_business_number", ""),
+        "digra_trefferwert": format_score(record.get("digra_match_score", 0)),
         "betraege": record.get("amounts", []),
         "orte": record.get("locations", []),
         "quell_datei": record.get("source_file", ""),
@@ -479,6 +481,16 @@ def german_result_source(value: str) -> str:
         "digra_fehlt": "DIGRA fehlt",
         "protokoll": "Protokoll",
     }.get(value, value or "Protokoll")
+
+
+def format_score(value: object) -> str:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return "-"
+    if score <= 0:
+        return "-"
+    return f"{score:.2f}"
 
 
 if __name__ == "__main__":

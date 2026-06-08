@@ -67,7 +67,8 @@ Er übernimmt aus DIGRA:
 - offizielles Ergebnis aus `Beschlussvermerk`, wenn vorhanden
 
 Wichtig: Ergebnisse werden nicht aus beliebigen Wörtern im DIGRA-Dokumenttext abgeleitet. Nur ein `Beschlussvermerk` zählt als DIGRA-Ergebnis.
-Mit `--digra-results-only` werden nicht belegte Ergebnisse ausdrücklich als `DIGRA-Ergebnis fehlt` markiert.
+Im Standardmodus `--digra` haben DIGRA-Beschlussvermerke Vorrang. Wo DIGRA wirklich kein Ergebnis liefert oder die Zuordnung nicht plausibel genug ist, wird das normalisierte Protokoll-Ergebnis als Fallback verwendet.
+Mit `--digra-results-only` werden nicht belegte Ergebnisse ausdrücklich als `DIGRA-Ergebnis fehlt` markiert; dieser Modus ist nur für Audits gedacht.
 
 Letzter lokaler Lauf am 2026-06-08:
 
@@ -91,11 +92,12 @@ Letzter lokaler Lauf am 2026-06-08:
 
 Letzter DIGRA-Lauf am 2026-06-08:
 
-- Befehl: `python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra --digra-results-only`
+- Befehl: `python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra`
 - DIGRA-Einträge geladen: 1675
-- lokalen Datensätzen zugeordnet: 990
-- Ergebnisse aus DIGRA-Beschlussvermerken übernommen: 237
-- Datensätze ohne DIGRA-Ergebnis im Ergebnisfeld markiert: 898
+- lokalen Datensätzen zugeordnet: 951
+- Ergebnisse aus DIGRA-Beschlussvermerken übernommen: 412
+- Protokoll-Fallbacks, weil DIGRA kein plausibel zuordenbares Ergebnis liefert: 718
+- Datensätze ohne DIGRA- oder Protokoll-Ergebnis: 5
 - Ausgabe: `out/agenda_items_digra.jsonl`
 - SQLite-Ausgabe: `out\eintraege_digra.sqlite`
 - Viewer-Ausgabe: `viewer.html`

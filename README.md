@@ -78,11 +78,12 @@ Optional erzeugt er zusätzlich eine lokale SQLite-Datenbank mit der Tabelle `ei
 Parser mit DIGRA-Abgleich ausführen:
 
 ```powershell
-python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra --digra-results-only
+python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra
 ```
 
 Dieser Modus nutzt das vorhandene Tool unter `E:\01_StadtGrazProtokolle\Digra_Export_Tool\app`, lädt DIGRA-Sitzungen und DIGRA-Dokumentseiten, extrahiert offizielle Ergebnisse nur aus dem Block `Beschlussvermerk` und cached die geladenen DIGRA-Daten lokal in `out\digra_cache.json`.
-Mit `--digra-results-only` werden Protokoll-Ergebnisse nicht als Ergebnis angezeigt. Wenn DIGRA keinen Beschlussvermerk liefert oder kein Ergebnis zugeordnet werden kann, steht im Ergebnisfeld ausdrücklich `DIGRA-Ergebnis fehlt`.
+DIGRA-Ergebnisse haben Vorrang. Wenn DIGRA keinen Beschlussvermerk liefert oder kein Ergebnis zugeordnet werden kann, bleibt das normalisierte Protokoll-Ergebnis als Fallback erhalten und die Ergebnisquelle steht auf `Protokoll`.
+Mit `--digra-results-only` kann man zusätzlich auditieren, wo DIGRA wirklich kein Ergebnis liefert.
 
 Interne Eintragstypen:
 

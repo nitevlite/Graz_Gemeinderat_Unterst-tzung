@@ -65,12 +65,13 @@ Mit `--sqlite` erzeugt er zusätzlich eine lokale SQLite-Datenbank mit deutscher
 DIGRA-Abgleich ausführen:
 
 ```powershell
-python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra --digra-results-only
+python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items_digra.jsonl --summary out\summary_digra.json --sqlite out\eintraege_digra.sqlite --digra
 ```
 
 Dieser Lauf nutzt `E:\01_StadtGrazProtokolle\Digra_Export_Tool\app`.
 Die DIGRA-Daten werden in `out\digra_cache.json` gecacht und bleiben ignoriertes lokales Arbeitsmaterial.
-`--digra-results-only` verhindert, dass Protokoll-Ergebnisse als Ergebnis angezeigt werden; fehlende DIGRA-Beschlussvermerke werden als `DIGRA-Ergebnis fehlt` markiert.
+DIGRA-Beschlussvermerke haben Vorrang; wo DIGRA wirklich kein Ergebnis liefert, wird das normalisierte Protokoll-Ergebnis als Fallback verwendet.
+`--digra-results-only` ist nur für Audits gedacht und markiert fehlende DIGRA-Beschlussvermerke als `DIGRA-Ergebnis fehlt`.
 
 Lokale HTML-Ansicht bauen:
 

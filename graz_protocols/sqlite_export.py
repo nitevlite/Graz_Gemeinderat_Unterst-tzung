@@ -11,7 +11,7 @@ import uuid
 from .parser import AgendaRecord
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def write_sqlite(path: Path, records: list[AgendaRecord], summary: dict) -> None:
@@ -74,7 +74,8 @@ def create_schema(connection: sqlite3.Connection) -> None:
           ergebnisquelle TEXT NOT NULL,
           digra_url TEXT NOT NULL,
           digra_einlagezahl TEXT NOT NULL,
-          protokoll_ergebnis TEXT NOT NULL
+          protokoll_ergebnis TEXT NOT NULL,
+          digra_trefferwert REAL NOT NULL
         );
 
         CREATE INDEX IF NOT EXISTS idx_eintraege_datum ON eintraege(datum);
@@ -131,8 +132,9 @@ def insert_records(connection: sqlite3.Connection, records: list[AgendaRecord]) 
           ergebnisquelle,
           digra_url,
           digra_einlagezahl,
-          protokoll_ergebnis
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          protokoll_ergebnis,
+          digra_trefferwert
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         rows,
     )
@@ -162,4 +164,5 @@ def record_row(record: AgendaRecord) -> tuple:
         data["digra_url"],
         data["digra_business_number"],
         data["protocol_result_text"],
+        data["digra_match_score"],
     )
