@@ -55,3 +55,20 @@ Improve extraction beyond `Stk.` agenda items:
 - better vote result parsing with party names
 - stronger place extraction and geocoding-ready location records
 - SQLite output for search and timeline queries
+
+## GitHub Issues
+
+Created on 2026-06-08 in the private GitHub repo:
+
+- https://github.com/nitevlite/graz-council-protocol-explorer/issues/1
+- https://github.com/nitevlite/graz-council-protocol-explorer/issues/2
+- https://github.com/nitevlite/graz-council-protocol-explorer/issues/3
+- https://github.com/nitevlite/graz-council-protocol-explorer/issues/4
+- https://github.com/nitevlite/graz-council-protocol-explorer/issues/5
+- https://github.com/nitevlite/graz-council-protocol-explorer/issues/6
+- https://github.com/nitevlite/graz-council-protocol-explorer/issues/7
+- https://github.com/nitevlite/graz-council-protocol-explorer/issues/8
+- https://github.com/nitevlite/graz-council-protocol-explorer/issues/9
+- https://github.com/nitevlite/graz-council-protocol-explorer/issues/10
+- https://github.com/nitevlite/graz-council-protocol-explorer/issues/11
+- https://github.com/nitevlite/graz-council-protocol-explorer/issues/12

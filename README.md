@@ -74,3 +74,26 @@ python -m graz_protocols.viewer --records out\agenda_items.jsonl --summary out\s
 ```
 
 Then open `viewer.html` in a browser. The file is generated local output and ignored by Git.
+
+## GitHub Backlog
+
+Repository:
+
+```text
+https://github.com/nitevlite/graz-council-protocol-explorer
+```
+
+Current next-work backlog is tracked in GitHub Issues:
+
+- Parser section detection and TOC separation
+- Written questions and motions without `Stk.` numbers
+- Structured vote results and party votes
+- Stable JSONL schema and validation
+- SQLite output for search and timelines
+- DIGRA integration
+- Location extraction and map readiness
+- Better local HTML viewer
+- Goldset-based parser quality checks
+- Git/data-safety checks
+- Topic timelines across meetings
+- Roadmap/product documentation

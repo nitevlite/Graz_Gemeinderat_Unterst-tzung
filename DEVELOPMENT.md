@@ -10,6 +10,12 @@ git status --short
 
 Only stage source and documentation files. Never stage protocol files or generated raw extraction output.
 
+GitHub remote:
+
+```text
+origin https://github.com/nitevlite/graz-council-protocol-explorer.git
+```
+
 Recommended staging pattern:
 
 ```powershell
