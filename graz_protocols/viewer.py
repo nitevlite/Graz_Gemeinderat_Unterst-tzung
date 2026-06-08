@@ -162,6 +162,7 @@ def build_html(records: list[dict], summary: dict) -> str:
       background: #e9eee6;
       font-size: 13px;
     }}
+    tbody tr {{ cursor: pointer; }}
     tr:hover td {{ background: #fbfcfa; }}
     .title {{ min-width: 280px; font-weight: 600; }}
     .result {{
@@ -183,6 +184,35 @@ def build_html(records: list[dict], summary: dict) -> str:
       font-weight: 600;
       white-space: nowrap;
     }}
+    .detail {{
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }}
+    .detail h2 {{
+      margin: 0 0 8px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }}
+    .detail-grid {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(160px, 1fr));
+      gap: 10px 14px;
+    }}
+    .detail-field strong {{
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 3px;
+    }}
+    .detail-field span {{
+      white-space: pre-wrap;
+    }}
+    .detail-empty {{
+      color: var(--muted);
+    }}
     .empty {{
       padding: 28px;
       text-align: center;
@@ -194,10 +224,11 @@ def build_html(records: list[dict], summary: dict) -> str:
     @media (max-width: 920px) {{
       .toolbar {{ grid-template-columns: 1fr; position: static; }}
       .stats {{ grid-template-columns: repeat(2, minmax(130px, 1fr)); }}
+      .detail-grid {{ grid-template-columns: 1fr; }}
       th {{ position: static; }}
       table, thead, tbody, tr, th, td {{ display: block; }}
       thead {{ display: none; }}
-      tr {{ border-bottom: 1px solid var(--line); }}
+      tr {{ border-bottom: 1px solid var(--line); cursor: pointer; }}
       td {{ border-bottom: 0; }}
       td::before {{
         content: attr(data-label);
@@ -232,6 +263,7 @@ def build_html(records: list[dict], summary: dict) -> str:
       <div class="stat"><b id="fileCount">0</b><span>Dateien mit Einträgen</span></div>
       <div class="stat"><b id="unklarCount">0</b><span>unklarer Status</span></div>
     </section>
+    <section class="detail" id="detailWrap"></section>
     <div id="tableWrap"></div>
   </main>
   <script>
@@ -244,6 +276,9 @@ def build_html(records: list[dict], summary: dict) -> str:
     const statusFilter = byId('statusFilter');
     const sectionFilter = byId('sectionFilter');
     const tableWrap = byId('tableWrap');
+    const detailWrap = byId('detailWrap');
+    let sichtbareEintraege = [];
+    let ausgewaehlterEintrag = null;
 
     function escapeHtml(value) {{
       return String(value ?? '').replace(/[&<>"']/g, (char) => ({{
@@ -275,6 +310,35 @@ def build_html(records: list[dict], summary: dict) -> str:
       ].join(' ').toLocaleLowerCase('de-AT');
     }}
 
+    function joinList(values) {{
+      return (values || []).filter(Boolean).join(', ') || '-';
+    }}
+
+    function detailField(label, value) {{
+      return `<div class="detail-field"><strong>${{escapeHtml(label)}}</strong><span>${{escapeHtml(value || '-')}}</span></div>`;
+    }}
+
+    function renderDetail(record) {{
+      if (!record) {{
+        detailWrap.innerHTML = '<div class="detail-empty">Eintrag auswählen, um Details zu sehen.</div>';
+        return;
+      }}
+      detailWrap.innerHTML = `
+        <h2>${{escapeHtml(record.titel || 'Eintrag')}}</h2>
+        <div class="detail-grid">
+          ${{detailField('Datum', record.datum)}}
+          ${{detailField('Typ', record.typ)}}
+          ${{detailField('Stück', record.stueck_nr)}}
+          ${{detailField('Status', record.status)}}
+          ${{detailField('Geschäftszahlen', joinList(record.geschaeftszahlen))}}
+          ${{detailField('Quelldatei', record.quell_datei)}}
+          ${{detailField('Ergebnis', record.ergebnis)}}
+          ${{detailField('Beträge', joinList(record.betraege))}}
+          ${{detailField('Orte', joinList(record.orte))}}
+        </div>
+      `;
+    }}
+
     function filteredRecords() {{
       const query = search.value.trim().toLocaleLowerCase('de-AT');
       return records.filter((record) => {{
@@ -288,19 +352,23 @@ def build_html(records: list[dict], summary: dict) -> str:
     }}
 
     function render() {{
-      const visible = filteredRecords();
-      byId('visibleCount').textContent = visible.length;
+      sichtbareEintraege = filteredRecords();
+      if (ausgewaehlterEintrag && !sichtbareEintraege.includes(ausgewaehlterEintrag)) {{
+        ausgewaehlterEintrag = null;
+      }}
+      byId('visibleCount').textContent = sichtbareEintraege.length;
       byId('totalCount').textContent = records.length;
       byId('fileCount').textContent = summary.dateien_mit_eintraegen ?? new Set(records.map((r) => r.quell_datei)).size;
       byId('unklarCount').textContent = summary.unklare_eintraege ?? records.filter((r) => r.status === 'unklar').length;
+      renderDetail(ausgewaehlterEintrag);
 
-      if (!visible.length) {{
+      if (!sichtbareEintraege.length) {{
         tableWrap.innerHTML = '<div class="empty">Keine Treffer für diese Filter.</div>';
         return;
       }}
 
-      const rows = visible.map((record) => `
-        <tr>
+      const rows = sichtbareEintraege.map((record, index) => `
+        <tr data-index="${{index}}">
           <td data-label="Datum">${{escapeHtml(record.datum)}}</td>
           <td data-label="Typ"><span class="badge">${{escapeHtml(record.typ || '')}}</span></td>
           <td data-label="Stk.">${{escapeHtml(record.stueck_nr)}}</td>
@@ -338,6 +406,12 @@ def build_html(records: list[dict], summary: dict) -> str:
     fillSelect(statusFilter, records.map((record) => record.status));
     fillSelect(sectionFilter, records.map((record) => record.abschnitt));
     [search, dateFilter, typeFilter, statusFilter, sectionFilter].forEach((el) => el.addEventListener('input', render));
+    tableWrap.addEventListener('click', (event) => {{
+      const row = event.target.closest('tr[data-index]');
+      if (!row) return;
+      ausgewaehlterEintrag = sichtbareEintraege[Number(row.dataset.index)] || null;
+      renderDetail(ausgewaehlterEintrag);
+    }});
     render();
   </script>
 </body>

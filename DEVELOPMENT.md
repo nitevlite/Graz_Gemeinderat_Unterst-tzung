@@ -68,6 +68,7 @@ python -m graz_protocols.viewer --records out\agenda_items.jsonl --summary out\s
 ```
 
 Der erzeugte Viewer entfernt Rohformulierungen, Quellenausschnitte und interne englische Typ-/Statuscodes aus den eingebetteten Einträgen.
+Ein Klick auf eine Tabellenzeile zeigt eine deutsche Detailansicht für den Eintrag.
 
 ## Dokumentation aktuell halten
 

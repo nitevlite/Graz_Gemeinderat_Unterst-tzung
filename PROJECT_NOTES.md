@@ -48,6 +48,7 @@ Aktuelle Ergebnisbehandlung:
 - Ältere Formulierungen wie `mehrstimmig angenommen` werden zu mehrheitlicher Annahme normalisiert.
 - Parteiangaben wie `(Gegen KFG, NEOS, FPÖ)` werden zu `Dagegen: ...` normalisiert.
 - Der lokale Viewer zeigt deutsche Typen, deutsche Statuswerte und nur vereinheitlichte `Ergebnisse`.
+- Der lokale Viewer hat eine Detailansicht pro Eintrag mit Titel, Ergebnis, Geschäftszahlen, Beträgen, Orten und Quelldatei.
 - Rohformulierungen, Quellenausschnitte und interne englische Typ-/Statuscodes bleiben aus dem Viewer draußen.
 
 Letzter lokaler Lauf am 2026-06-08:

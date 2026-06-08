@@ -38,6 +38,9 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
 
     assert "Tagesordnungspunkt" in html
     assert "mehrheitlich angenommen" in html
+    assert "Eintrag auswählen, um Details zu sehen." in html
+    assert "Quelldatei" in html
+    assert "Geschäftszahlen" in html
     assert "agenda_item" not in html
     assert "agenda_item_no" not in html
     assert "accepted_majority" not in html
