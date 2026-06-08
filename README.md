@@ -54,3 +54,15 @@ Extract structured records from local DOCX files:
 - short source snippet
 
 Output should be a local ignored database or JSONL file, not committed.
+
+## MVP CLI
+
+Run the local parser against ignored DOCX working copies:
+
+```powershell
+python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items.jsonl --summary out\summary.json
+```
+
+The parser writes JSONL records with meeting date, agenda item number, business numbers, title, status, amounts, location hints, and a short source snippet.
+
+Generated output under `out/` is ignored and must not be committed.

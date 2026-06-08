@@ -29,3 +29,15 @@ The current workspace contains a local, ignored protocol working copy:
 - `graz_protokolle_arbeitskopie/`
 
 It contains DOCX files copied from `E:\01_StadtGrazProtokolle\Archiv\...` plus a local `manifest.json`. This directory is intentionally ignored by Git.
+
+## Current MVP
+
+The parser MVP is implemented in `graz_protocols/` and tested with sanitized fixtures in `tests/`.
+
+Use:
+
+```powershell
+python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items.jsonl --summary out\summary.json
+```
+
+The output directory `out/` is ignored and must remain untracked.

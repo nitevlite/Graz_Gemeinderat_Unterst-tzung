@@ -35,6 +35,24 @@ exports/
 
 Do not commit generated databases or JSONL files unless they are tiny sanitized fixtures.
 
+## Commands
+
+Run tests:
+
+```powershell
+python -m pytest -q
+```
+
+Pytest is configured without its cache provider to avoid local cache churn.
+
+Run the parser MVP:
+
+```powershell
+python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\agenda_items.jsonl --summary out\summary.json
+```
+
+The parser output is local working data and ignored by Git.
+
 ## Documentation Maintenance
 
 Whenever the project changes, update the relevant Markdown file in the same work session:

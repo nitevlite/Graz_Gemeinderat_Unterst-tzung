@@ -26,15 +26,31 @@ That project can inform this one, but raw exports from it must stay out of Git.
 
 As of 2026-06-08, `graz_protokolle_arbeitskopie/` contains 18 local DOCX protocol copies for initial analysis. The folder is ignored and must remain untracked.
 
+## MVP Parser
+
+An MVP parser now reads ignored local DOCX files and writes ignored structured output.
+
+Current modules:
+
+- `graz_protocols/docx_text.py`: stdlib DOCX text extraction
+- `graz_protocols/parser.py`: agenda item, status, amount, business-number, and location-hint extraction
+- `graz_protocols/cli.py`: batch parser CLI
+- `tests/test_parser.py`: sanitized parser tests
+
+Latest local run on 2026-06-08:
+
+- input: `graz_protokolle_arbeitskopie/`
+- files parsed: 18
+- records written: 459
+- output: `out/agenda_items.jsonl`
+
+Generated output is intentionally ignored.
+
 ## Next Build Step
 
-Create a parser MVP that reads ignored local DOCX files and writes ignored structured output.
+Improve extraction beyond `Stk.` agenda items:
 
-Suggested first modules:
-
-- DOCX text extraction
-- section splitter
-- agenda item parser
-- status phrase classifier
-- amount extractor
-- local CLI for batch processing
+- written questions and written motions without `Stk.` headings
+- better vote result parsing with party names
+- stronger place extraction and geocoding-ready location records
+- SQLite output for search and timeline queries
