@@ -710,7 +710,10 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
               </span>
               <span class="badge">${{escapeHtml(topic.confidence || '')}}</span>
             </div>
-            <div class="topic-meta">Zeitstrahl: ${{escapeHtml((topic.dates || []).join(' bis '))}}</div>
+            <div class="topic-meta">
+              Zeitstrahl: ${{escapeHtml((topic.dates || []).join(' bis '))}}
+              ${{topic.business_number ? ` · Geschäftszahl: ${{escapeHtml(topic.business_number)}}` : ''}}
+            </div>
             <div class="timeline">${{timeline}}</div>
             <button class="topic-action" type="button" data-topic-query="${{escapeHtml(topic.label || '')}}">Einträge dazu filtern</button>
           </article>
@@ -867,6 +870,7 @@ def viewer_topic(topic: dict) -> dict:
     return {
         "topic_id": topic.get("topic_id", ""),
         "label": topic.get("label", ""),
+        "business_number": topic.get("business_number", ""),
         "reason": topic.get("reason", ""),
         "confidence": format_score(topic.get("confidence", 0)),
         "dates": topic.get("dates", []),

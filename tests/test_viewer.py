@@ -92,8 +92,9 @@ def test_viewer_can_embed_topic_candidates():
         [
             {
                 "confidence": 0.95,
+                "business_number": "A 14-001665/2025",
                 "dates": ["2025-01-16", "2025-03-20"],
-                "label": "A 14-001665/2025",
+                "label": "Flächenwidmungsplan Landeshauptstadt",
                 "reason": "gleiche Geschäftszahl-Basis",
                 "records": [
                     {"meeting_date": "2025-01-16", "title": "Auflage des Entwurfs"},
@@ -108,6 +109,8 @@ def test_viewer_can_embed_topic_candidates():
     assert "timeline-step" in html
     assert "Zeitstrahl:" in html
     assert "Einträge dazu filtern" in html
+    assert "Flächenwidmungsplan Landeshauptstadt" in html
+    assert "Geschäftszahl:" in html
     assert "A 14-001665/2025" in html
     assert "gleiche Geschäftszahl-Basis" in html
     assert "Auflage des Entwurfs" in html
