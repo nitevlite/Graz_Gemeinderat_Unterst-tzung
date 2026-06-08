@@ -1,4 +1,4 @@
-from graz_protocols.parser import extract_meeting_date, parse_protocol
+from graz_protocols.parser import ParserParagraph, extract_meeting_date, parse_protocol
 
 
 def test_extracts_stk_record_with_status_amount_and_location():
@@ -48,3 +48,38 @@ def test_extract_meeting_date_from_text_when_filename_has_no_iso_date():
     )
 
     assert date == "2026-03-12"
+
+
+def test_extracts_written_question_heading_without_stk_number():
+    paragraphs = [
+        ParserParagraph("Protokoll über die öffentliche Sitzung des Gemeinderates am 14.11.2024", "Normal", 1),
+        ParserParagraph("Anfragen (schriftlich)", "Heading1", 2),
+        ParserParagraph("Aufträge an Beispiel Sicherheitsdienst GmbH", "Heading2", 3),
+        ParserParagraph("(Berichterstatter: KlObm Beispiel, KFG)", "Normal", 4),
+        ParserParagraph("Originaltext der Anfrage:", "Normal", 5),
+        ParserParagraph("Welche Aufträge wurden vergeben?", "Normal", 6),
+        ParserParagraph("Der geschäftsordnungsmäßigen Behandlung zugewiesen.", "Normal", 7),
+    ]
+
+    records = parse_protocol(paragraphs, "2024-11-14_Protokoll.docx")
+
+    assert len(records) == 1
+    assert records[0].record_type == "written_question"
+    assert records[0].section == "Anfragen (schriftlich)"
+    assert records[0].title == "Aufträge an Beispiel Sicherheitsdienst GmbH"
+    assert records[0].status == "assigned"
+
+
+def test_uses_docx_heading_style_to_skip_toc_entries():
+    paragraphs = [
+        ParserParagraph("6.1\tStk. 5) A5-076766/2024/0005 Beispielpunkt\t64", "TOC2", 1),
+        ParserParagraph("Tagesordnung", "Heading1", 2),
+        ParserParagraph("Stk. 5) A5-076766/2024/0005 Beispielpunkt", "Heading2", 3),
+        ParserParagraph("Der Antrag wurde einstimmig angenommen.", "Normal", 4),
+    ]
+
+    records = parse_protocol(paragraphs, "2025-01-16_Protokoll.docx")
+
+    assert len(records) == 1
+    assert records[0].record_type == "agenda_item"
+    assert records[0].status == "accepted_unanimous"

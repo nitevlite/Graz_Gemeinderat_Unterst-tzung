@@ -64,6 +64,14 @@ python -m graz_protocols.cli parse graz_protokolle_arbeitskopie --output out\age
 ```
 
 The parser writes JSONL records with meeting date, agenda item number, business numbers, title, status, amounts, location hints, and a short source snippet.
+It uses DOCX paragraph style metadata to distinguish real headings from table-of-contents entries.
+
+Current record types:
+
+- `agenda_item`
+- `urgent_motion`
+- `written_question`
+- `written_motion`
 
 Generated output under `out/` is ignored and must not be committed.
 

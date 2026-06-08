@@ -6,7 +6,7 @@ from pathlib import Path
 import json
 import sys
 
-from .docx_text import read_docx_paragraphs
+from .docx_text import read_docx_paragraph_blocks
 from .parser import AgendaRecord, parse_protocol
 
 
@@ -67,7 +67,7 @@ def run_parse(args: argparse.Namespace) -> int:
     errors: list[dict[str, str]] = []
     for path in docx_files:
         try:
-            paragraphs = read_docx_paragraphs(path)
+            paragraphs = read_docx_paragraph_blocks(path)
             records.extend(parse_protocol(paragraphs, path.name))
         except Exception as exc:  # pylint: disable=broad-except
             errors.append({"file": path.name, "error": str(exc)})
@@ -95,6 +95,7 @@ def run_parse(args: argparse.Namespace) -> int:
 def build_summary(docx_files: list[Path], records: list[AgendaRecord], errors: list[dict[str, str]]) -> dict:
     status_counts = Counter(record.status for record in records)
     section_counts = Counter(record.section or "unknown" for record in records)
+    type_counts = Counter(record.record_type for record in records)
     file_counts = Counter(record.source_file for record in records)
     return {
         "files_total": len(docx_files),
@@ -103,6 +104,7 @@ def build_summary(docx_files: list[Path], records: list[AgendaRecord], errors: l
         "records_by_file": dict(sorted(file_counts.items())),
         "records_by_section": dict(sorted(section_counts.items())),
         "records_by_status": dict(sorted(status_counts.items())),
+        "records_by_type": dict(sorted(type_counts.items())),
         "errors": errors,
     }
 

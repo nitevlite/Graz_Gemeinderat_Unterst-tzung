@@ -4,7 +4,13 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 import json
 import re
-from typing import Iterable
+from typing import Iterable, Protocol
+
+
+class ParagraphLike(Protocol):
+    text: str
+    style: str
+    index: int
 
 
 AGENDA_RE = re.compile(
@@ -64,6 +70,7 @@ STATUS_PATTERNS = [
 @dataclass(frozen=True)
 class AgendaRecord:
     record_id: str
+    record_type: str
     source_file: str
     meeting_date: str
     section: str
@@ -81,21 +88,20 @@ class AgendaRecord:
         return json.dumps(asdict(self), ensure_ascii=False, sort_keys=True)
 
 
-def parse_protocol(paragraphs: list[str], source_file: str) -> list[AgendaRecord]:
-    meeting_date = extract_meeting_date(paragraphs, source_file)
-    chunks = list(iter_agenda_chunks(paragraphs))
-    seen: set[tuple[int, str]] = set()
+def parse_protocol(paragraphs: Iterable[str | ParagraphLike], source_file: str) -> list[AgendaRecord]:
+    blocks = normalize_blocks(paragraphs)
+    meeting_date = extract_meeting_date((block.text for block in blocks), source_file)
+    chunks = list(iter_record_chunks(blocks))
+    seen: set[tuple[str, int, str, str]] = set()
     records: list[AgendaRecord] = []
 
     for chunk in chunks:
-        parsed = parse_agenda_heading(chunk.heading)
-        if parsed is None:
+        if chunk.is_toc:
             continue
-        item_no, heading_body = parsed
-        if looks_like_toc_entry(chunk.heading):
-            continue
+        item_no = chunk.item_no
+        heading_body = chunk.heading_body
         title = extract_title(heading_body)
-        key = (item_no, title.casefold())
+        key = (chunk.record_type, item_no, chunk.section, title.casefold())
         if key in seen:
             continue
         seen.add(key)
@@ -109,10 +115,11 @@ def parse_protocol(paragraphs: list[str], source_file: str) -> list[AgendaRecord
         amounts = unique_preserve_order(normalize_amount(match.group(0)) for match in AMOUNT_RE.finditer(chunk_text))
         locations = unique_preserve_order(match.group(0).strip() for match in LOCATION_RE.finditer(chunk_text))
         confidence = score_confidence(business_numbers, status, title)
-        record_id = build_record_id(meeting_date, source_file, item_no, len(records) + 1)
+        record_id = build_record_id(meeting_date, source_file, chunk.record_type, item_no, len(records) + 1)
         records.append(
             AgendaRecord(
                 record_id=record_id,
+                record_type=chunk.record_type,
                 source_file=source_file,
                 meeting_date=meeting_date,
                 section=chunk.section,
@@ -134,32 +141,122 @@ def parse_protocol(paragraphs: list[str], source_file: str) -> list[AgendaRecord
 class AgendaChunk:
     section: str
     heading: str
+    heading_body: str
+    item_no: int
+    record_type: str
+    is_toc: bool
     body: list[str]
 
 
-def iter_agenda_chunks(paragraphs: Iterable[str]) -> Iterable[AgendaChunk]:
+@dataclass(frozen=True)
+class ParserParagraph:
+    text: str
+    style: str = ""
+    index: int = 0
+
+    @property
+    def is_heading(self) -> bool:
+        return self.style.casefold().startswith("heading")
+
+    @property
+    def is_toc(self) -> bool:
+        return self.style.casefold().startswith("toc")
+
+
+def normalize_blocks(paragraphs: Iterable[str | ParagraphLike]) -> list[ParserParagraph]:
+    blocks: list[ParserParagraph] = []
+    for index, paragraph in enumerate(paragraphs):
+        if isinstance(paragraph, str):
+            blocks.append(ParserParagraph(text=paragraph, index=index))
+        else:
+            blocks.append(
+                ParserParagraph(
+                    text=paragraph.text,
+                    style=getattr(paragraph, "style", ""),
+                    index=getattr(paragraph, "index", index),
+                )
+            )
+    return blocks
+
+
+def iter_record_chunks(paragraphs: Iterable[ParserParagraph]) -> Iterable[AgendaChunk]:
     current_section = ""
-    current_heading: str | None = None
+    current_chunk: AgendaChunk | None = None
     current_body: list[str] = []
+    generic_counts: dict[str, int] = {}
 
     for paragraph in paragraphs:
-        heading = normalize_heading(paragraph)
+        heading = normalize_heading(paragraph.text)
         section = detect_section(heading)
-        if section:
+        if section and paragraph.is_heading:
+            if current_chunk is not None:
+                yield with_body(current_chunk, current_body)
+            current_chunk = None
+            current_body = []
+            current_section = section
+            continue
+        elif section:
             current_section = section
 
-        if parse_agenda_heading(heading) is not None:
-            if current_heading is not None:
-                yield AgendaChunk(current_section, current_heading, current_body)
-            current_heading = heading
+        parsed = parse_agenda_heading(heading)
+        if parsed is not None:
+            if current_chunk is not None:
+                yield with_body(current_chunk, current_body)
+            item_no, heading_body = parsed
+            current_chunk = AgendaChunk(
+                section=current_section,
+                heading=heading,
+                heading_body=heading_body,
+                item_no=item_no,
+                record_type="agenda_item",
+                is_toc=paragraph.is_toc or looks_like_toc_entry(paragraph.text),
+                body=[],
+            )
             current_body = []
             continue
 
-        if current_heading is not None:
+        generic_type = generic_record_type(current_section)
+        if paragraph.is_heading and generic_type:
+            if current_chunk is not None:
+                yield with_body(current_chunk, current_body)
+            generic_counts[current_section] = generic_counts.get(current_section, 0) + 1
+            current_chunk = AgendaChunk(
+                section=current_section,
+                heading=heading,
+                heading_body=heading,
+                item_no=generic_counts[current_section],
+                record_type=generic_type,
+                is_toc=paragraph.is_toc,
+                body=[],
+            )
+            current_body = []
+            continue
+
+        if current_chunk is not None:
             current_body.append(heading)
 
-    if current_heading is not None:
-        yield AgendaChunk(current_section, current_heading, current_body)
+    if current_chunk is not None:
+        yield with_body(current_chunk, current_body)
+
+
+def with_body(chunk: AgendaChunk, body: list[str]) -> AgendaChunk:
+    return AgendaChunk(
+        section=chunk.section,
+        heading=chunk.heading,
+        heading_body=chunk.heading_body,
+        item_no=chunk.item_no,
+        record_type=chunk.record_type,
+        is_toc=chunk.is_toc,
+        body=list(body),
+    )
+
+
+def generic_record_type(section: str) -> str:
+    return {
+        "Dringlichkeitsanträge": "urgent_motion",
+        "Anfragen (schriftlich)": "written_question",
+        "Anträge (schriftlich)": "written_motion",
+    }.get(section, "")
 
 
 def parse_agenda_heading(value: str) -> tuple[int, str] | None:
@@ -268,8 +365,9 @@ def score_confidence(business_numbers: list[str], status: str, title: str) -> fl
     return min(score, 1.0)
 
 
-def build_record_id(meeting_date: str, source_file: str, item_no: int, ordinal: int) -> str:
+def build_record_id(meeting_date: str, source_file: str, record_type: str, item_no: int, ordinal: int) -> str:
     stem = Path(source_file).stem.lower()
     stem = re.sub(r"[^a-z0-9]+", "-", stem).strip("-")
     date_part = meeting_date or "unknown-date"
-    return f"{date_part}-stk-{item_no}-{ordinal}-{stem}"
+    type_part = re.sub(r"[^a-z0-9]+", "-", record_type.lower()).strip("-") or "record"
+    return f"{date_part}-{type_part}-{item_no}-{ordinal}-{stem}"

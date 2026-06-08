@@ -42,16 +42,20 @@ Latest local run on 2026-06-08:
 
 - input: `graz_protokolle_arbeitskopie/`
 - files parsed: 18
-- records written: 459
+- records written: 1135
+- record types:
+  - `agenda_item`: 459
+  - `urgent_motion`: 108
+  - `written_question`: 235
+  - `written_motion`: 333
 - output: `out/agenda_items.jsonl`
 
 Generated output is intentionally ignored.
 
 ## Next Build Step
 
-Improve extraction beyond `Stk.` agenda items:
+Improve extraction quality beyond section detection:
 
-- written questions and written motions without `Stk.` headings
 - better vote result parsing with party names
 - stronger place extraction and geocoding-ready location records
 - SQLite output for search and timeline queries

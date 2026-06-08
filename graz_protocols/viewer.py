@@ -105,7 +105,7 @@ def build_html(records: list[dict], summary: dict) -> str:
     }}
     .toolbar {{
       display: grid;
-      grid-template-columns: minmax(220px, 1fr) 180px 180px 160px;
+      grid-template-columns: minmax(220px, 1fr) 170px 170px 170px 150px;
       gap: 10px;
       padding: 14px 28px;
       background: #eef2eb;
@@ -224,6 +224,7 @@ def build_html(records: list[dict], summary: dict) -> str:
   <section class="toolbar">
     <input id="search" type="search" placeholder="Suchen: Thema, Straße, Geschäftszahl, Betrag">
     <select id="dateFilter"><option value="">Alle Daten</option></select>
+    <select id="typeFilter"><option value="">Alle Typen</option></select>
     <select id="statusFilter"><option value="">Alle Status</option></select>
     <select id="sectionFilter"><option value="">Alle Abschnitte</option></select>
   </section>
@@ -242,6 +243,7 @@ def build_html(records: list[dict], summary: dict) -> str:
     const byId = (id) => document.getElementById(id);
     const search = byId('search');
     const dateFilter = byId('dateFilter');
+    const typeFilter = byId('typeFilter');
     const statusFilter = byId('statusFilter');
     const sectionFilter = byId('sectionFilter');
     const tableWrap = byId('tableWrap');
@@ -264,6 +266,7 @@ def build_html(records: list[dict], summary: dict) -> str:
     function recordHaystack(record) {{
       return [
         record.meeting_date,
+        record.record_type,
         record.section,
         record.agenda_item_no,
         ...(record.business_numbers || []),
@@ -279,6 +282,7 @@ def build_html(records: list[dict], summary: dict) -> str:
       const query = search.value.trim().toLocaleLowerCase('de-AT');
       return records.filter((record) => {{
         if (dateFilter.value && record.meeting_date !== dateFilter.value) return false;
+        if (typeFilter.value && record.record_type !== typeFilter.value) return false;
         if (statusFilter.value && record.status !== statusFilter.value) return false;
         if (sectionFilter.value && record.section !== sectionFilter.value) return false;
         if (query && !recordHaystack(record).includes(query)) return false;
@@ -301,6 +305,7 @@ def build_html(records: list[dict], summary: dict) -> str:
       const rows = visible.map((record) => `
         <tr>
           <td data-label="Datum">${{escapeHtml(record.meeting_date)}}</td>
+          <td data-label="Typ"><span class="badge">${{escapeHtml(record.record_type || '')}}</span></td>
           <td data-label="Stk.">${{escapeHtml(record.agenda_item_no)}}</td>
           <td data-label="Status"><span class="badge">${{escapeHtml(record.status)}}</span></td>
           <td data-label="Geschäftszahl">${{escapeHtml((record.business_numbers || []).join(', '))}}</td>
@@ -316,6 +321,7 @@ def build_html(records: list[dict], summary: dict) -> str:
           <thead>
             <tr>
               <th>Datum</th>
+              <th>Typ</th>
               <th>Stk.</th>
               <th>Status</th>
               <th>Geschäftszahl</th>
@@ -331,9 +337,10 @@ def build_html(records: list[dict], summary: dict) -> str:
     }}
 
     fillSelect(dateFilter, records.map((record) => record.meeting_date));
+    fillSelect(typeFilter, records.map((record) => record.record_type));
     fillSelect(statusFilter, records.map((record) => record.status));
     fillSelect(sectionFilter, records.map((record) => record.section));
-    [search, dateFilter, statusFilter, sectionFilter].forEach((el) => el.addEventListener('input', render));
+    [search, dateFilter, typeFilter, statusFilter, sectionFilter].forEach((el) => el.addEventListener('input', render));
     render();
   </script>
 </body>
