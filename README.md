@@ -104,6 +104,7 @@ Danach `viewer.html` im Browser öffnen. Die Datei ist erzeugte lokale Ausgabe u
 
 Der Viewer zeigt deutsche Typen, deutsche Statuswerte und einheitliche `Ergebnisse`, zum Beispiel `Antrag: mehrheitlich angenommen` plus Parteilisten wie `Dagegen: KFG, NEOS, FPÖ`.
 Ein Klick auf eine Tabellenzeile öffnet eine Detailansicht mit Titel, Ergebnis, Ergebnisquelle, DIGRA-Einlagezahl, DIGRA-Link, Geschäftszahlen, Beträgen, Orten und Quelldatei.
+Die aktuelle Trefferliste kann im Viewer als CSV exportiert werden. Filter gibt es unter anderem für Datum, Typ, Status, Ergebnisquelle, Beträge, Quelldatei und Abschnitt.
 Originalformulierungen aus dem Protokoll werden im Viewer nicht angezeigt und bleiben nur in der ignorierten lokalen JSONL-Ausgabe als Rohspur erhalten.
 
 DIGRA-Auditbericht bauen:

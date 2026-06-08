@@ -40,6 +40,10 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "mehrheitlich angenommen" in html
     assert "Eintrag auswählen, um Details zu sehen." in html
     assert "Alle Quellen" in html
+    assert "Alle Beträge" in html
+    assert "Alle Dateien" in html
+    assert "CSV Export" in html
+    assert "graz-gemeinderat-treffer.csv" in html
     assert "DIGRA-Trefferwert" in html
     assert "Quelldatei" in html
     assert "Geschäftszahlen" in html

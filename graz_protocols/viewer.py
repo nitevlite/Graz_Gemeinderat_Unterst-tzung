@@ -105,7 +105,7 @@ def build_html(records: list[dict], summary: dict) -> str:
     }}
     .toolbar {{
       display: grid;
-      grid-template-columns: minmax(220px, 1fr) 165px 165px 165px 165px 150px;
+      grid-template-columns: minmax(220px, 1fr) 155px 155px 155px 155px 155px 150px 130px;
       gap: 10px;
       padding: 14px 28px;
       background: #eef2eb;
@@ -114,7 +114,7 @@ def build_html(records: list[dict], summary: dict) -> str:
       top: 0;
       z-index: 2;
     }}
-    input, select {{
+    input, select, button {{
       width: 100%;
       min-height: 38px;
       border: 1px solid #bfc8bd;
@@ -123,6 +123,13 @@ def build_html(records: list[dict], summary: dict) -> str:
       font: inherit;
       background: white;
       color: var(--ink);
+    }}
+    button {{
+      cursor: pointer;
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+      font-weight: 600;
     }}
     main {{ padding: 18px 28px 32px; }}
     .stats {{
@@ -255,7 +262,10 @@ def build_html(records: list[dict], summary: dict) -> str:
     <select id="typeFilter"><option value="">Alle Typen</option></select>
     <select id="statusFilter"><option value="">Alle Status</option></select>
     <select id="sourceFilter"><option value="">Alle Quellen</option></select>
+    <select id="amountFilter"><option value="">Alle Beträge</option><option value="mit">Mit Betrag</option><option value="ohne">Ohne Betrag</option></select>
+    <select id="fileFilter"><option value="">Alle Dateien</option></select>
     <select id="sectionFilter"><option value="">Alle Abschnitte</option></select>
+    <button id="csvExport" type="button">CSV Export</button>
   </section>
   <main>
     <section class="stats">
@@ -276,7 +286,10 @@ def build_html(records: list[dict], summary: dict) -> str:
     const typeFilter = byId('typeFilter');
     const statusFilter = byId('statusFilter');
     const sourceFilter = byId('sourceFilter');
+    const amountFilter = byId('amountFilter');
+    const fileFilter = byId('fileFilter');
     const sectionFilter = byId('sectionFilter');
+    const csvExport = byId('csvExport');
     const tableWrap = byId('tableWrap');
     const detailWrap = byId('detailWrap');
     let sichtbareEintraege = [];
@@ -322,6 +335,40 @@ def build_html(records: list[dict], summary: dict) -> str:
       return `<div class="detail-field"><strong>${{escapeHtml(label)}}</strong><span>${{escapeHtml(value || '-')}}</span></div>`;
     }}
 
+    function csvCell(value) {{
+      return `"${{String(value ?? '').replace(/"/g, '""')}}"`;
+    }}
+
+    function exportCsv() {{
+      const headers = ['Datum', 'Typ', 'Abschnitt', 'Stück', 'Status', 'Ergebnisquelle', 'Geschäftszahlen', 'Titel', 'Ergebnis', 'Beträge', 'Orte', 'DIGRA-Einlagezahl', 'DIGRA-Link', 'Quelldatei'];
+      const rows = sichtbareEintraege.map((record) => [
+        record.datum,
+        record.typ,
+        record.abschnitt,
+        record.stueck_nr,
+        record.status,
+        record.ergebnisquelle,
+        joinList(record.geschaeftszahlen),
+        record.titel,
+        record.ergebnis,
+        joinList(record.betraege),
+        joinList(record.orte),
+        record.digra_einlagezahl,
+        record.digra_url,
+        record.quell_datei
+      ]);
+      const csv = [headers, ...rows].map((row) => row.map(csvCell).join(';')).join('\\r\\n');
+      const blob = new Blob(['\\ufeff', csv], {{ type: 'text/csv;charset=utf-8' }});
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'graz-gemeinderat-treffer.csv';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }}
+
     function renderDetail(record) {{
       if (!record) {{
         detailWrap.innerHTML = '<div class="detail-empty">Eintrag auswählen, um Details zu sehen.</div>';
@@ -354,6 +401,9 @@ def build_html(records: list[dict], summary: dict) -> str:
         if (typeFilter.value && record.typ !== typeFilter.value) return false;
         if (statusFilter.value && record.status !== statusFilter.value) return false;
         if (sourceFilter.value && record.ergebnisquelle !== sourceFilter.value) return false;
+        if (amountFilter.value === 'mit' && !(record.betraege || []).length) return false;
+        if (amountFilter.value === 'ohne' && (record.betraege || []).length) return false;
+        if (fileFilter.value && record.quell_datei !== fileFilter.value) return false;
         if (sectionFilter.value && record.abschnitt !== sectionFilter.value) return false;
         if (query && !recordHaystack(record).includes(query)) return false;
         return true;
@@ -414,8 +464,10 @@ def build_html(records: list[dict], summary: dict) -> str:
     fillSelect(typeFilter, records.map((record) => record.typ));
     fillSelect(statusFilter, records.map((record) => record.status));
     fillSelect(sourceFilter, records.map((record) => record.ergebnisquelle));
+    fillSelect(fileFilter, records.map((record) => record.quell_datei));
     fillSelect(sectionFilter, records.map((record) => record.abschnitt));
-    [search, dateFilter, typeFilter, statusFilter, sourceFilter, sectionFilter].forEach((el) => el.addEventListener('input', render));
+    [search, dateFilter, typeFilter, statusFilter, sourceFilter, amountFilter, fileFilter, sectionFilter].forEach((el) => el.addEventListener('input', render));
+    csvExport.addEventListener('click', exportCsv);
     tableWrap.addEventListener('click', (event) => {{
       const row = event.target.closest('tr[data-index]');
       if (!row) return;

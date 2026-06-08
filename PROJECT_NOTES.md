@@ -55,6 +55,7 @@ Aktuelle Ergebnisbehandlung:
 - Der lokale Viewer zeigt deutsche Typen, deutsche Statuswerte und nur vereinheitlichte `Ergebnisse`.
 - Der lokale Viewer hat eine Detailansicht pro Eintrag mit Titel, Ergebnis, Ergebnisquelle, DIGRA-Einlagezahl, DIGRA-Trefferwert, DIGRA-Link, Geschäftszahlen, Beträgen, Orten und Quelldatei.
 - Der lokale Viewer kann nach Ergebnisquelle filtern: `DIGRA`, `Protokoll`, `DIGRA fehlt`.
+- Der lokale Viewer kann nach Betragsvorkommen und Quelldatei filtern und die aktuelle Trefferliste als CSV exportieren.
 - Rohformulierungen, Quellenausschnitte und interne englische Typ-/Statuscodes bleiben aus dem Viewer draußen.
 
 ## DIGRA-Abgleich
