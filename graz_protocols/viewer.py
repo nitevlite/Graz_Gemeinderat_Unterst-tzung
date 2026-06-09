@@ -862,6 +862,31 @@ def build_html(
     .topic-action:hover {{
       background: var(--accent-tint);
     }}
+    .active-filter {{
+      display: none;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 12px;
+      padding: 8px 10px;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      background: var(--accent-tint);
+      color: var(--accent-dark);
+      font-size: 13px;
+    }}
+    .active-filter.is-active {{
+      display: flex;
+    }}
+    .active-filter button,
+    #roadworkCheck {{
+      width: auto;
+      min-height: 32px;
+      padding: 5px 10px;
+      font-size: 13px;
+    }}
+    #roadworkCheck {{
+      justify-self: start;
+    }}
     .sr-label {{
       display: block;
       color: var(--muted);
@@ -925,7 +950,7 @@ def build_html(
       </header>
       <main>
         <section class="toolbar" id="searchSection" aria-label="Filter">
-          <label class="filter-cell wide"><span class="sr-label">Suche</span><input id="search" type="search" placeholder="Thema, Straße, Geschäftszahl, Betrag"></label>
+          <label class="filter-cell wide"><span class="sr-label">Suche</span><input id="search" type="search" list="globalSuggestions" placeholder="Thema, Straße, Geschäftszahl, Betrag"></label>
           <label class="filter-cell"><span class="sr-label">Jahr</span><select id="yearFilter"><option value="">Alle Jahre</option></select></label>
           <label class="filter-cell"><span class="sr-label">Datum</span><select id="dateFilter"><option value="">Alle Daten</option></select></label>
           <label class="filter-cell"><span class="sr-label">Typ</span><select id="typeFilter"><option value="">Alle Typen</option></select></label>
@@ -936,6 +961,12 @@ def build_html(
           <label class="filter-cell"><span class="sr-label">Dateien</span><select id="fileFilter"><option value="">Alle Dateien</option></select></label>
           <label class="filter-cell"><span class="sr-label">Abschnitte</span><select id="sectionFilter"><option value="">Alle Abschnitte</option></select></label>
         </section>
+        <datalist id="globalSuggestions"></datalist>
+        <datalist id="locationSuggestions"></datalist>
+        <div class="active-filter" id="topicFilterNotice">
+          <span id="topicFilterText">Themenfilter aktiv.</span>
+          <button id="clearTopicFilter" type="button">Zurücksetzen</button>
+        </div>
         <section class="tab-panel active" id="searchPanel">
           <section class="detail" id="detailWrap"></section>
           <div id="tableWrap"></div>
@@ -970,7 +1001,7 @@ def build_html(
             <div class="map-status" id="roadworksStatus">Eigene Baustelle eingeben und Konflikte prüfen.</div>
           </div>
           <div class="split-form">
-            <label class="filter-cell"><span class="sr-label">Straße oder Ort</span><input id="roadworkLocation" type="text" placeholder="z. B. Conrad-von-Hötzendorf-Straße"></label>
+            <label class="filter-cell"><span class="sr-label">Straße oder Ort</span><input id="roadworkLocation" type="text" list="locationSuggestions" placeholder="z. B. Conrad-von-Hötzendorf-Straße"></label>
             <label class="filter-cell"><span class="sr-label">Art</span><select id="roadworkKind"><option>Baustelle</option><option>Totalsperre</option><option>Fahrstreifensperre</option><option>Materiallagerung</option><option>Veranstaltung</option></select></label>
             <label class="filter-cell"><span class="sr-label">Start</span><input id="roadworkStart" type="date"></label>
             <label class="filter-cell"><span class="sr-label">Ende</span><input id="roadworkEnd" type="date"></label>
@@ -1044,6 +1075,9 @@ def build_html(
     const roadworkCheck = byId('roadworkCheck');
     const parkingStatus = byId('parkingStatus');
     const parkingList = byId('parkingList');
+    const topicFilterNotice = byId('topicFilterNotice');
+    const topicFilterText = byId('topicFilterText');
+    const clearTopicFilter = byId('clearTopicFilter');
     const exportCount = byId('exportCount');
     const digraMatchedCount = byId('digraMatchedCount');
     const digraFallbackCount = byId('digraFallbackCount');
@@ -1083,6 +1117,19 @@ def build_html(
     let markerLoadRun = 0;
     let lastMapPlacesKey = '';
     let activeTopicRecordIds = null;
+    let activeTopicLabel = '';
+    let currentParkingGarages = [];
+    const parkingFallbackGarages = [
+      {{ name: 'TG Operngarage', address: 'Opernring Hamerlinggasse, Graz', kind: 'Tiefgarage', spaces: 411, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }},
+      {{ name: 'TG Kastner&Öhler', address: 'Kaiser-Franz-Josef-Kai 8, Graz', kind: 'Tiefgarage', spaces: 600, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }},
+      {{ name: 'PH LKH', address: 'Stiftingtalstraße 30, Graz', kind: 'Parkhaus', spaces: 401, availability: 'unbekannt', source: 'Parkgaragen Graz OGD / Stadt Graz', source_url: 'https://www.data.gv.at/katalog/dataset/92183c55-442b-405d-9046-d19b07ffc83a', license: 'CC BY 4.0' }},
+      {{ name: 'TG Annenpassage', address: 'Bahnhofgürtel 89, Graz', kind: 'Tiefgarage', spaces: 389, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }},
+      {{ name: 'TG Bahnhof', address: 'Europaplatz 12, Graz', kind: 'Tiefgarage', spaces: 368, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }},
+      {{ name: 'TG Stadion Liebenau', address: 'Stadionplatz 1, Graz', kind: 'Tiefgarage', spaces: 650, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }},
+      {{ name: 'TG Brauquartier', address: 'Brauquartier, Graz', kind: 'Tiefgarage', spaces: 461, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }},
+      {{ name: 'TG Gate17', address: 'Triester Straße 432, Graz', kind: 'Tiefgarage', spaces: 228, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }}
+    ];
+    const roadworkKeywords = /(baustelle|sperre|sperrung|sanierung|umgestaltung|umbau|bauarbeiten|aufgrabung|leitung|kanal|wasser|fahrbahn|gehsteig|radweg|fußweg|fussweg|querung|straße|strasse|gasse|verkehr)/i;
 
     function escapeHtml(value) {{
       return String(value ?? '').replace(/[&<>"']/g, (char) => ({{
@@ -1097,6 +1144,16 @@ def build_html(
         option.textContent = value;
         select.appendChild(option);
       }});
+    }}
+
+    function fillDatalist(id, values, limit = 900) {{
+      const list = byId(id);
+      if (!list) return;
+      list.innerHTML = [...new Set(values.filter(Boolean))]
+        .sort((a, b) => String(a).localeCompare(String(b), 'de-AT'))
+        .slice(0, limit)
+        .map((value) => `<option value="${{escapeHtml(value)}}"></option>`)
+        .join('');
     }}
 
     function recordHaystack(record) {{
@@ -1251,22 +1308,28 @@ def build_html(
       renderRoadworkContext();
     }}
 
-    function renderParkingGarages() {{
+    async function renderParkingGarages() {{
       if (!parkingLayer) return;
       parkingLayer.clearLayers();
-      const usable = parkingGarages
-        .map((garage, index) => ({{ ...garage, _index: index }}))
-        .filter((garage) => Number.isFinite(garage.lat) && Number.isFinite(garage.lon));
+      const sourceGarages = parkingGarages.length ? parkingGarages : parkingFallbackGarages;
+      currentParkingGarages = sourceGarages;
+      const usable = sourceGarages.map((garage, index) => ({{ ...garage, _index: index }}));
       parkingStatus.textContent = `${{usable.length}} Garagen/Parkhäuser · Verfügbarkeit unbekannt`;
       parkingList.innerHTML = usable.length ? usable.map((garage) => `
         <button class="map-place" type="button" data-parking-index="${{garage._index}}">
           <strong>${{escapeHtml(garage.name)}}</strong>
-          <span>${{escapeHtml(garage.kind || 'Parkgarage')}} · verfügbar: unbekannt</span>
+          <span>${{escapeHtml(garage.kind || 'Parkgarage')}} · ${{garage.spaces ? `${{garage.spaces}} Plätze · ` : ''}}verfügbar: unbekannt</span>
           <small>${{escapeHtml(garage.address || '')}}</small>
         </button>
       `).join('') : '<div class="empty">Keine Parkgaragen geladen. Prüfe den OGD-Cache oder die Netzwerkverbindung.</div>';
-      usable.forEach((garage) => {{
-        const marker = L.circleMarker([garage.lat, garage.lon], {{
+      let drawn = 0;
+      for (const garage of usable) {{
+        let coords = Number.isFinite(garage.lat) && Number.isFinite(garage.lon)
+          ? {{ lat: garage.lat, lon: garage.lon }}
+          : await geocodeLocation(garage.address || garage.name);
+        if (!coords) continue;
+        drawn += 1;
+        const marker = L.circleMarker([coords.lat, coords.lon], {{
           radius: 7,
           color: '#0f766e',
           fillColor: '#14b8a6',
@@ -1277,11 +1340,14 @@ def build_html(
           <strong>${{escapeHtml(garage.name)}}</strong>
           <div>${{escapeHtml(garage.kind || 'Parkgarage')}}</div>
           <div>${{escapeHtml(garage.address || '')}}</div>
+          <div>${{garage.spaces ? `${{escapeHtml(garage.spaces)}} Plätze` : ''}}</div>
           <div>Verfügbarkeit: unbekannt</div>
           <div>Quelle: ${{escapeHtml(garage.source || '')}} · ${{escapeHtml(garage.license || '')}}</div>
         `);
         marker.on('click', () => highlightParkingList(garage._index));
-      }});
+        if (drawn % 15 === 0) await nextFrame();
+      }}
+      parkingStatus.textContent = `${{drawn}}/${{usable.length}} Standorte · Verfügbarkeit unbekannt`;
       renderParkingSourceNote();
     }}
 
@@ -1310,10 +1376,59 @@ def build_html(
       `;
     }}
 
-    function renderRoadworkContext() {{
+    async function renderRoadworkContext() {{
       if (!roadworksLayer) return;
       roadworksLayer.clearLayers();
-      roadworksList.innerHTML = '<div class="empty">Noch keine eigene Baustelle auf der Karte.</div>';
+      const candidates = roadworkCandidateRecords();
+      const byLocation = new Map();
+      candidates.forEach((record) => {{
+        (record.orte || []).filter(Boolean).filter(mappableLocation).forEach((location) => {{
+          if (!byLocation.has(location)) byLocation.set(location, []);
+          byLocation.get(location).push(record);
+        }});
+      }});
+      const places = [...byLocation.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'de-AT'));
+      roadworksStatus.textContent = `${{places.length}} baustellen-/verkehrsrelevante Orte aus den Gemeinderatsdaten`;
+      roadworksList.innerHTML = places.length ? places.map(([location, locationRecords]) => `
+        <button class="map-place" type="button" data-roadwork-location="${{escapeHtml(location)}}">
+          <strong>${{escapeHtml(location)}}</strong>
+          <span>${{locationRecords.length}} relevante Einträge</span>
+          <small>${{escapeHtml([...new Set(locationRecords.map((record) => record.typ))].join(', '))}}</small>
+        </button>
+      `).join('') : '<div class="empty">Keine baustellenrelevanten Orte in den aktuellen Daten gefunden.</div>';
+      let drawn = 0;
+      for (const [location, locationRecords] of places) {{
+        const coords = await geocodeLocation(location);
+        if (!coords) continue;
+        drawn += 1;
+        const popupRecords = locationRecords.slice(0, 7).map((record) => `
+          <button type="button" data-popup-record-id="${{escapeHtml(record.record_id)}}">${{escapeHtml(record.typ)}} · ${{escapeHtml(record.datum)}} · ${{escapeHtml(record.titel)}}</button>
+        `).join('');
+        L.circleMarker([coords.lat, coords.lon], {{
+          radius: Math.min(11, 5 + Math.sqrt(locationRecords.length)),
+          color: '#92400e',
+          fillColor: '#f59e0b',
+          fillOpacity: 0.82,
+          weight: 2,
+        }}).bindPopup(`
+          <strong>${{escapeHtml(location)}}</strong>
+          <div>Baustellen-/Verkehrskontext aus Gemeinderatsdaten</div>
+          <div class="popup-list">${{popupRecords}}</div>
+        `).addTo(roadworksLayer);
+        if (drawn % 20 === 0) {{
+          roadworksStatus.textContent = `${{drawn}}/${{places.length}} Orte eingezeichnet`;
+          await nextFrame();
+        }}
+      }}
+      roadworksStatus.textContent = `${{drawn}}/${{places.length}} Orte eingezeichnet`;
+    }}
+
+    function roadworkCandidateRecords() {{
+      return records.filter((record) => {{
+        if (!(record.orte || []).length) return false;
+        const text = [record.titel, record.kategorie, record.typ, record.ergebnis].join(' ');
+        return roadworkKeywords.test(text);
+      }});
     }}
 
     async function checkRoadworkPlan() {{
@@ -1839,6 +1954,14 @@ def build_html(
       }});
     }}
 
+    function updateTopicFilterNotice() {{
+      if (!topicFilterNotice) return;
+      topicFilterNotice.classList.toggle('is-active', Boolean(activeTopicRecordIds));
+      topicFilterText.textContent = activeTopicLabel
+        ? `Themenfilter aktiv: ${{activeTopicLabel}}`
+        : 'Themenfilter aktiv.';
+    }}
+
     function render() {{
       sichtbareEintraege = filteredRecords();
       if (ausgewaehlterEintrag && !sichtbareEintraege.includes(ausgewaehlterEintrag)) {{
@@ -1854,6 +1977,7 @@ def build_html(
       if (cityLinkCount) cityLinkCount.textContent = summary.stadt_graz_links ?? records.filter((r) => r.source_url).length;
       if (digraMissingCount) digraMissingCount.textContent = records.filter((r) => !r.ergebnis || r.status_filter === 'Unbekannt').length;
       currentLocationIndex = buildLocationIndex(sichtbareEintraege);
+      updateTopicFilterNotice();
       renderMapPlaces();
       renderMapLegend();
       refreshMapMarkersIfNeeded();
@@ -1909,8 +2033,18 @@ def build_html(
     fillSelect(sourceFilter, records.map((record) => record.ergebnisquelle));
     fillSelect(fileFilter, records.map((record) => record.quell_datei));
     fillSelect(sectionFilter, records.map((record) => record.abschnitt));
+    fillDatalist('locationSuggestions', records.flatMap((record) => record.orte || []));
+    fillDatalist('globalSuggestions', records.flatMap((record) => [
+      record.titel,
+      record.einbringer,
+      record.kategorie,
+      ...(record.orte || []),
+      ...(record.geschaeftszahlen || []),
+      ...(record.betraege || []),
+    ]));
     search.addEventListener('input', () => {{
       activeTopicRecordIds = null;
+      activeTopicLabel = '';
       render();
     }});
     [yearFilter, dateFilter, typeFilter, statusFilter, categoryFilter, sourceFilter, amountFilter, fileFilter, sectionFilter].forEach((el) => el.addEventListener('input', render));
@@ -1954,16 +2088,35 @@ def build_html(
     parkingList.addEventListener('click', (event) => {{
       const item = event.target.closest('[data-parking-index]');
       if (!item) return;
-      const garage = parkingGarages[Number(item.dataset.parkingIndex)];
+      const garage = currentParkingGarages[Number(item.dataset.parkingIndex)];
       if (!garage || !parkingMap) return;
-      parkingMap.setView([garage.lat, garage.lon], 16);
-      highlightParkingList(item.dataset.parkingIndex);
+      const embeddedCoords = Number.isFinite(garage.lat) && Number.isFinite(garage.lon)
+        ? {{ lat: garage.lat, lon: garage.lon }}
+        : null;
+      Promise.resolve(embeddedCoords || geocodeLocation(garage.address || garage.name)).then((coords) => {{
+        if (!coords) return;
+        parkingMap.setView([coords.lat, coords.lon], 16);
+        highlightParkingList(item.dataset.parkingIndex);
+      }});
     }});
     roadworkCheck.addEventListener('click', checkRoadworkPlan);
     roadworksList.addEventListener('click', (event) => {{
+      const locationButton = event.target.closest('[data-roadwork-location]');
+      if (locationButton) {{
+        geocodeLocation(locationButton.dataset.roadworkLocation || '').then((coords) => {{
+          if (coords && roadworksMap) roadworksMap.setView([coords.lat, coords.lon], 16);
+        }});
+        return;
+      }}
       const item = event.target.closest('[data-record-id]');
       if (!item) return;
       selectRecord(findRecordById(item.dataset.recordId));
+    }});
+    clearTopicFilter.addEventListener('click', () => {{
+      activeTopicRecordIds = null;
+      activeTopicLabel = '';
+      render();
+      activateTab('search');
     }});
     mapLegend.addEventListener('click', (event) => {{
       const categoryButton = event.target.closest('[data-map-category]');
@@ -1971,6 +2124,7 @@ def build_html(
       const category = categoryButton.dataset.mapCategory || '';
       categoryFilter.value = categoryFilter.value === category ? '' : category;
       activeTopicRecordIds = null;
+      activeTopicLabel = '';
       render();
     }});
     byId('grazMap').addEventListener('click', (event) => {{
@@ -1988,6 +2142,7 @@ def build_html(
       if (action) {{
         const topic = topics.find((item) => item.topic_id === action.dataset.topicId);
         activeTopicRecordIds = new Set((topic?.records || []).map((record) => record.record_id).filter(Boolean));
+        activeTopicLabel = topic?.label || 'Thema';
         search.value = '';
         render();
         activateTab('search');

@@ -84,6 +84,9 @@ def annotate_record_summaries(
             existing = dict(existing_by_id[record_id])
             updated["ai_summary"] = existing.get("ai_summary", "")
             updated["ai_easy_language"] = existing.get("ai_easy_language", "")
+            for key, value in existing.items():
+                if key not in updated:
+                    updated[key] = value
             write_incremental_record(output_handle, updated)
             enriched.append(updated)
             continue
