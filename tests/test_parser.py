@@ -62,6 +62,41 @@ def test_extracts_all_streets_from_hyphenated_planning_title():
     assert records[0].locations == ["Waltendorfer Hauptstraße", "Schulgasse", "Ruckerlberggasse"]
 
 
+def test_title_street_wins_over_body_context_streets():
+    paragraphs = [
+        "Protokoll über die ordentliche öffentliche Sitzung des Gemeinderates am 16.01.2025",
+        "Anträge (schriftlich)",
+        "Stk. 4) Unfallhäufungsstelle Marburger Straße",
+        "Im Text werden andere Stellen wie Moserhofgasse und Petersgasse als Vergleich erwähnt.",
+        "Der geschäftsordnungsmäßigen Behandlung zugewiesen.",
+    ]
+
+    records = parse_protocol(
+        paragraphs,
+        "2025-01-16_Protokoll.docx",
+        street_names={"marburger straße", "moserhofgasse", "petersgasse"},
+    )
+
+    assert records[0].locations == ["Marburger Straße"]
+
+
+def test_extracts_multiword_compound_street_from_title():
+    paragraphs = [
+        "Protokoll über die ordentliche öffentliche Sitzung des Gemeinderates am 24.04.2025",
+        "Anträge (schriftlich)",
+        "Stk. 25) Hundekotsackerlspender vor dem Spar in der Waltendorfer Hauptstraße",
+        "Der geschäftsordnungsmäßigen Behandlung zugewiesen.",
+    ]
+
+    records = parse_protocol(
+        paragraphs,
+        "2025-04-24_Protokoll.docx",
+        street_names={"waltendorfer hauptstraße"},
+    )
+
+    assert records[0].locations == ["Waltendorfer Hauptstraße"]
+
+
 def test_skips_table_of_contents_stk_entries():
     paragraphs = [
         "6.1\tStk. 5) A5-076766/2024/0005 Beispielpunkt\t64",

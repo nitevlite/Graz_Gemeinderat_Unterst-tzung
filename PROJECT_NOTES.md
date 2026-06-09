@@ -40,6 +40,7 @@ Aktuelle Module:
 - `graz_protocols/street_names.py`: XLSX-Import und Normalisierung der Grazer Straßennamenliste
 - `graz_protocols/topics.py`: Themenkandidaten über Geschäftszahlen und Titel-Keywords
 - `graz_protocols/ai_topics.py`: optionale KI-Überschriften für Themenverläufe, standardmäßig über lokales Ollama/Qwen, optional über OpenAI
+- `graz_protocols/ai_summaries.py`: optionale KI-Zusammenfassungen pro Stück und Version in einfacher Sprache, standardmäßig über lokales Ollama/Qwen
 - `graz_protocols/cli.py`: Stapelverarbeitung über die Kommandozeile
 - `graz_protocols/sqlite_export.py`: lokale SQLite-Ausgabe mit Tabelle `eintraege`, normalisierten Tabellen und FTS5
 - `graz_protocols/viewer.py`: erzeugte lokale Doppelklick-HTML-Ansicht
@@ -60,9 +61,10 @@ Aktuelle Ergebnisbehandlung:
 - Der lokale Viewer zeigt deutsche Typen, deutsche Statuswerte und nur vereinheitlichte `Ergebnisse`.
 - Der lokale Viewer hat eine Detailansicht pro Eintrag mit Titel, Ergebnis, Ergebnisquelle, DIGRA-Einlagezahl, DIGRA-Trefferwert, DIGRA-Link, Geschäftszahlen, Beträgen, Orten und Quelldatei.
 - Die Filterleiste ist global sichtbar und wirkt auf Suche, Zeitstrahlen, Karte und Export.
-- Die Karte ist ein eigener großer Tab; Marker werden erst beim Öffnen der Karte geladen und bei unveränderter Ortsauswahl nicht erneut geocodiert.
+- Die Karte ist ein eigener großer Tab; alle gefilterten Orte werden geladen, Marker werden erst beim Öffnen der Karte geocodiert und bei unveränderter Ortsauswahl nicht erneut geladen.
+- Beim Öffnen eines Eintrags werden die zugehörigen Ortsmarker grün hervorgehoben; Verbindungslinien werden nicht mehr gezeichnet.
 - Zeitstrahl-Aktionen filtern direkt über Record-IDs statt über KI-Überschriftentext.
-- Zeitstrahlen zeigen KI-Hinweise und den letzten bekannten Ergebnisstand.
+- Zeitstrahlen zeigen nur Themen mit mindestens zwei sichtbaren Einträgen, KI-Hinweise und den letzten bekannten Ergebnisstand.
 - DIGRA-Links werden im Viewer auf stabile `document?ref=...`-URLs ohne flüchtige Session-Parameter normalisiert.
 - `city-index` legt einen lokalen Index älterer Stadt-Graz-Archivseiten an; bei DNS-/Netzwerkfehlern werden Fehler im Index dokumentiert.
 - Der lokale Viewer kann nach Ergebnisquelle filtern: `DIGRA`, `Protokoll`, `DIGRA fehlt`.
@@ -74,7 +76,9 @@ Aktuelle Ergebnisbehandlung:
 - Stadt-Graz-Archivlinks werden als Quellenfallback unter `source_url` gespeichert und im Viewer verlinkt.
 - Rohformulierungen, Quellenausschnitte und interne englische Typ-/Statuscodes bleiben aus dem Viewer draußen.
 - Beträge werden nur aus Titel/Überschrift oder aus formalen Antrag-/Anfrageabschnitten übernommen, nicht aus beliebigen Debattenstellen.
-- Ortskandidaten werden optional gegen `Straßennamen_Graz.xlsx` geprüft; nicht passende Rede- oder Füllwörter werden nicht als Orte übernommen.
+- Ortskandidaten werden optional gegen `Straßennamen_Graz.xlsx` geprüft; Titel-Orte haben Vorrang vor späteren Vergleichsstraßen im Antragstext.
+- Straßengruppen und zusammengesetzte Straßennamen wie `Waltendorfer Hauptstraße – Schulgasse – Ruckerlberggasse` werden vollständig aus der Straßennamenliste erkannt.
+- Der Viewer zeigt vorhandene KI-Zusammenfassungen pro Stück als ausklappbare Blöcke: fachliche Kurzfassung und einfache Sprache.
 
 ## DIGRA-Abgleich
 
@@ -127,6 +131,8 @@ Letzter DIGRA-Lauf am 2026-06-08:
 - Ausgabe: `out/agenda_items_digra.jsonl`
 - SQLite-Ausgabe: `out\eintraege_digra.sqlite`
 - Viewer-Ausgabe: `viewer.html`
+- KI-Zusammenfassungs-Probe: `python -m graz_protocols.cli summaries --records out\agenda_items_digra.jsonl --output out\agenda_items_digra_ai.jsonl --ai-model qwen2.5:7b-instruct --limit 10`
+- Vollständiger KI-Lauf: gleicher Befehl ohne `--limit`; der Lauf schreibt fortlaufend nach `out\agenda_items_digra_ai.jsonl` und kann erneut gestartet werden, um vorhandene Zusammenfassungen wiederzuverwenden.
 - Audit-Ausgabe: `out\digra_audit.md`
 - Themenkandidaten: `out\topic_candidates.json`
 - Topic-News: optional über Stadt-Graz-RSS mit `--city-news`

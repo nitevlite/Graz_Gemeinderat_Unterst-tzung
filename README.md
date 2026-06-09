@@ -122,7 +122,7 @@ Der Viewer zeigt deutsche Typen, deutsche Statuswerte und einheitliche `Ergebnis
 Ein Klick auf eine Tabellenzeile öffnet eine Detailansicht mit Titel, Ergebnis, Ergebnisquelle, DIGRA-Einlagezahl, DIGRA-Link, Geschäftszahlen, Beträgen, Orten und Quelldatei.
 Die aktuelle Trefferliste kann im Viewer als CSV exportiert werden. Filter gibt es unter anderem für Datum, Typ, Status, Ergebnisquelle, Beträge, Quelldatei und Abschnitt.
 Die Oberfläche ist als lokale App mit linker Navigation, KPI-Karten, Filterpanel, Detailansicht, Graz-Karte, Themenverläufen und Ergebnistabelle aufgebaut.
-Erkannte Orte sind anklickbar: der Viewer springt auf die Karte, lädt den Ort online über OpenStreetMap/Nominatim und zeigt die zugehörigen Einträge als Marker-Popup. Der Jahresfilter aktualisiert Tabelle, Themen und Karte gemeinsam. DIGRA-Links öffnen direkt die jeweilige DIGRA-Dokumentseite; Stadt-Graz-Links öffnen die Archivquelle.
+Erkannte Orte sind anklickbar: der Viewer springt auf die Karte, lädt den Ort online über OpenStreetMap/Nominatim und zeigt die zugehörigen Einträge als Marker-Popup. Beim Öffnen eines Eintrags werden die dazugehörigen Orte grün hervorgehoben. Der Jahresfilter aktualisiert Tabelle, Themen und Karte gemeinsam. DIGRA-Links öffnen direkt die jeweilige DIGRA-Dokumentseite; Stadt-Graz-Links öffnen die Archivquelle.
 Originalformulierungen aus dem Protokoll werden im Viewer nicht angezeigt und bleiben nur in der ignorierten lokalen JSONL-Ausgabe als Rohspur erhalten.
 
 DIGRA-Auditbericht bauen:
@@ -156,6 +156,15 @@ python -m graz_protocols.cli topics --records out\agenda_items_digra.jsonl --out
 
 Falls das Modell in Ollama anders heißt, den Namen aus `ollama list` bei `--ai-model` einsetzen. OpenAI bleibt explizit möglich über `--ai-provider openai` und `OPENAI_API_KEY`.
 Die KI-Überschrift wird nachvollziehbar mit `rule_label`, `ai_label`, `ai_reason`, `ai_confidence` und `label_source` gespeichert.
+
+Für einzelne Stücke können zusätzlich lokale KI-Zusammenfassungen und Texte in einfacher Sprache erzeugt werden:
+
+```powershell
+python -m graz_protocols.cli summaries --records out\agenda_items_digra.jsonl --output out\agenda_items_digra_ai.jsonl --ai-model qwen2.5:7b-instruct
+python -m graz_protocols.viewer --records out\agenda_items_digra_ai.jsonl --summary out\summary_digra.json --topics out\topic_candidates.json --output viewer.html
+```
+
+Der Zusammenfassungslauf schreibt fortlaufend in die Ausgabedatei und kann neu gestartet werden. Für kurze Tests kann `--limit 10` verwendet werden.
 
 ## GitHub-Backlog
 

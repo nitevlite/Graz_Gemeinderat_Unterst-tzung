@@ -37,6 +37,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_digra_export(args)
     if args.command == "topics":
         return run_topics(args)
+    if args.command == "summaries":
+        return run_summaries(args)
     if args.command == "city-index":
         return run_city_index(args)
     parser.print_help()
@@ -173,6 +175,30 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Aktuelle Stadt-Graz-RSS-News als Hinweise zu Topic-Kandidaten ergänzen.",
     )
+    summaries_cmd = subparsers.add_parser(
+        "summaries", help="KI-Zusammenfassungen und einfache Sprache zu Einträgen ergänzen."
+    )
+    summaries_cmd.add_argument("--records", type=Path, default=Path("out") / "agenda_items_digra.jsonl")
+    summaries_cmd.add_argument("--output", type=Path, default=Path("out") / "agenda_items_digra_ai.jsonl")
+    summaries_cmd.add_argument(
+        "--ai-provider",
+        choices=["ollama", "openai"],
+        default="ollama",
+        help="KI-Provider. Standard: lokales Ollama.",
+    )
+    summaries_cmd.add_argument("--ai-model", default="", help="Optionales KI-Modell.")
+    summaries_cmd.add_argument(
+        "--ai-base-url",
+        default="",
+        help="Basis-URL für Ollama, z. B. http://localhost:11434. Standard: OLLAMA_HOST oder localhost.",
+    )
+    summaries_cmd.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="Maximale Anzahl neu zu erzeugender Zusammenfassungen. 0 bedeutet alle fehlenden.",
+    )
+    summaries_cmd.add_argument("--overwrite", action="store_true", help="Vorhandene KI-Zusammenfassungen neu erzeugen.")
     city_index_cmd = subparsers.add_parser(
         "city-index", help="Stadt-Graz-Archivseiten für ältere Gemeinderatssitzungen indexieren."
     )
@@ -304,6 +330,32 @@ def run_topics(args: argparse.Namespace) -> int:
         print(str(exc), file=sys.stderr)
         return 1
     print(f"Topic-Kandidaten nach {args.output} geschrieben.")
+    return 0
+
+
+def run_summaries(args: argparse.Namespace) -> int:
+    if not args.records.exists():
+        print(f"Eintragsdatei nicht gefunden: {args.records}", file=sys.stderr)
+        return 1
+    try:
+        from .ai_summaries import write_record_summaries
+
+        summary = write_record_summaries(
+            args.records,
+            args.output,
+            provider=args.ai_provider,
+            model=args.ai_model,
+            base_url=args.ai_base_url,
+            limit=args.limit,
+            overwrite=args.overwrite,
+        )
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(
+        f"{summary['records_with_ai_summary']} Einträge mit KI-Zusammenfassung "
+        f"nach {args.output} geschrieben."
+    )
     return 0
 
 

@@ -348,6 +348,29 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     .detail-field span {{
       white-space: pre-wrap;
     }}
+    .summary-blocks {{
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+    }}
+    .summary-block {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfdff;
+      overflow: hidden;
+    }}
+    .summary-block summary {{
+      cursor: pointer;
+      padding: 10px 12px;
+      font-weight: 700;
+      color: #1e293b;
+    }}
+    .summary-text {{
+      padding: 0 12px 12px;
+      color: #334155;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }}
     .link-button {{
       appearance: none;
       width: auto;
@@ -494,10 +517,10 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       fill: #2563eb;
       fill-opacity: 0.8;
     }}
-    .leaflet-interactive.record-route {{
-      stroke: #0f766e;
-      stroke-width: 4;
-      stroke-opacity: 0.78;
+    .leaflet-interactive.place-dot.related-place {{
+      stroke: #047857;
+      fill: #10b981;
+      fill-opacity: 0.9;
     }}
     .topics h2 {{
       margin: 0 0 10px;
@@ -735,8 +758,8 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     let ausgewaehlterEintrag = null;
     let grazMap = null;
     let markerLayer = null;
-    let routeLayer = null;
     const markersByLocation = new Map();
+    let highlightedLocations = new Set();
     let currentLocationIndex = buildLocationIndex(records);
     let activeTabName = 'search';
     let lastMarkerLocationKey = '';
@@ -847,7 +870,6 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         attribution: '&copy; OpenStreetMap'
       }}).addTo(grazMap);
       markerLayer = L.layerGroup().addTo(grazMap);
-      routeLayer = L.layerGroup().addTo(grazMap);
       renderMapPlaces();
       refreshMapMarkersIfNeeded();
     }}
@@ -855,8 +877,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     function renderMapPlaces() {{
       const places = [...currentLocationIndex.entries()]
         .map(([location, locationRecords]) => ({{ location, count: locationRecords.length }}))
-        .sort((a, b) => b.count - a.count || a.location.localeCompare(b.location, 'de-AT'))
-        .slice(0, 80);
+        .sort((a, b) => b.count - a.count || a.location.localeCompare(b.location, 'de-AT'));
       if (!places.length) {{
         mapPlaces.innerHTML = '<div class="empty">Keine Orte erkannt.</div>';
         return;
@@ -876,24 +897,27 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       lastMarkerLocationKey = markerLocationKey;
       const runId = ++markerLoadRun;
       markerLayer.clearLayers();
-      if (routeLayer) routeLayer.clearLayers();
       markersByLocation.clear();
-      const places = [...currentLocationIndex.keys()].slice(0, 120);
+      const places = [...currentLocationIndex.keys()];
       if (!places.length) {{
         mapStatus.textContent = 'Keine Orte für diese Filter.';
         return;
       }}
       let loaded = 0;
-      mapStatus.textContent = 'Orte werden geladen...';
+      mapStatus.textContent = `0/${{places.length}} Orte auf der Karte`;
       for (const place of places) {{
         if (runId !== markerLoadRun) return;
         const coords = await geocodeLocation(place);
         if (runId !== markerLoadRun) return;
         if (coords) {{
           addLocationMarker(place, coords);
+          updateMarkerHighlights();
           loaded += 1;
-          mapStatus.textContent = `${{loaded}} Orte auf der Karte`;
+          mapStatus.textContent = `${{loaded}}/${{places.length}} Orte auf der Karte`;
         }}
+      }}
+      if (runId === markerLoadRun) {{
+        mapStatus.textContent = `${{loaded}}/${{places.length}} Orte auf der Karte`;
       }}
     }}
 
@@ -952,6 +976,22 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       `);
       marker.addTo(markerLayer);
       markersByLocation.set(location, marker);
+      applyMarkerHighlight(location, marker);
+    }}
+
+    function markerStyle(isHighlighted) {{
+      return isHighlighted
+        ? {{ color: '#047857', fillColor: '#10b981', fillOpacity: 0.9, weight: 3, className: 'place-dot related-place' }}
+        : {{ color: '#1d4ed8', fillColor: '#2563eb', fillOpacity: 0.78, weight: 2, className: 'place-dot' }};
+    }}
+
+    function applyMarkerHighlight(location, marker) {{
+      if (!marker?.setStyle) return;
+      marker.setStyle(markerStyle(highlightedLocations.has(location)));
+    }}
+
+    function updateMarkerHighlights() {{
+      markersByLocation.forEach((marker, location) => applyMarkerHighlight(location, marker));
     }}
 
     async function focusLocation(location) {{
@@ -969,22 +1009,18 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       const locations = [...new Set((record.orte || []).filter(Boolean).filter(mappableLocation))];
       if (!locations.length) return;
       if (switchTab) activateTab('map');
-      if (routeLayer) routeLayer.clearLayers();
+      highlightedLocations = new Set(locations);
+      updateMarkerHighlights();
       const points = [];
       for (const location of locations) {{
         const coords = await geocodeLocation(location);
         if (!coords) continue;
         addLocationMarker(location, coords);
+        applyMarkerHighlight(location, markersByLocation.get(location));
         points.push([coords.lat, coords.lon]);
       }}
       if (!points.length) return;
-      if (points.length > 1 && routeLayer) {{
-        L.polyline(points, {{
-          color: '#0f766e',
-          weight: 4,
-          opacity: 0.78,
-          className: 'record-route',
-        }}).addTo(routeLayer);
+      if (points.length > 1) {{
         grazMap.fitBounds(points, {{ padding: [44, 44], maxZoom: 15 }});
       }} else {{
         grazMap.setView(points[0], 16);
@@ -1017,6 +1053,27 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
 
     function detailHtmlField(label, htmlValue) {{
       return `<div class="detail-field"><strong>${{escapeHtml(label)}}</strong><span>${{htmlValue || '-'}}</span></div>`;
+    }}
+
+    function summaryBlocks(record) {{
+      const blocks = [];
+      if (record.ki_zusammenfassung) {{
+        blocks.push(`
+          <details class="summary-block">
+            <summary>KI-Zusammenfassung</summary>
+            <div class="summary-text">${{escapeHtml(record.ki_zusammenfassung)}}</div>
+          </details>
+        `);
+      }}
+      if (record.ki_einfache_sprache) {{
+        blocks.push(`
+          <details class="summary-block">
+            <summary>Einfache Sprache</summary>
+            <div class="summary-text">${{escapeHtml(record.ki_einfache_sprache)}}</div>
+          </details>
+        `);
+      }}
+      return blocks.length ? `<div class="summary-blocks">${{blocks.join('')}}</div>` : '';
     }}
 
     function csvCell(value) {{
@@ -1076,6 +1133,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
           ${{detailHtmlField('Orte', locationLinks(record.orte))}}
           ${{detailField('Quelldatei', record.quell_datei)}}
         </div>
+        ${{summaryBlocks(record)}}
       `;
     }}
 
@@ -1087,6 +1145,8 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       if (!query) return true;
       const haystack = [
         record.title,
+        record.business_number,
+        ...(record.business_numbers || []),
         record.result_text,
         record.result_source,
         record.record_id,
@@ -1102,7 +1162,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       const visibleTopics = topics.map((topic) => ({{
         ...topic,
         visibleRecords: (topic.records || []).filter(topicRecordMatchesFilters),
-      }})).filter((topic) => topic.visibleRecords.length);
+      }})).filter((topic) => topic.visibleRecords.length >= 2);
 
       if (!visibleTopics.length) {{
         byId('topicsWrap').style.display = '';
@@ -1314,6 +1374,8 @@ def viewer_record(record: dict) -> dict:
         "source_url": record.get("source_url", ""),
         "betraege": record.get("amounts", []),
         "orte": record.get("locations", []),
+        "ki_zusammenfassung": record.get("ai_summary", ""),
+        "ki_einfache_sprache": record.get("ai_easy_language", ""),
         "quell_datei": german_source_file(str(record.get("source_file", ""))),
     }
 
@@ -1360,6 +1422,8 @@ def viewer_topic(topic: dict) -> dict:
                 "meeting_date": record.get("meeting_date", ""),
                 "title": record.get("title", ""),
                 "record_id": record.get("record_id", ""),
+                "business_numbers": record.get("business_numbers", []),
+                "business_number": " ".join(str(value) for value in record.get("business_numbers", [])),
                 "result_source": german_result_source(str(record.get("result_source", ""))),
                 "result_text": record.get("result_text", ""),
                 "status": german_status(str(record.get("status", ""))),

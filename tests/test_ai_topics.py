@@ -1,4 +1,5 @@
 from graz_protocols.ai_topics import annotate_topic_headings
+from graz_protocols.topics import base_business_number
 
 
 class FakeResponse:
@@ -96,3 +97,9 @@ def test_annotate_topic_headings_uses_ollama_by_default():
     assert client.calls[0]["json"]["model"] == "qwen2.5:7b-instruct"
     assert client.calls[0]["json"]["format"] == "json"
     assert "Authorization" not in client.calls[0]
+
+
+def test_base_business_number_groups_trailing_file_variants():
+    assert base_business_number("A14-081274/2023/0382") == "A14-081274/2023"
+    assert base_business_number("A 14-081274/2023/0428-4") == "A14-081274/2023"
+    assert base_business_number("A 14-081274/2023/0439") == "A14-081274/2023"

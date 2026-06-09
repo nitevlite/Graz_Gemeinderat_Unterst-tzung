@@ -74,12 +74,18 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "nominatim.openstreetmap.org" in html
     assert "openstreetmap.org" in html
     assert "currentLocationIndex = buildLocationIndex(sichtbareEintraege)" in html
+    assert ".slice(0, 120)" not in html
+    assert ".slice(0, 80)" not in html
+    assert "${loaded}/${places.length} Orte auf der Karte" in html
     assert "refreshMapMarkersIfNeeded()" in html
     assert "activeTopicRecordIds" in html
     assert "data-topic-id" in html
     assert "focusRecordLocations(record" in html
-    assert "L.polyline(points" in html
-    assert "record-route" in html
+    assert "L.polyline(points" not in html
+    assert "record-route" not in html
+    assert "highlightedLocations" in html
+    assert "related-place" in html
+    assert "updateMarkerHighlights()" in html
     assert "visibleTopics = topics.map" in html
     assert "filter(topicRecordMatchesFilters)" in html
     assert "renderTopics();" in html
@@ -99,6 +105,33 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "raw_result_text" not in html
     assert "source_snippet" not in html
     assert "raw_text" not in html
+
+
+def test_viewer_renders_ai_record_summaries_as_expandable_details():
+    html = build_html(
+        [
+            {
+                "agenda_item_no": 1,
+                "ai_easy_language": "Die Stadt entscheidet über eine Maßnahme. Das wird einfach erklärt.",
+                "ai_summary": "Das Stück behandelt die wichtigsten Punkte einer Maßnahme.",
+                "business_numbers": [],
+                "locations": [],
+                "meeting_date": "2026-04-23",
+                "record_id": "test-record",
+                "record_type": "agenda_item",
+                "result_text": "Antrag: angenommen",
+                "section": "Tagesordnung",
+                "source_file": "test.docx",
+                "status": "accepted",
+                "title": "Teststück",
+            }
+        ],
+        {},
+    )
+
+    assert "KI-Zusammenfassung" in html
+    assert "Einfache Sprache" in html
+    assert "summary-block" in html
 
 
 def test_viewer_normalizes_file_labels_and_status_filter():
@@ -212,3 +245,41 @@ def test_viewer_can_embed_topic_candidates():
     assert "Auflage des Entwurfs" in html
     assert "Aktuelle Hinweise" in html
     assert "Gemeinderat beschließt Flächenwidmungsplan" in html
+
+
+def test_viewer_hides_topics_with_only_one_visible_record_after_filters():
+    html = build_html(
+        [],
+        {},
+        [
+            {
+                "confidence": 0.95,
+                "business_number": "A14-081274/2023",
+                "dates": ["2024-11-14", "2025-05-15"],
+                "label": "Flächenwidmungsplan Änderung",
+                "records": [
+                    {
+                        "business_numbers": ["A14-081274/2023/0382"],
+                        "meeting_date": "2024-11-14",
+                        "record_id": "record-a",
+                        "result_text": "Antrag: angenommen",
+                        "status": "accepted",
+                        "title": "4.08 A Flächenwidmungsplan - 8. Änderung Teil A",
+                    },
+                    {
+                        "business_numbers": ["A14-081274/2023/0411"],
+                        "meeting_date": "2025-05-15",
+                        "record_id": "record-b",
+                        "result_text": "Antrag: angenommen",
+                        "status": "accepted",
+                        "title": "Ergänzungsbeschluss 4.08 A",
+                    },
+                ],
+                "topic_id": "business-a14-081274-2023",
+            }
+        ],
+    )
+
+    assert "visibleRecords.length >= 2" in html
+    assert "record.business_number" in html
+    assert "...(record.business_numbers || [])" in html

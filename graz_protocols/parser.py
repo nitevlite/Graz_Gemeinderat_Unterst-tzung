@@ -190,7 +190,8 @@ def parse_protocol(
             for match in BUSINESS_NO_RE.finditer(heading_body)
         )
         amounts = extract_amounts(heading_body, chunk.body)
-        location_details = extract_location_details(chunk_text, street_names=street_names)
+        title_location_details = extract_location_details(heading_body, street_names=street_names)
+        location_details = title_location_details or extract_location_details(chunk_text, street_names=street_names)
         locations = unique_preserve_order(str(location["value"]) for location in location_details)
         confidence = score_confidence(business_numbers, status, title)
         record_id = build_record_id(meeting_date, source_file, chunk.record_type, item_no, len(records) + 1)
@@ -626,6 +627,18 @@ def find_street_names_in_text(text: str, street_names: set[str]) -> list[tuple[s
         normalized = normalize_street_name(value)
         if normalized in street_names:
             normalized_to_display[normalized] = value.strip()
+    for match in re.finditer(
+        r"\b[A-ZÄÖÜ][\wÄÖÜäöüß.-]+(?:\s+[A-ZÄÖÜa-zäöüß][\wÄÖÜäöüß.-]+){1,3}"
+        r"(?:straße|strasse|gasse|weg|platz|park|brücke|bruecke|allee|kai|ufer)?\b",
+        text,
+    ):
+        words = match.group(0).strip().split()
+        for start_index in range(len(words)):
+            value = " ".join(words[start_index:])
+            normalized = normalize_street_name(value)
+            if normalized in street_names:
+                normalized_to_display[normalized] = value
+                break
 
     # Hyphenated planning titles often omit the repeated prefix, e.g.
     # "Waltendorfer Hauptstraße-Schulgasse-Ruckerlberggasse".

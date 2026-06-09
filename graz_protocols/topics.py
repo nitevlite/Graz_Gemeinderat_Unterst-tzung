@@ -116,6 +116,7 @@ def build_topic_candidates(records: list[dict]) -> list[dict]:
                         "meeting_date": record.get("meeting_date", ""),
                         "record_type": record.get("record_type", ""),
                         "agenda_item_no": record.get("agenda_item_no", ""),
+                        "business_numbers": record.get("business_numbers", []),
                         "title": record.get("title", ""),
                         "status": record.get("status", ""),
                         "result_text": record.get("result_text", ""),
@@ -129,7 +130,11 @@ def build_topic_candidates(records: list[dict]) -> list[dict]:
 
 
 def base_business_number(value: str) -> str:
-    return re.sub(r"/\d+$", "", value.strip())
+    normalized = re.sub(r"\s+", " ", value.strip())
+    normalized = re.sub(r"\s*/\s*", "/", normalized)
+    normalized = re.sub(r"\s*-\s*", "-", normalized)
+    normalized = re.sub(r"^A\s+(\d)", r"A\1", normalized, flags=re.IGNORECASE)
+    return re.sub(r"/\d+(?:-\d+)?$", "", normalized)
 
 
 def topic_keywords(title: str) -> list[str]:
