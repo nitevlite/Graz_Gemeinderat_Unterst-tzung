@@ -81,6 +81,9 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "activeTopicRecordIds" in html
     assert "data-topic-id" in html
     assert "focusRecordLocations(record" in html
+    assert "selectRecord(ausgewaehlterEintrag, true)" not in html
+    assert "selectRecord(findRecordById(step.dataset.recordId), true)" not in html
+    assert "focusLocation(locationButton.dataset.location" in html
     assert "L.polyline(points" not in html
     assert "record-route" not in html
     assert "highlightedLocations" in html

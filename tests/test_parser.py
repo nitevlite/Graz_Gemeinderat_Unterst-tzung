@@ -97,6 +97,23 @@ def test_extracts_multiword_compound_street_from_title():
     assert records[0].locations == ["Waltendorfer Hauptstraße"]
 
 
+def test_extracts_ring_street_from_title():
+    paragraphs = [
+        "Protokoll über die ordentliche öffentliche Sitzung des Gemeinderates am 22.01.2026",
+        "Tagesordnung",
+        "Stk. 10) A8-102789/2024-9 Abwasserentsorgungsanlage BA 285 Sanierung Joanneumring",
+        "Der Antrag wurde einstimmig angenommen.",
+    ]
+
+    records = parse_protocol(
+        paragraphs,
+        "2026-01-22_Protokoll.docx",
+        street_names={"joanneumring"},
+    )
+
+    assert records[0].locations == ["Joanneumring"]
+
+
 def test_skips_table_of_contents_stk_entries():
     paragraphs = [
         "6.1\tStk. 5) A5-076766/2024/0005 Beispielpunkt\t64",

@@ -1309,7 +1309,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       const row = event.target.closest('tr[data-index]');
       if (!row) return;
       ausgewaehlterEintrag = sichtbareEintraege[Number(row.dataset.index)] || null;
-      selectRecord(ausgewaehlterEintrag, true);
+      selectRecord(ausgewaehlterEintrag);
     }});
     detailWrap.addEventListener('click', (event) => {{
       const locationButton = event.target.closest('[data-location]');
@@ -1329,7 +1329,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     byId('topicsWrap').addEventListener('click', (event) => {{
       const step = event.target.closest('[data-record-id]');
       if (step) {{
-        selectRecord(findRecordById(step.dataset.recordId), true);
+        selectRecord(findRecordById(step.dataset.recordId));
         return;
       }}
       const action = event.target.closest('[data-topic-id]');
