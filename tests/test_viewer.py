@@ -62,6 +62,9 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "Lokale Doppelklick-Ansicht. Protokolldateien bleiben außerhalb von Git." not in html
     assert "Eintrag auswählen, um Details zu sehen." in html
     assert "Alle Quellen" in html
+    assert "Alle Themen" in html
+    assert "categoryFilter" in html
+    assert "mapLegend" in html
     assert "Alle Jahre" in html
     assert "Alle Beträge" in html
     assert "Alle Dateien" in html
@@ -82,6 +85,7 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "refreshMapMarkersIfNeeded()" in html
     assert "activeTopicRecordIds" in html
     assert "data-topic-id" in html
+    assert "categoryColors" in html
     assert "focusRecordLocations(record" in html
     assert "selectRecord(ausgewaehlterEintrag, true)" not in html
     assert "selectRecord(findRecordById(step.dataset.recordId), true)" not in html
@@ -153,6 +157,21 @@ def test_viewer_normalizes_file_labels_and_status_filter():
     assert record["quell_datei"] == "Protokoll 2024-11-14.docx"
     assert record["status"] == "angenommen (einstimmig)"
     assert record["status_filter"] == "Angenommen"
+
+
+def test_viewer_classifies_record_category():
+    record = viewer_record(
+        {
+            "meeting_date": "2026-02-12",
+            "record_id": "r1",
+            "record_type": "agenda_item",
+            "source_file": "test.docx",
+            "status": "accepted_unanimous",
+            "title": "Erhöhung und Verlängerung der Projektgenehmigung Prüfung Stadion Graz Liebenau",
+        }
+    )
+
+    assert record["kategorie"] == "Kultur, Sport & Veranstaltungen"
 
 
 def test_viewer_canonicalizes_digra_urls():

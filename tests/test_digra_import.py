@@ -160,6 +160,48 @@ def test_protocol_fallback_does_not_keep_uncertain_digra_link(monkeypatch):
     assert enriched[0].digra_business_number == ""
 
 
+def test_agenda_item_can_match_digra_by_distinctive_title_tokens_when_numbers_differ():
+    record = AgendaRecord(
+        record_id="stadion",
+        record_type="agenda_item",
+        source_file="test.docx",
+        meeting_date="2026-02-12",
+        section="Tagesordnung",
+        agenda_item_no=10,
+        business_numbers=["A8-067136/2025-2"],
+        title="Erhöhung und Verlängerung der Projektgenehmigung: Prüfung Stadion Graz Liebenau",
+        status="unknown",
+        status_text="",
+        result_text="Unbekannt",
+        raw_result_text="",
+        votes=[],
+        amounts=[],
+        locations=[],
+        source_snippet="",
+        parser_confidence=0.8,
+    )
+    entry = DigraEntry(
+        meeting_date="2026-02-12",
+        meeting_number="57",
+        record_type="agenda_item",
+        section="Tagesordnung",
+        order_in_type=33,
+        agenda_item_no=33,
+        business_number="2552/1",
+        title="Aufwandsgenehmigung Präzisierung Machbarkeitsstudie Erweiterung Stadtion Graz Liebenau",
+        url="https://digra.graz.at/document?ref=stadion",
+        status="accepted_unanimous",
+        result_text="Antrag: einstimmig angenommen",
+        raw_result_text="einstimmig angenommen",
+        votes=[],
+    )
+
+    match, score = find_best_digra_entry(record, [entry], set(), order_in_type=10)
+
+    assert match == entry
+    assert score >= 0.5
+
+
 def test_canonicalizes_digra_session_urls():
     assert (
         canonical_digra_url("https://digra.graz.at/document?ref=62ffdb64-e7eb-41a9-917d-349c5ef37a9c&jfwid=abc")

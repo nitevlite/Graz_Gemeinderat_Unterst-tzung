@@ -368,6 +368,8 @@ def find_best_digra_entry(
         return None, 0.0
     if score >= MIN_GENERIC_TITLE_SCORE:
         return best, score
+    if record.record_type == "agenda_item" and score >= MIN_AGENDA_TITLE_SCORE and distinctive_token_overlap(record.title, best.title) >= 2:
+        return best, score
     if best.order_in_type == order_in_type and record.record_type != "agenda_item" and score >= MIN_ORDER_TITLE_SCORE:
         return best, score
     return None, 0.0
@@ -404,6 +406,16 @@ def title_similarity(left: str, right: str) -> float:
     right_tokens = set(right_norm.split())
     overlap = len(left_tokens & right_tokens) / max(len(left_tokens), 1)
     return max(sequence_score, overlap)
+
+
+def distinctive_token_overlap(left: str, right: str) -> int:
+    left_tokens = distinctive_tokens(normalize_match_text(left))
+    right_tokens = distinctive_tokens(normalize_match_text(right))
+    return len(left_tokens & right_tokens)
+
+
+def distinctive_tokens(value: str) -> set[str]:
+    return {token for token in value.split() if len(token) >= 4}
 
 
 def normalize_match_text(value: str) -> str:

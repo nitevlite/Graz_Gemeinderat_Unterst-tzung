@@ -9,6 +9,128 @@ import sys
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 
+CATEGORY_RULES = [
+    (
+        "Kultur, Sport & Veranstaltungen",
+        re.compile(
+            r"\b(kultur|literaturhaus|museum|sport|stadion|veranstaltung|fest|theater|kunst|musik|"
+            r"eiskrippe|krampuslauf|fußball|fussball)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Bauen & Stadtplanung",
+        re.compile(
+            r"\b(bebauungsplan|flächenwidmungsplan|flaechenwidmungsplan|bausperre|stadtteilentwicklung|"
+            r"rahmenplan|stadtplanung|entwicklungskonzept|widmung|gdst|grundstück|grundstueck|"
+            r"liegenschaft|dienstbarkeit|baurecht|bauprojekt|quartier)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Kanal, Wasser & Infrastruktur",
+        re.compile(
+            r"\b(abwasser|kanal|wasserwirtschaft|gewässer|gewaesser|mur|mühlgang|muehlgang|hochwasser|"
+            r"hochwasserschutz|leitung|fernwärme|fernwaerme|sammler|entsorgungsanlage|infrastruktur)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Verkehr & Mobilität",
+        re.compile(
+            r"\b(mobilität|mobilitaet|verkehr|verkehrsplanung|verkehrssicherheit|straße|strasse|gasse|weg|"
+            r"schutzweg|zebrastreifen|rad|fahrrad|straßenbahn|strassenbahn|straßenbahnlinie|"
+            r"strassenbahnlinie|tram|bus|öffi|oeffi|"
+            r"haltestelle|parkplatz|parken|tempo|geschwindigkeit|einbahn|kreuzung|gehsteig|"
+            r"fußverkehr|fussverkehr|s-bahn|tunnel)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Kanal, Wasser & Infrastruktur",
+        re.compile(
+            r"\b(abwasser|kanal|wasserwirtschaft|gewässer|gewaesser|mur|mühlgang|muehlgang|hochwasser|"
+            r"hochwasserschutz|leitung|fernwärme|fernwaerme|sammler|entsorgungsanlage|infrastruktur)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Budget & Förderungen",
+        re.compile(
+            r"\b(budget|budgetvorsorge|förderung|foerderung|förderungsvertrag|foerderungsvertrag|"
+            r"projektgenehmigung|aufwandsgenehmigung|euro|darlehen|kredit|jahresabschluss|"
+            r"investition|kosten|tarif|abgangsdeckung|finanzierung|steuer)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Beteiligungen & Unternehmen",
+        re.compile(
+            r"\b(gmbh|holding|itg|gbg|energie graz|aufsichtsrat|generalversammlung|stimmrecht|"
+            r"umlaufbeschluss|abschlussprüfer|abschlusspruefer|bestellung|abberufung)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Verwaltung & Recht",
+        re.compile(
+            r"\b(statut|verordnung|geschäftsordnung|geschaeftsordnung|ausschuss|stadtsenat|"
+            r"vertretung|entsendung|kommission|kuratorium|volksbefragung|"
+            r"volksabstimmung|petition|landtag|richtlinie)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Bildung & Jugend",
+        re.compile(
+            r"\b(bildung|kindergarten|kinderkrippe|schule|volksschule|mittelschule|jugend|kinder|"
+            r"kinderbetreuung|kinderbetreuungseinrichtung|radlbonus|betreuung|tarifsystem|pflichtschule|lehrstelle)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Soziales & Gesundheit",
+        re.compile(
+            r"\b(sozial|pflege|gesundheit|krankenversicherung|bestattung|hilfe in besonderen lebenslagen|"
+            r"behindert|inklusion|senior|armut|barrierefrei|kfa)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Umwelt, Klima & Energie",
+        re.compile(
+            r"\b(umwelt|klima|energie|energieeffizienz|grünraum|gruenraum|baum|baumschutz|naturschutz|"
+            r"vogelschutz|emission|nachhaltig|photovoltaik|schatten|begrünung|begruenung)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Kultur, Sport & Veranstaltungen",
+        re.compile(
+            r"\b(kultur|literaturhaus|museum|sport|stadion|veranstaltung|fest|theater|kunst|musik|"
+            r"eiskrippe|krampuslauf|fußball|fussball)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Wohnen & Gebäude",
+        re.compile(
+            r"\b(wohnen|wohnbau|wohnhaus|wohnraum|gemeindewohnung|wohnkostenmodell|immobilien|"
+            r"gebäude|gebaeude|sanierung|miete|wc-anlage|baumanagement)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Sicherheit & Ordnung",
+        re.compile(
+            r"\b(sicherheit|ordnung|ordnungswache|unfall|kriminal|polizei|alkohol|lärm|laerm|"
+            r"vandalismus|wildparker|kontrolle|abfuhrordnung|mistkübel|mistkuebel)\b",
+            re.IGNORECASE,
+        ),
+    ),
+]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="graz-protocols-viewer",
@@ -529,15 +651,37 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       font-size: 12px;
     }}
     .leaflet-interactive.place-dot {{
-      stroke: #1d4ed8;
       stroke-width: 2;
-      fill: #2563eb;
       fill-opacity: 0.8;
     }}
     .leaflet-interactive.place-dot.related-place {{
       stroke: #047857;
       fill: #10b981;
       fill-opacity: 0.9;
+    }}
+    .map-legend {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-bottom: 10px;
+    }}
+    .legend-item {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fbfdff;
+      padding: 4px 8px;
+      color: #334155;
+      font-size: 12px;
+      font-weight: 650;
+    }}
+    .legend-swatch {{
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--category-color, #64748b);
     }}
     .topics h2 {{
       margin: 0 0 10px;
@@ -705,6 +849,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
           <label class="filter-cell"><span class="sr-label">Datum</span><select id="dateFilter"><option value="">Alle Daten</option></select></label>
           <label class="filter-cell"><span class="sr-label">Typ</span><select id="typeFilter"><option value="">Alle Typen</option></select></label>
           <label class="filter-cell"><span class="sr-label">Status</span><select id="statusFilter"><option value="">Alle Status</option></select></label>
+          <label class="filter-cell"><span class="sr-label">Thema</span><select id="categoryFilter"><option value="">Alle Themen</option></select></label>
           <label class="filter-cell"><span class="sr-label">Ergebnisquelle</span><select id="sourceFilter"><option value="">Alle Quellen</option></select></label>
           <label class="filter-cell"><span class="sr-label">Beträge</span><select id="amountFilter"><option value="">Alle Beträge</option><option value="mit">Mit Betrag</option><option value="ohne">Ohne Betrag</option></select></label>
           <label class="filter-cell"><span class="sr-label">Dateien</span><select id="fileFilter"><option value="">Alle Dateien</option></select></label>
@@ -731,6 +876,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
           <div class="map-progress" id="mapProgress" aria-hidden="true">
             <div class="map-progress-bar" id="mapProgressBar"></div>
           </div>
+          <div class="map-legend" id="mapLegend" aria-label="Kartenlegende"></div>
           <div class="map-layout">
             <div id="grazMap" aria-label="Karte mit erkannten Orten"></div>
             <div class="map-list" id="mapPlaces"></div>
@@ -760,6 +906,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     const dateFilter = byId('dateFilter');
     const typeFilter = byId('typeFilter');
     const statusFilter = byId('statusFilter');
+    const categoryFilter = byId('categoryFilter');
     const sourceFilter = byId('sourceFilter');
     const amountFilter = byId('amountFilter');
     const fileFilter = byId('fileFilter');
@@ -770,6 +917,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     const mapStatus = byId('mapStatus');
     const mapProgress = byId('mapProgress');
     const mapProgressBar = byId('mapProgressBar');
+    const mapLegend = byId('mapLegend');
     const mapPlaces = byId('mapPlaces');
     const exportCount = byId('exportCount');
     const digraMatchedCount = byId('digraMatchedCount');
@@ -781,8 +929,26 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     let grazMap = null;
     let markerLayer = null;
     const markersByLocation = new Map();
+    const markerCacheByLocation = new Map();
+    const coordsByLocation = new Map();
+    const geocodePromisesByLocation = new Map();
     let highlightedLocations = new Set();
     let currentLocationIndex = buildLocationIndex(records);
+    const categoryColors = {{
+      'Bauen & Stadtplanung': '#7c3aed',
+      'Verkehr & Mobilität': '#2563eb',
+      'Kanal, Wasser & Infrastruktur': '#0891b2',
+      'Budget & Förderungen': '#ca8a04',
+      'Beteiligungen & Unternehmen': '#475569',
+      'Verwaltung & Recht': '#64748b',
+      'Bildung & Jugend': '#db2777',
+      'Soziales & Gesundheit': '#dc2626',
+      'Umwelt, Klima & Energie': '#16a34a',
+      'Kultur, Sport & Veranstaltungen': '#9333ea',
+      'Wohnen & Gebäude': '#ea580c',
+      'Sicherheit & Ordnung': '#b91c1c',
+      'Sonstiges': '#6b7280'
+    }};
     let activeTabName = 'search';
     let lastMarkerLocationKey = '';
     let markerLoadRun = 0;
@@ -813,6 +979,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         ...(record.geschaeftszahlen || []),
         record.titel,
         record.status,
+        record.kategorie,
         ...(record.betraege || []),
         ...(record.orte || []),
         record.ergebnis,
@@ -836,6 +1003,28 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         }});
       }});
       return index;
+    }}
+
+    function primaryCategoryForLocation(locationRecords) {{
+      const counts = new Map();
+      (locationRecords || []).forEach((record) => {{
+        const category = record.kategorie || 'Sonstiges';
+        counts.set(category, (counts.get(category) || 0) + 1);
+      }});
+      return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'de-AT'))[0]?.[0] || 'Sonstiges';
+    }}
+
+    function categoryColor(category) {{
+      return categoryColors[category] || categoryColors.Sonstiges;
+    }}
+
+    function renderMapLegend() {{
+      if (!mapLegend) return;
+      const categories = [...new Set(sichtbareEintraege.map((record) => record.kategorie || 'Sonstiges'))]
+        .sort((a, b) => a.localeCompare(b, 'de-AT'));
+      mapLegend.innerHTML = categories.map((category) => `
+        <span class="legend-item"><span class="legend-swatch" style="--category-color: ${{categoryColor(category)}}"></span>${{escapeHtml(category)}}</span>
+      `).join('');
     }}
 
     function mappableLocation(location) {{
@@ -977,17 +1166,25 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     }}
 
     async function geocodeLocation(location) {{
+      if (coordsByLocation.has(location)) {{
+        return coordsByLocation.get(location);
+      }}
+      if (geocodePromisesByLocation.has(location)) {{
+        return geocodePromisesByLocation.get(location);
+      }}
       const cacheKey = `graz-location:${{location}}`;
       const cached = localStorage.getItem(cacheKey);
       if (cached) {{
         try {{
-          return JSON.parse(cached);
+          const coords = JSON.parse(cached);
+          coordsByLocation.set(location, coords);
+          return coords;
         }} catch {{
           localStorage.removeItem(cacheKey);
         }}
       }}
       const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=at&q=${{encodeURIComponent(location + ', Graz, Österreich')}}`;
-      try {{
+      const promise = (async () => {{
         const response = await fetch(url);
         if (!response.ok) return null;
         const results = await response.json();
@@ -996,11 +1193,18 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         const coords = {{ lat: Number(first.lat), lon: Number(first.lon) }};
         if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lon)) return null;
         localStorage.setItem(cacheKey, JSON.stringify(coords));
+        coordsByLocation.set(location, coords);
         await new Promise((resolve) => setTimeout(resolve, 250));
         return coords;
+      }})();
+      geocodePromisesByLocation.set(location, promise);
+      try {{
+        return await promise;
       }} catch {{
         mapStatus.textContent = 'Online-Geocoding nicht verfügbar.';
         return null;
+      }} finally {{
+        geocodePromisesByLocation.delete(location);
       }}
     }}
 
@@ -1010,31 +1214,44 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       const popupRecords = locationRecords.slice(0, 6).map((record) => `
         <button type="button" data-popup-record-id="${{escapeHtml(record.record_id)}}">${{escapeHtml(record.datum)}} · ${{escapeHtml(record.titel)}}</button>
       `).join('');
-      const marker = L.circleMarker([coords.lat, coords.lon], {{
-        radius: Math.min(11, 5 + Math.sqrt(locationRecords.length)),
-        color: '#1d4ed8',
-        weight: 2,
-        fillColor: '#2563eb',
-        fillOpacity: 0.78,
-        className: 'place-dot'
-      }}).bindPopup(`
+      const category = primaryCategoryForLocation(locationRecords);
+      const color = categoryColor(category);
+      const popupHtml = `
         <strong>${{escapeHtml(location)}}</strong>
+        <div>${{escapeHtml(category)}}</div>
         <div class="popup-list">${{popupRecords}}</div>
-      `);
-      marker.addTo(markerLayer);
+      `;
+      let marker = markerCacheByLocation.get(location);
+      if (!marker) {{
+        marker = L.circleMarker([coords.lat, coords.lon], {{
+          radius: Math.min(11, 5 + Math.sqrt(locationRecords.length)),
+          color,
+          weight: 2,
+          fillColor: color,
+          fillOpacity: 0.78,
+          className: 'place-dot'
+        }});
+        markerCacheByLocation.set(location, marker);
+      }}
+      marker.setRadius(Math.min(11, 5 + Math.sqrt(locationRecords.length)));
+      marker.setStyle(markerStyle(location, highlightedLocations.has(location)));
+      marker.bindPopup(popupHtml);
+      if (!markerLayer.hasLayer(marker)) marker.addTo(markerLayer);
       markersByLocation.set(location, marker);
       applyMarkerHighlight(location, marker);
     }}
 
-    function markerStyle(isHighlighted) {{
+    function markerStyle(location, isHighlighted) {{
+      const category = primaryCategoryForLocation(currentLocationIndex.get(location) || []);
+      const color = categoryColor(category);
       return isHighlighted
         ? {{ color: '#047857', fillColor: '#10b981', fillOpacity: 0.9, weight: 3, className: 'place-dot related-place' }}
-        : {{ color: '#1d4ed8', fillColor: '#2563eb', fillOpacity: 0.78, weight: 2, className: 'place-dot' }};
+        : {{ color, fillColor: color, fillOpacity: 0.78, weight: 2, className: 'place-dot' }};
     }}
 
     function applyMarkerHighlight(location, marker) {{
       if (!marker?.setStyle) return;
-      marker.setStyle(markerStyle(highlightedLocations.has(location)));
+      marker.setStyle(markerStyle(location, highlightedLocations.has(location)));
     }}
 
     function updateMarkerHighlights() {{
@@ -1129,13 +1346,14 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     }}
 
     function exportCsv() {{
-      const headers = ['Datum', 'Typ', 'Abschnitt', 'Stück', 'Status', 'Ergebnisquelle', 'Geschäftszahlen', 'Titel', 'Ergebnis', 'Beträge', 'Orte', 'DIGRA-Einlagezahl', 'DIGRA-Link', 'Quelldatei'];
+      const headers = ['Datum', 'Typ', 'Abschnitt', 'Stück', 'Status', 'Thema', 'Ergebnisquelle', 'Geschäftszahlen', 'Titel', 'Ergebnis', 'Beträge', 'Orte', 'DIGRA-Einlagezahl', 'DIGRA-Link', 'Quelldatei'];
       const rows = sichtbareEintraege.map((record) => [
         record.datum,
         record.typ,
         record.abschnitt,
         record.stueck_nr,
         record.status,
+        record.kategorie,
         record.ergebnisquelle,
         joinList(record.geschaeftszahlen),
         record.titel,
@@ -1168,6 +1386,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         <div class="detail-grid">
           ${{detailField('Datum', record.datum)}}
           ${{detailField('Typ', record.typ)}}
+          ${{detailField('Thema', record.kategorie)}}
           ${{detailField('Stück', record.stueck_nr)}}
           ${{detailField('Status', record.status)}}
           ${{detailField('Geschäftszahlen', joinList(record.geschaeftszahlen))}}
@@ -1263,6 +1482,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         if (yearFilter.value && !String(record.datum || '').startsWith(yearFilter.value + '-')) return false;
         if (typeFilter.value && record.typ !== typeFilter.value) return false;
         if (statusFilter.value && record.status_filter !== statusFilter.value) return false;
+        if (categoryFilter.value && record.kategorie !== categoryFilter.value) return false;
         if (sourceFilter.value && record.ergebnisquelle !== sourceFilter.value) return false;
         if (amountFilter.value === 'mit' && !(record.betraege || []).length) return false;
         if (amountFilter.value === 'ohne' && (record.betraege || []).length) return false;
@@ -1289,6 +1509,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       if (digraMissingCount) digraMissingCount.textContent = records.filter((r) => !r.ergebnis || r.status_filter === 'Unbekannt').length;
       currentLocationIndex = buildLocationIndex(sichtbareEintraege);
       renderMapPlaces();
+      renderMapLegend();
       refreshMapMarkersIfNeeded();
       renderDetail(ausgewaehlterEintrag);
       renderTopics();
@@ -1305,7 +1526,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
           <td data-label="Stk.">${{escapeHtml(record.stueck_nr)}}</td>
           <td data-label="Status"><span class="badge">${{escapeHtml(record.status || '')}}</span></td>
           <td data-label="Geschäftszahl">${{escapeHtml((record.geschaeftszahlen || []).join(', '))}}</td>
-          <td data-label="Titel" class="title">${{escapeHtml(record.titel)}}</td>
+          <td data-label="Titel" class="title">${{escapeHtml(record.titel)}}<br><span class="badge">${{escapeHtml(record.kategorie || '')}}</span></td>
           <td data-label="Beträge" class="amount amount-col">${{escapeHtml((record.betraege || []).join(', '))}}</td>
           <td data-label="Orte" class="places-col">${{locationLinks(record.orte)}}</td>
           <td data-label="Ergebnisse" class="result results-col">${{escapeHtml(record.ergebnis || '')}}<br><span class="badge">${{escapeHtml(record.ergebnisquelle || '')}}</span> ${{record.digra_url ? digraLink(record.digra_url, 'DIGRA') : ''}}</td>
@@ -1338,6 +1559,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     fillSelect(dateFilter, records.map((record) => record.datum));
     fillSelect(typeFilter, records.map((record) => record.typ));
     fillSelect(statusFilter, records.map((record) => record.status_filter));
+    fillSelect(categoryFilter, records.map((record) => record.kategorie));
     fillSelect(sourceFilter, records.map((record) => record.ergebnisquelle));
     fillSelect(fileFilter, records.map((record) => record.quell_datei));
     fillSelect(sectionFilter, records.map((record) => record.abschnitt));
@@ -1345,7 +1567,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       activeTopicRecordIds = null;
       render();
     }});
-    [yearFilter, dateFilter, typeFilter, statusFilter, sourceFilter, amountFilter, fileFilter, sectionFilter].forEach((el) => el.addEventListener('input', render));
+    [yearFilter, dateFilter, typeFilter, statusFilter, categoryFilter, sourceFilter, amountFilter, fileFilter, sectionFilter].forEach((el) => el.addEventListener('input', render));
     csvExport.addEventListener('click', exportCsv);
     tableWrap.addEventListener('click', (event) => {{
       const locationButton = event.target.closest('[data-location]');
@@ -1404,6 +1626,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
 
 
 def viewer_record(record: dict) -> dict:
+    category = classify_category(record)
     return {
         "record_id": record.get("record_id", ""),
         "datum": record.get("meeting_date", ""),
@@ -1414,6 +1637,7 @@ def viewer_record(record: dict) -> dict:
         "titel": record.get("title", ""),
         "status": german_status(str(record.get("status", ""))),
         "status_filter": german_status_filter(str(record.get("status", ""))),
+        "kategorie": category,
         "ergebnis": record.get("result_text", ""),
         "ergebnisquelle": german_result_source(str(record.get("result_source", ""))),
         "digra_url": canonical_digra_url(str(record.get("digra_url", ""))),
@@ -1426,6 +1650,21 @@ def viewer_record(record: dict) -> dict:
         "ki_einfache_sprache": record.get("ai_easy_language", ""),
         "quell_datei": german_source_file(str(record.get("source_file", ""))),
     }
+
+
+def classify_category(record: dict) -> str:
+    text = " ".join(
+        str(value or "")
+        for value in (
+            record.get("title", ""),
+            record.get("ai_summary", ""),
+            record.get("source_snippet", ""),
+        )
+    )
+    for label, pattern in CATEGORY_RULES:
+        if pattern.search(text):
+            return label
+    return "Sonstiges"
 
 
 def viewer_summary(summary: dict) -> dict:

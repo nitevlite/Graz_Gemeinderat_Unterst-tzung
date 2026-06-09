@@ -147,8 +147,11 @@ Aktualisierung am 2026-06-09:
 - Viewer: `viewer.html` zeigt KI-Zusammenfassungen im Detailbereich eines ausgewählten Eintrags als ausklappbare Blöcke `KI-Zusammenfassung` und `Einfache Sprache`.
 - Karte: Beim Öffnen des Kartenreiters werden alle Orte der aktuellen Filterauswahl geocodiert; ein Ladebalken zeigt den Fortschritt, bis alle Orte geprüft sind.
 - Karte: Beim Fokussieren eines Eintrags werden alle Orte dieses Eintrags markiert; zugehörige Marker werden grün hervorgehoben.
+- Karte: Marker und Koordinaten werden im Browser wiederverwendet, damit Jahreswechsel wie 2026 -> 2025 -> 2026 nicht alles neu aufbauen müssen.
+- Fachliche Obergruppen: Viewer-Datensätze erhalten eine regelbasierte Kategorie; die UI bietet einen `Thema`-Filter und die Karte färbt Marker nach Kategorie mit Legende.
 - Ortserkennung: Straßentypen wie `Gürtel`, `Lände`, `Steig`, `Steg`, `Zeile` und `Graben` sind in der Suffixliste enthalten.
 - Ortserkennung: Mehrwort-Straßen aus der offiziellen Excel-Liste, z. B. `Triester Straße`, werden erkannt.
+- DIGRA-Zuordnung: Bei Tagesordnungspunkten mit abweichender DIGRA-Nummer darf ein Treffer ab Score 0,50 übernommen werden, wenn mindestens zwei markante Titelwörter übereinstimmen.
 - Prüfstand: Titelabgleich gegen `Straßennamen_Graz.xlsx` meldet 0 fehlende Titel-Straßen. `Friedenssteig` bleibt leer, weil der Name nicht in der bereitgestellten Excel-Liste enthalten ist.
 
 Erzeugte Ausgabe ist absichtlich ignoriert.
