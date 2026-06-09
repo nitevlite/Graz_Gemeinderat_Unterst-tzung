@@ -65,6 +65,7 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "Alle Themen" in html
     assert "categoryFilter" in html
     assert "mapLegend" in html
+    assert "data-map-category" in html
     assert "Alle Jahre" in html
     assert "Alle Beträge" in html
     assert "Alle Dateien" in html
@@ -86,6 +87,7 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "activeTopicRecordIds" in html
     assert "data-topic-id" in html
     assert "categoryColors" in html
+    assert "categoryFilter.value === category ? '' : category" in html
     assert "focusRecordLocations(record" in html
     assert "selectRecord(ausgewaehlterEintrag, true)" not in html
     assert "selectRecord(findRecordById(step.dataset.recordId), true)" not in html

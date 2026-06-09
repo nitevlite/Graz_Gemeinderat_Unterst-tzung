@@ -676,6 +676,18 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       color: #334155;
       font-size: 12px;
       font-weight: 650;
+      min-height: 0;
+      width: auto;
+      cursor: pointer;
+    }}
+    .legend-item.is-active {{
+      border-color: var(--category-color, var(--accent));
+      background: var(--accent-tint);
+      color: var(--accent-dark);
+    }}
+    .legend-item:hover {{
+      border-color: var(--category-color, var(--accent));
+      background: #f8fafc;
     }}
     .legend-swatch {{
       width: 10px;
@@ -1023,7 +1035,9 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       const categories = [...new Set(sichtbareEintraege.map((record) => record.kategorie || 'Sonstiges'))]
         .sort((a, b) => a.localeCompare(b, 'de-AT'));
       mapLegend.innerHTML = categories.map((category) => `
-        <span class="legend-item"><span class="legend-swatch" style="--category-color: ${{categoryColor(category)}}"></span>${{escapeHtml(category)}}</span>
+        <button class="legend-item${{categoryFilter.value === category ? ' is-active' : ''}}" type="button" data-map-category="${{escapeHtml(category)}}" style="--category-color: ${{categoryColor(category)}}">
+          <span class="legend-swatch"></span>${{escapeHtml(category)}}
+        </button>
       `).join('');
     }}
 
@@ -1590,6 +1604,14 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       const locationButton = event.target.closest('[data-location]');
       if (!locationButton) return;
       focusLocation(locationButton.dataset.location || '');
+    }});
+    mapLegend.addEventListener('click', (event) => {{
+      const categoryButton = event.target.closest('[data-map-category]');
+      if (!categoryButton) return;
+      const category = categoryButton.dataset.mapCategory || '';
+      categoryFilter.value = categoryFilter.value === category ? '' : category;
+      activeTopicRecordIds = null;
+      render();
     }});
     byId('grazMap').addEventListener('click', (event) => {{
       const recordButton = event.target.closest('[data-popup-record-id]');
