@@ -127,8 +127,8 @@ Originalformulierungen aus dem Protokoll werden im Viewer nicht angezeigt und bl
 
 Der Viewer enthält zusätzliche Mobilitätsreiter:
 
-- `Baustellen`: Planungsformular für eigene Baustellen mit Ort, Zeitraum, Sperrtyp und Konfliktprüfung gegen erkannte Gemeinderats-Orte. Offizielle Baustelleninformationen werden verlinkt, aber nicht als Geoportal-Datensatz eingebettet, weil dafür keine OGD-Freigabe gefunden wurde.
-- `Tiefgaragen`: Karte für Parkgaragen aus dem OGD-Datensatz `Parkgaragen Graz` (`CC BY 4.0`, Quelle: `Stadt Graz - data.graz.gv.at`). Die Live-Verfügbarkeit bleibt `unbekannt`, solange keine offene Live-API mit klarer Weiterverwendungsfreigabe vorliegt.
+- `Baustellen`: Karte und Planungsformular mit offiziellen Baustelleninfos aus der öffentlichen Stadt-Graz-Seite. Die Seite wird nur lokal nach `out\baustellen_graz.html` gecacht; dieser Cache bleibt ignoriert und wird nicht committed. Die Konfliktprüfung vergleicht eine eingegebene Baustelle gegen diese geladenen Baustelleninfos.
+- `Tiefgaragen`: Karte für Parkgaragen aus dem OGD-Datensatz `Parkgaragen Graz` (`CC BY 4.0`, Quelle: `Stadt Graz - data.graz.gv.at`). Für die lokale Ansicht gibt es Koordinaten-Fallbacks, damit Marker auch ohne Browser-Geocoding erscheinen. Die Live-Verfügbarkeit bleibt `unbekannt`, solange keine offene Live-API mit klarer Weiterverwendungsfreigabe vorliegt.
 
 DIGRA-Auditbericht bauen:
 
@@ -170,6 +170,7 @@ python -m graz_protocols.viewer --records out\agenda_items_digra_ai.jsonl --summ
 ```
 
 Der Zusammenfassungslauf schreibt fortlaufend in die Ausgabedatei und kann neu gestartet werden. Für kurze Tests kann `--limit 10` verwendet werden.
+Der Viewer lädt beim Erzeugen zusätzlich Parkgaragen-OGD und die öffentliche Baustellenseite in ignorierte Caches unter `out\`. Wenn die Netzverbindung ausfällt, werden vorhandene Caches weiterverwendet.
 
 ## GitHub-Backlog
 

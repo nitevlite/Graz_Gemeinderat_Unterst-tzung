@@ -167,6 +167,20 @@ def test_extracts_official_multiword_street_from_exact_list_match():
     assert records[0].locations == ["Triester Straße"]
 
 
+def test_business_number_suffix_does_not_consume_decimal_title_number():
+    paragraphs = [
+        "Protokoll über die ordentliche öffentliche Sitzung des Gemeinderates am 12.02.2026",
+        "Tagesordnung",
+        "Stk. 18) A 14-087503/2025/0011 - 4.10 Stadtentwicklungskonzept der Landeshauptstadt Graz 10. Änderung - Entwurf",
+        "Der Antrag wurde mehrheitlich angenommen.",
+    ]
+
+    records = parse_protocol(paragraphs, "2026-02-12_Protokoll.docx")
+
+    assert records[0].business_numbers == ["A 14-087503/2025/0011"]
+    assert records[0].title == "4.10 Stadtentwicklungskonzept der Landeshauptstadt Graz 10. Änderung - Entwurf"
+
+
 def test_skips_table_of_contents_stk_entries():
     paragraphs = [
         "6.1\tStk. 5) A5-076766/2024/0005 Beispielpunkt\t64",

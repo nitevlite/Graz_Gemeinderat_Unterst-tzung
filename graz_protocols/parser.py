@@ -31,7 +31,7 @@ BUSINESS_NO_RE = re.compile(
     r"Präs\.?|Praes\.?|"
     r"AB|"
     r"A\s*\d+(?:\s*/\s*\d+)?|A\d+(?:/\d+)?"
-    r")\s*(?:[-–]\s*)?\d{3,}(?:\s*/\s*\d{1,4}){0,3}(?:\s*[-–]\s*\d{1,4})?",
+    r")\s*(?:[-–]\s*)?\d{3,}(?:\s*/\s*\d{1,4}){0,3}(?:\s*[-–]\s*\d{1,4}(?!\s*\.))?",
     re.IGNORECASE,
 )
 AMOUNT_RE = re.compile(
@@ -402,7 +402,7 @@ def normalize_date(value: str) -> str:
 def extract_title(heading_body: str) -> str:
     title = BUSINESS_NO_RE.sub(" ", heading_body)
     title = REPORTER_RE.sub(" ", title)
-    title = re.sub(r"^\s*[,;]\s*", "", title)
+    title = re.sub(r"^\s*[-–,;]\s*", "", title)
     title = re.sub(r"\s+", " ", title).strip(" ,;")
     return title
 

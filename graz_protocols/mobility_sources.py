@@ -5,7 +5,11 @@ from pathlib import Path
 import csv
 import io
 import json
+import re
 from urllib.request import urlopen
+
+from bs4 import BeautifulSoup
+import requests
 
 
 PARKING_CSV_URL = "https://data.graz.gv.at/graz/wp-content/uploads/2024/06/Parkgaragen.csv"
@@ -16,8 +20,13 @@ ROADWORKS_INFO_URL = "https://www.graz.at/cms/beitrag/10295878/8115447/Baustelle
 ROADWORKS_OFFICE_URL = "https://www.graz.at/cms/beitrag/10028253/7755789/Baustellen_in_Graz.html"
 ROADWORKS_USAGE_NOTE = (
     "Die offiziellen Baustellen-Geodaten sind als Geoportal-Online-Service beschrieben, nicht als OGD-Datensatz. "
-    "Direkte Übernahme in ein Open-Source-Repository ist ohne zusätzliche Freigabe nicht vorgesehen."
+    "Die lokale HTML-Ansicht lädt deshalb nur aktuelle, öffentliche Baustelleninfos aus graz.at bzw. aus dem lokalen Cache."
 )
+ROADWORK_LOCATION_RE = re.compile(
+    r"\b(?:straße|strasse|gasse|weg|platz|ring|gürtel|guertel|kai|allee|brücke|bruecke|lände|laende|graben|ufer)\b",
+    re.IGNORECASE,
+)
+ROADWORK_PERIOD_RE = re.compile(r"\b(?:Termin|Zeitraum)\s*:?\s*(?P<value>.+)", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -33,6 +42,18 @@ class ParkingGarage:
     source: str = PARKING_ATTRIBUTION
     source_url: str = PARKING_DATASET_URL
     license: str = PARKING_LICENSE
+
+
+@dataclass(frozen=True)
+class RoadworkInfo:
+    title: str
+    location: str
+    description: str
+    period: str = ""
+    project: str = ""
+    source: str = "Stadt Graz - Baustellen in Graz"
+    source_url: str = ROADWORKS_OFFICE_URL
+    license: str = "öffentliche Webseite, keine OGD-Lizenz gefunden"
 
 
 def load_parking_garages(cache_path: Path | None = None, url: str = PARKING_CSV_URL) -> tuple[list[dict], dict]:
@@ -61,6 +82,94 @@ def load_parking_garages(cache_path: Path | None = None, url: str = PARKING_CSV_
         "errors": errors,
     }
     return [asdict(garage) for garage in garages], summary
+
+
+def load_roadworks(cache_path: Path | None = None, url: str = ROADWORKS_OFFICE_URL) -> tuple[list[dict], dict]:
+    errors: list[str] = []
+    text = ""
+    if cache_path and cache_path.exists():
+        text = cache_path.read_text(encoding="utf-8")
+    else:
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            text = response.text
+            if cache_path:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                cache_path.write_text(text, encoding="utf-8")
+        except Exception as exc:  # pylint: disable=broad-except
+            errors.append(str(exc))
+
+    roadworks = parse_roadworks_html(text) if text else []
+    summary = {
+        "source_url": ROADWORKS_INFO_URL,
+        "office_url": ROADWORKS_OFFICE_URL,
+        "license": "öffentliche Webseite, keine OGD-Lizenz gefunden",
+        "records": len(roadworks),
+        "errors": errors,
+        "note": ROADWORKS_USAGE_NOTE,
+    }
+    return [asdict(roadwork) for roadwork in roadworks], summary
+
+
+def parse_roadworks_html(text: str) -> list[RoadworkInfo]:
+    if not text.strip():
+        return []
+    soup = BeautifulSoup(text, "html.parser")
+    roadworks: list[RoadworkInfo] = []
+    wrappers = soup.select(".txtblock-wrapper")
+    if not wrappers:
+        wrappers = soup.find_all(["section", "article", "div"])
+    seen: set[str] = set()
+    for wrapper in wrappers:
+        heading = wrapper.find(["h2", "h3", "h4"])
+        if not heading:
+            continue
+        title = clean_text(heading.get_text(" ", strip=True))
+        if not title or not looks_like_roadwork_location(title):
+            continue
+        content = wrapper.select_one(".txtblock-content") or wrapper
+        lines = [
+            clean_text(line)
+            for line in content.get_text("\n", strip=True).splitlines()
+            if clean_text(line) and clean_text(line) != title
+        ]
+        if not lines:
+            continue
+        key = title.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        period = ""
+        project = ""
+        description_lines: list[str] = []
+        for line in lines:
+            period_match = ROADWORK_PERIOD_RE.search(line)
+            if period_match:
+                period = clean_text(period_match.group("value"))
+                continue
+            if "projekt:" in line.casefold():
+                project = clean_text(re.sub(r"^\(?\s*Projekt\s*:\s*", "", line, flags=re.IGNORECASE).strip("() "))
+                continue
+            description_lines.append(line)
+        roadworks.append(
+            RoadworkInfo(
+                title=title,
+                location=title,
+                description="; ".join(description_lines),
+                period=period,
+                project=project,
+            )
+        )
+    return roadworks
+
+
+def looks_like_roadwork_location(value: str) -> bool:
+    return bool(ROADWORK_LOCATION_RE.search(value))
+
+
+def clean_text(value: str) -> str:
+    return " ".join(str(value or "").replace("\xa0", " ").split())
 
 
 def parse_parking_csv(text: str) -> list[ParkingGarage]:
@@ -116,8 +225,8 @@ def mobility_source_summary() -> dict:
         "roadworks": {
             "info_url": ROADWORKS_INFO_URL,
             "office_url": ROADWORKS_OFFICE_URL,
-            "license": "keine OGD-Freigabe gefunden",
-            "reuse": "nicht direkt als Datensatz einbetten; nur verlinken oder eigene Planungsdaten erfassen",
+            "license": "öffentliche Webseite, keine OGD-Lizenz gefunden",
+            "reuse": "aktuelle Webseite nur zur lokalen Anzeige laden oder verlinken; keinen statischen Datensatz ins Repository legen",
             "note": ROADWORKS_USAGE_NOTE,
         },
     }

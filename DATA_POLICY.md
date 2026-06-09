@@ -75,4 +75,5 @@ Aktuell nicht direkt einzubetten:
 
 - Baustellen-Geometrien aus der Stadt-Graz-Onlinekarte bzw. Geoportal-Services
 - Grund: keine OGD-Freigabe gefunden; die Geoportal-Nutzungsbedingungen sind restriktiv.
-- Zulässig im Projekt: Verlinkung auf die offizielle Baustelleninformation und eigene Planungs-/Prüfdaten, die Nutzer:innen selbst eingeben.
+- Zulässig im Projekt: lokale Anzeige der öffentlichen Baustellen-Webseite von `graz.at` über einen ignorierten Cache unter `out/`, Verlinkung auf die offizielle Quelle und eigene Planungs-/Prüfdaten, die Nutzer:innen selbst eingeben.
+- Nicht zulässig: den geladenen Baustellen-HTML-Cache, Geoportal-Geometrien oder daraus erzeugte statische Baustellen-Datensätze ins Repository committen.

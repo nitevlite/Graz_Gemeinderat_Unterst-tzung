@@ -8,7 +8,7 @@ import re
 import sys
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
-from .mobility_sources import load_parking_garages, mobility_source_summary
+from .mobility_sources import load_parking_garages, load_roadworks, mobility_source_summary
 
 
 CATEGORY_RULES = [
@@ -168,6 +168,12 @@ def main(argv: list[str] | None = None) -> int:
         default=Path("out") / "parkgaragen_graz.csv",
         help="Optionaler Cache für den OGD-Datensatz Parkgaragen Graz.",
     )
+    parser.add_argument(
+        "--roadworks-cache",
+        type=Path,
+        default=Path("out") / "baustellen_graz.html",
+        help="Optionaler Cache für die offizielle Baustellen-Seite der Stadt Graz.",
+    )
     args = parser.parse_args(argv)
 
     if not args.records.exists():
@@ -178,10 +184,13 @@ def main(argv: list[str] | None = None) -> int:
     summary = read_json(args.summary) if args.summary.exists() else {}
     topics = read_json(args.topics) if args.topics and args.topics.exists() else []
     garages, parking_summary = load_parking_garages(args.parking_cache)
+    roadworks, roadworks_summary = load_roadworks(args.roadworks_cache)
     mobility_summary = mobility_source_summary()
     mobility_summary["parking"]["records"] = parking_summary.get("records", 0)
     mobility_summary["parking"]["errors"] = parking_summary.get("errors", [])
-    args.output.write_text(build_html(records, summary, topics, garages, mobility_summary), encoding="utf-8")
+    mobility_summary["roadworks"]["records"] = roadworks_summary.get("records", 0)
+    mobility_summary["roadworks"]["errors"] = roadworks_summary.get("errors", [])
+    args.output.write_text(build_html(records, summary, topics, garages, mobility_summary, roadworks), encoding="utf-8")
     print(f"{args.output} mit {len(records)} Einträgen geschrieben.")
     return 0
 
@@ -206,12 +215,14 @@ def build_html(
     topics: list[dict] | None = None,
     parking_garages: list[dict] | None = None,
     mobility_sources: dict | None = None,
+    roadworks: list[dict] | None = None,
 ) -> str:
     data = json.dumps([viewer_record(record) for record in records], ensure_ascii=False)
     summary_data = json.dumps(viewer_summary(summary), ensure_ascii=False)
     topics_data = json.dumps([viewer_topic(topic) for topic in topics or []], ensure_ascii=False)
     parking_data = json.dumps(parking_garages or [], ensure_ascii=False)
     mobility_data = json.dumps(mobility_sources or mobility_source_summary(), ensure_ascii=False)
+    roadworks_data = json.dumps(roadworks or [], ensure_ascii=False)
     return f"""<!doctype html>
 <html lang="de">
 <head>
@@ -1044,6 +1055,7 @@ def build_html(
     const summary = {summary_data};
     const topics = {topics_data};
     const parkingGarages = {parking_data};
+    const officialRoadworks = {roadworks_data};
     const mobilitySources = {mobility_data};
     const byId = (id) => document.getElementById(id);
     const search = byId('search');
@@ -1119,17 +1131,17 @@ def build_html(
     let activeTopicRecordIds = null;
     let activeTopicLabel = '';
     let currentParkingGarages = [];
+    let currentRoadworks = [];
     const parkingFallbackGarages = [
-      {{ name: 'TG Operngarage', address: 'Opernring Hamerlinggasse, Graz', kind: 'Tiefgarage', spaces: 411, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }},
-      {{ name: 'TG Kastner&Öhler', address: 'Kaiser-Franz-Josef-Kai 8, Graz', kind: 'Tiefgarage', spaces: 600, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }},
-      {{ name: 'PH LKH', address: 'Stiftingtalstraße 30, Graz', kind: 'Parkhaus', spaces: 401, availability: 'unbekannt', source: 'Parkgaragen Graz OGD / Stadt Graz', source_url: 'https://www.data.gv.at/katalog/dataset/92183c55-442b-405d-9046-d19b07ffc83a', license: 'CC BY 4.0' }},
-      {{ name: 'TG Annenpassage', address: 'Bahnhofgürtel 89, Graz', kind: 'Tiefgarage', spaces: 389, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }},
-      {{ name: 'TG Bahnhof', address: 'Europaplatz 12, Graz', kind: 'Tiefgarage', spaces: 368, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }},
-      {{ name: 'TG Stadion Liebenau', address: 'Stadionplatz 1, Graz', kind: 'Tiefgarage', spaces: 650, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }},
-      {{ name: 'TG Brauquartier', address: 'Brauquartier, Graz', kind: 'Tiefgarage', spaces: 461, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }},
-      {{ name: 'TG Gate17', address: 'Triester Straße 432, Graz', kind: 'Tiefgarage', spaces: 228, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }}
+      {{ name: 'TG Operngarage', address: 'Opernring Hamerlinggasse, Graz', kind: 'Tiefgarage', lat: 47.0672, lon: 15.4451, spaces: 411, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }},
+      {{ name: 'TG Kastner&Öhler', address: 'Kaiser-Franz-Josef-Kai 8, Graz', kind: 'Tiefgarage', lat: 47.0717, lon: 15.4359, spaces: 600, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }},
+      {{ name: 'PH LKH', address: 'Stiftingtalstraße 30, Graz', kind: 'Parkhaus', lat: 47.081341, lon: 15.468616, spaces: 401, availability: 'unbekannt', source: 'Parkgaragen Graz OGD / Stadt Graz', source_url: 'https://www.data.gv.at/katalog/dataset/92183c55-442b-405d-9046-d19b07ffc83a', license: 'CC BY 4.0' }},
+      {{ name: 'TG Annenpassage', address: 'Bahnhofgürtel 89, Graz', kind: 'Tiefgarage', lat: 47.0717, lon: 15.4188, spaces: 389, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }},
+      {{ name: 'TG Bahnhof', address: 'Europaplatz 12, Graz', kind: 'Tiefgarage', lat: 47.0723, lon: 15.4178, spaces: 368, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }},
+      {{ name: 'TG Stadion Liebenau', address: 'Stadionplatz 1, Graz', kind: 'Tiefgarage', lat: 47.0462, lon: 15.4546, spaces: 650, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }},
+      {{ name: 'TG Brauquartier', address: 'Brauquartier, Graz', kind: 'Tiefgarage', lat: 47.0397, lon: 15.4119, spaces: 461, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }},
+      {{ name: 'TG Gate17', address: 'Triester Straße 432, Graz', kind: 'Tiefgarage', lat: 47.0155, lon: 15.4118, spaces: 228, availability: 'unbekannt', source: 'Stadt Graz Garagenliste', source_url: 'https://www.graz.at/cms/beitrag/10176957/7922687/Garagen_in_Graz.html', license: 'Webseite, Weiterverwendung prüfen' }}
     ];
-    const roadworkKeywords = /(baustelle|sperre|sperrung|sanierung|umgestaltung|umbau|bauarbeiten|aufgrabung|leitung|kanal|wasser|fahrbahn|gehsteig|radweg|fußweg|fussweg|querung|straße|strasse|gasse|verkehr)/i;
 
     function escapeHtml(value) {{
       return String(value ?? '').replace(/[&<>"']/g, (char) => ({{
@@ -1372,6 +1384,7 @@ def build_html(
       byId('roadworksSourceNote').innerHTML = `
         Offizielle Info: ${{externalLink(source.info_url || '', 'Baustelleninformation Graz')}} ·
         Straßenamt: ${{externalLink(source.office_url || '', 'Baustellen & temporäre Nutzungen')}}.
+        Geladene Baustellen: ${{escapeHtml(source.records ?? officialRoadworks.length)}}.
         Hinweis: ${{escapeHtml(source.note || '')}}
       `;
     }}
@@ -1379,55 +1392,50 @@ def build_html(
     async function renderRoadworkContext() {{
       if (!roadworksLayer) return;
       roadworksLayer.clearLayers();
-      const candidates = roadworkCandidateRecords();
-      const byLocation = new Map();
-      candidates.forEach((record) => {{
-        (record.orte || []).filter(Boolean).filter(mappableLocation).forEach((location) => {{
-          if (!byLocation.has(location)) byLocation.set(location, []);
-          byLocation.get(location).push(record);
-        }});
-      }});
-      const places = [...byLocation.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'de-AT'));
-      roadworksStatus.textContent = `${{places.length}} baustellen-/verkehrsrelevante Orte aus den Gemeinderatsdaten`;
-      roadworksList.innerHTML = places.length ? places.map(([location, locationRecords]) => `
-        <button class="map-place" type="button" data-roadwork-location="${{escapeHtml(location)}}">
-          <strong>${{escapeHtml(location)}}</strong>
-          <span>${{locationRecords.length}} relevante Einträge</span>
-          <small>${{escapeHtml([...new Set(locationRecords.map((record) => record.typ))].join(', '))}}</small>
+      const roadworks = officialRoadworks
+        .map((roadwork, index) => ({{ ...roadwork, _index: index }}))
+        .filter((roadwork) => roadwork.location || roadwork.title);
+      currentRoadworks = roadworks;
+      roadworksStatus.textContent = `${{roadworks.length}} offizielle Baustelleninfos geladen`;
+      roadworksList.innerHTML = roadworks.length ? roadworks.map((roadwork) => `
+        <button class="map-place" type="button" data-roadwork-index="${{roadwork._index}}">
+          <strong>${{escapeHtml(roadwork.title || roadwork.location)}}</strong>
+          <span>${{escapeHtml(roadwork.period || 'Zeitraum nicht angegeben')}}</span>
+          <small>${{escapeHtml([roadwork.description, roadwork.project].filter(Boolean).join(' · '))}}</small>
         </button>
-      `).join('') : '<div class="empty">Keine baustellenrelevanten Orte in den aktuellen Daten gefunden.</div>';
+      `).join('') : '<div class="empty">Keine offiziellen Baustelleninfos geladen. Prüfe den lokalen Cache oder die Verbindung zu graz.at.</div>';
       let drawn = 0;
-      for (const [location, locationRecords] of places) {{
+      for (const roadwork of roadworks) {{
+        const location = roadwork.location || roadwork.title;
         const coords = await geocodeLocation(location);
         if (!coords) continue;
         drawn += 1;
-        const popupRecords = locationRecords.slice(0, 7).map((record) => `
-          <button type="button" data-popup-record-id="${{escapeHtml(record.record_id)}}">${{escapeHtml(record.typ)}} · ${{escapeHtml(record.datum)}} · ${{escapeHtml(record.titel)}}</button>
-        `).join('');
-        L.circleMarker([coords.lat, coords.lon], {{
-          radius: Math.min(11, 5 + Math.sqrt(locationRecords.length)),
+        const marker = L.circleMarker([coords.lat, coords.lon], {{
+          radius: 7,
           color: '#92400e',
           fillColor: '#f59e0b',
           fillOpacity: 0.82,
           weight: 2,
-        }}).bindPopup(`
-          <strong>${{escapeHtml(location)}}</strong>
-          <div>Baustellen-/Verkehrskontext aus Gemeinderatsdaten</div>
-          <div class="popup-list">${{popupRecords}}</div>
-        `).addTo(roadworksLayer);
-        if (drawn % 20 === 0) {{
-          roadworksStatus.textContent = `${{drawn}}/${{places.length}} Orte eingezeichnet`;
+        }}).addTo(roadworksLayer);
+        marker.bindPopup(`
+          <strong>${{escapeHtml(roadwork.title || location)}}</strong>
+          <div>${{escapeHtml(roadwork.period || 'Zeitraum nicht angegeben')}}</div>
+          <div>${{escapeHtml(roadwork.description || '')}}</div>
+          <div>${{escapeHtml(roadwork.project || '')}}</div>
+          <div>Quelle: ${{externalLink(roadwork.source_url || (mobilitySources.roadworks || {{}}).office_url || '', roadwork.source || 'Stadt Graz')}}</div>
+        `);
+        marker.on('click', () => highlightRoadworkList(roadwork._index));
+        if (drawn % 10 === 0) {{
+          roadworksStatus.textContent = `${{drawn}}/${{roadworks.length}} Baustellen eingezeichnet`;
           await nextFrame();
         }}
       }}
-      roadworksStatus.textContent = `${{drawn}}/${{places.length}} Orte eingezeichnet`;
+      roadworksStatus.textContent = `${{drawn}}/${{roadworks.length}} Baustellen eingezeichnet`;
     }}
 
-    function roadworkCandidateRecords() {{
-      return records.filter((record) => {{
-        if (!(record.orte || []).length) return false;
-        const text = [record.titel, record.kategorie, record.typ, record.ergebnis].join(' ');
-        return roadworkKeywords.test(text);
+    function highlightRoadworkList(index) {{
+      roadworksList.querySelectorAll('[data-roadwork-index]').forEach((item) => {{
+        item.classList.toggle('active', item.dataset.roadworkIndex === String(index));
       }});
     }}
 
@@ -1439,14 +1447,14 @@ def build_html(
       }}
       initRoadworksMap();
       const coords = await geocodeLocation(location);
-      const nearby = findNearbyRecords(location);
+      const nearby = findNearbyRoadworks(location);
       const hasFullClosure = roadworkKind.value === 'Totalsperre';
       const timeText = [roadworkStart.value, roadworkEnd.value].filter(Boolean).join(' bis ') || 'Zeitraum nicht gesetzt';
       const risk = hasFullClosure && nearby.length ? 'kritisch' : nearby.length >= 3 ? 'prüfen' : 'voraussichtlich möglich';
       roadworkResult.innerHTML = `
         <strong>${{escapeHtml(risk)}}</strong><br>
         ${{escapeHtml(roadworkKind.value)}} bei ${{escapeHtml(location)}} · ${{escapeHtml(timeText)}}<br>
-        ${{nearby.length ? `${{nearby.length}} thematisch/örtlich nahe Gemeinderats-Einträge gefunden. Prüfe, ob Sperren, Umleitungen oder Projekte zusammengelegt werden können.` : 'Keine nahen Gemeinderats-Orte in den aktuellen Daten gefunden.'}}
+        ${{nearby.length ? `${{nearby.length}} offizielle Baustelleninfos im Umfeld gefunden. Prüfe, ob Sperren, Umleitungen oder Bauzeiten zusammengelegt werden können.` : 'Keine nahen offiziellen Baustelleninfos in den geladenen Daten gefunden.'}}
       `;
       if (coords && roadworksLayer && roadworksMap) {{
         roadworksLayer.clearLayers();
@@ -1464,24 +1472,41 @@ def build_html(
           <div>Bewertung: ${{escapeHtml(risk)}}</div>
         `).openPopup();
         roadworksMap.setView([coords.lat, coords.lon], 15);
+        nearby.forEach((roadwork) => {{
+          geocodeLocation(roadwork.location || roadwork.title).then((nearCoords) => {{
+            if (!nearCoords || !roadworksLayer) return;
+            L.circleMarker([nearCoords.lat, nearCoords.lon], {{
+              radius: 7,
+              color: '#92400e',
+              fillColor: '#f59e0b',
+              fillOpacity: 0.72,
+              weight: 2,
+            }}).bindPopup(`
+              <strong>${{escapeHtml(roadwork.title || roadwork.location)}}</strong>
+              <div>${{escapeHtml(roadwork.period || 'Zeitraum nicht angegeben')}}</div>
+              <div>${{escapeHtml(roadwork.description || '')}}</div>
+            `).addTo(roadworksLayer);
+          }});
+        }});
       }}
-      roadworksList.innerHTML = nearby.length ? nearby.slice(0, 20).map((record) => `
-        <button class="map-place" type="button" data-record-id="${{escapeHtml(record.record_id)}}">
-          <strong>${{escapeHtml(record.titel)}}</strong>
-          <span>${{escapeHtml(record.typ)}} · ${{escapeHtml(record.datum)}}</span>
-          <small>${{escapeHtml((record.orte || []).join(', '))}}</small>
+      roadworksList.innerHTML = nearby.length ? nearby.map((roadwork) => `
+        <button class="map-place" type="button" data-roadwork-index="${{roadwork._index}}">
+          <strong>${{escapeHtml(roadwork.title || roadwork.location)}}</strong>
+          <span>${{escapeHtml(roadwork.period || 'Zeitraum nicht angegeben')}}</span>
+          <small>${{escapeHtml([roadwork.description, roadwork.project].filter(Boolean).join(' · '))}}</small>
         </button>
       `).join('') : '<div class="empty">Keine Konfliktkandidaten gefunden.</div>';
     }}
 
-    function findNearbyRecords(location) {{
+    function findNearbyRoadworks(location) {{
       const query = location.toLocaleLowerCase('de-AT');
       const tokens = query.split(/\\s+/).filter((token) => token.length >= 4);
-      return records.filter((record) => {{
-        const places = (record.orte || []).join(' ').toLocaleLowerCase('de-AT');
-        const title = String(record.titel || '').toLocaleLowerCase('de-AT');
-        return places.includes(query) || title.includes(query) || tokens.some((token) => places.includes(token));
-      }});
+      return currentRoadworks.filter((roadwork) => {{
+        const haystack = [roadwork.location, roadwork.title, roadwork.description, roadwork.project]
+          .join(' ')
+          .toLocaleLowerCase('de-AT');
+        return haystack.includes(query) || tokens.some((token) => haystack.includes(token));
+      }}).slice(0, 30);
     }}
 
     function renderMapPlaces() {{
@@ -2101,16 +2126,15 @@ def build_html(
     }});
     roadworkCheck.addEventListener('click', checkRoadworkPlan);
     roadworksList.addEventListener('click', (event) => {{
-      const locationButton = event.target.closest('[data-roadwork-location]');
-      if (locationButton) {{
-        geocodeLocation(locationButton.dataset.roadworkLocation || '').then((coords) => {{
-          if (coords && roadworksMap) roadworksMap.setView([coords.lat, coords.lon], 16);
-        }});
-        return;
-      }}
-      const item = event.target.closest('[data-record-id]');
+      const item = event.target.closest('[data-roadwork-index]');
       if (!item) return;
-      selectRecord(findRecordById(item.dataset.recordId));
+      const roadwork = currentRoadworks[Number(item.dataset.roadworkIndex)];
+      if (!roadwork || !roadworksMap) return;
+      geocodeLocation(roadwork.location || roadwork.title).then((coords) => {{
+        if (!coords) return;
+        roadworksMap.setView([coords.lat, coords.lon], 16);
+        highlightRoadworkList(item.dataset.roadworkIndex);
+      }});
     }});
     clearTopicFilter.addEventListener('click', () => {{
       activeTopicRecordIds = null;

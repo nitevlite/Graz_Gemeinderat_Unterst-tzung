@@ -1,4 +1,4 @@
-from graz_protocols.mobility_sources import parse_parking_csv
+from graz_protocols.mobility_sources import parse_parking_csv, parse_roadworks_html
 
 
 def test_parses_open_data_parking_garages_csv():
@@ -16,3 +16,23 @@ def test_parses_open_data_parking_garages_csv():
     assert garages[0].address == "Stiftingtalstraße 30"
     assert garages[0].availability == "unbekannt"
     assert garages[0].license == "CC BY 4.0"
+
+
+def test_parses_official_graz_roadworks_html_blocks():
+    html = """
+    <div class="txtblock-wrapper vorlesen clearfix">
+      <h2>Kärntner Straße 163</h2>
+      <div class="txtblock-content wichtig">
+        <p>Masttausch<br>Postenregelung während der Arbeitszeiten<br>
+        Termin: 01.06. - 19.06.2026<br><em>(Projekt: Energie Graz - Beleuchtung)</em></p>
+      </div>
+    </div>
+    """
+
+    roadworks = parse_roadworks_html(html)
+
+    assert len(roadworks) == 1
+    assert roadworks[0].title == "Kärntner Straße 163"
+    assert roadworks[0].period == "01.06. - 19.06.2026"
+    assert roadworks[0].project == "Energie Graz - Beleuchtung"
+    assert "Masttausch" in roadworks[0].description

@@ -81,7 +81,7 @@ Aktuelle Ergebnisbehandlung:
 - Der Viewer zeigt vorhandene KI-Zusammenfassungen pro Stück als ausklappbare Blöcke: fachliche Kurzfassung und einfache Sprache.
 - Schriftliche Anträge, schriftliche Anfragen und Dringlichkeitsanträge erhalten nach Möglichkeit ein Feld `submitter` aus dem Berichterstatter-/Einbringer-Hinweis. Der Viewer zeigt dieses Feld als `Einbringer`.
 - Bei KI-Zusammenfassungen von Anträgen/Anfragen blendet der Viewer eine Einordnung ein, damit Forderungen einzelner Gemeinderatsmitglieder/Klubs nicht als Aussage der Gemeinde missverstanden werden.
-- Der Viewer hat zusätzliche Reiter `Baustellen` und `Tiefgaragen`. Baustellen sind vorerst eine Planungs-/Konfliktprüfung mit offizieller Verlinkung, keine kopierte Geoportal-Datenübernahme. Tiefgaragen nutzen den OGD-Datensatz `Parkgaragen Graz` mit `CC BY 4.0`; Live-Verfügbarkeit bleibt `unbekannt`.
+- Der Viewer hat zusätzliche Reiter `Baustellen` und `Tiefgaragen`. Baustellen werden aus der öffentlichen Stadt-Graz-Baustellenseite lokal in `out\baustellen_graz.html` gecacht und in der Karte angezeigt; der Cache bleibt aus Git draußen. Tiefgaragen nutzen bevorzugt den OGD-Datensatz `Parkgaragen Graz` mit `CC BY 4.0`; für die lokale Anzeige gibt es Koordinaten-Fallbacks, damit Punkte auch ohne Browser-Geocoding sichtbar sind. Live-Verfügbarkeit bleibt `unbekannt`.
 
 ## DIGRA-Abgleich
 
@@ -156,6 +156,9 @@ Aktualisierung am 2026-06-09:
 - Ortserkennung: Mehrwort-Straßen aus der offiziellen Excel-Liste, z. B. `Triester Straße`, werden erkannt.
 - DIGRA-Zuordnung: Bei Tagesordnungspunkten mit abweichender DIGRA-Nummer darf ein Treffer ab Score 0,50 übernommen werden, wenn mindestens zwei markante Titelwörter übereinstimmen.
 - Prüfstand: Titelabgleich gegen `Straßennamen_Graz.xlsx` meldet 0 fehlende Titel-Straßen. `Friedenssteig` bleibt leer, weil der Name nicht in der bereitgestellten Excel-Liste enthalten ist.
+- Parser-Fix: Geschäftszahl-Endungen werden nicht mehr aus Abschnittsnummern wie `A 14-087503/2025/0011 - 4.10 ...` gebildet. Der Titel bleibt `4.10 Stadtentwicklungskonzept ...`, die Geschäftszahl bleibt `A 14-087503/2025/0011`.
+- Baustellen: Der Viewer zeigt offizielle Baustelleninfos der Stadt-Graz-Seite statt Gemeinderatsanträge. Im aktuellen lokalen Cache wurden 20 Baustellen geladen, darunter `Kärntner Straße 163` und `Kärntner Straße gegenüber 209`.
+- Tiefgaragen: Fallback-Standorte enthalten Koordinaten, sodass die Tiefgaragenkarte auch dann Marker zeigt, wenn der OGD-CSV-Download oder Nominatim im Browser nicht verfügbar ist.
 
 Erzeugte Ausgabe ist absichtlich ignoriert.
 
