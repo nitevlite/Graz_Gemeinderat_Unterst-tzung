@@ -786,6 +786,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     let activeTabName = 'search';
     let lastMarkerLocationKey = '';
     let markerLoadRun = 0;
+    let lastMapPlacesKey = '';
     let activeTopicRecordIds = null;
 
     function escapeHtml(value) {{
@@ -897,6 +898,10 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     }}
 
     function renderMapPlaces() {{
+      if (activeTabName !== 'map') return;
+      const placeKey = [...currentLocationIndex.keys()].sort().join('|');
+      if (placeKey === lastMapPlacesKey) return;
+      lastMapPlacesKey = placeKey;
       const places = [...currentLocationIndex.entries()]
         .map(([location, locationRecords]) => ({{ location, count: locationRecords.length }}))
         .sort((a, b) => b.count - a.count || a.location.localeCompare(b.location, 'de-AT'));
@@ -936,15 +941,23 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         loaded += 1;
         if (coords) {{
           addLocationMarker(place, coords);
-          updateMarkerHighlights();
         }}
         mapStatus.textContent = `${{loaded}}/${{places.length}} Orte geprüft`;
         updateMapProgress(loaded, places.length, loaded < places.length);
+        if (loaded % 25 === 0) {{
+          updateMarkerHighlights();
+          await nextFrame();
+        }}
       }}
       if (runId === markerLoadRun) {{
+        updateMarkerHighlights();
         mapStatus.textContent = `${{markersByLocation.size}}/${{places.length}} Orte auf der Karte`;
         updateMapProgress(places.length, places.length, false);
       }}
+    }}
+
+    function nextFrame() {{
+      return new Promise((resolve) => requestAnimationFrame(resolve));
     }}
 
     function updateMapProgress(done, total, active) {{
@@ -959,6 +972,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         mapStatus.textContent = 'Karte wird beim Öffnen aktualisiert.';
         return;
       }}
+      renderMapPlaces();
       loadVisibleMapMarkers();
     }}
 
@@ -1045,12 +1059,13 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       highlightedLocations = new Set(locations);
       updateMarkerHighlights();
       const points = [];
-      for (const location of locations) {{
+      for (const [index, location] of locations.entries()) {{
         const coords = await geocodeLocation(location);
         if (!coords) continue;
         addLocationMarker(location, coords);
         applyMarkerHighlight(location, markersByLocation.get(location));
         points.push([coords.lat, coords.lon]);
+        if ((index + 1) % 10 === 0) await nextFrame();
       }}
       if (!points.length) return;
       if (points.length > 1) {{
