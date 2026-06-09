@@ -480,18 +480,32 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       border-radius: 8px;
       background: #fbfdff;
       overflow: hidden;
+      contain: layout paint;
     }}
-    .summary-block summary {{
-      cursor: pointer;
+    .summary-toggle {{
+      width: 100%;
+      min-height: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      text-align: left;
       padding: 10px 12px;
       font-weight: 700;
       color: #1e293b;
+    }}
+    .summary-toggle:hover {{
+      background: var(--accent-tint);
+      color: var(--accent-dark);
     }}
     .summary-text {{
       padding: 0 12px 12px;
       color: #334155;
       line-height: 1.45;
       white-space: pre-wrap;
+      contain: layout paint;
+    }}
+    .summary-text[hidden] {{
+      display: none;
     }}
     .link-button {{
       appearance: none;
@@ -1338,18 +1352,18 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       const blocks = [];
       if (record.ki_zusammenfassung) {{
         blocks.push(`
-          <details class="summary-block">
-            <summary>KI-Zusammenfassung</summary>
-            <div class="summary-text">${{escapeHtml(record.ki_zusammenfassung)}}</div>
-          </details>
+          <div class="summary-block">
+            <button class="summary-toggle" type="button" data-summary-kind="summary" aria-expanded="false">KI-Zusammenfassung</button>
+            <div class="summary-text" hidden></div>
+          </div>
         `);
       }}
       if (record.ki_einfache_sprache) {{
         blocks.push(`
-          <details class="summary-block">
-            <summary>Einfache Sprache</summary>
-            <div class="summary-text">${{escapeHtml(record.ki_einfache_sprache)}}</div>
-          </details>
+          <div class="summary-block">
+            <button class="summary-toggle" type="button" data-summary-kind="easy" aria-expanded="false">Einfache Sprache</button>
+            <div class="summary-text" hidden></div>
+          </div>
         `);
       }}
       return blocks.length ? `<div class="summary-blocks">${{blocks.join('')}}</div>` : '';
@@ -1596,6 +1610,22 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       selectRecord(ausgewaehlterEintrag);
     }});
     detailWrap.addEventListener('click', (event) => {{
+      const summaryToggle = event.target.closest('[data-summary-kind]');
+      if (summaryToggle) {{
+        event.stopPropagation();
+        const text = summaryToggle.nextElementSibling;
+        if (!text) return;
+        const isOpening = text.hidden;
+        if (isOpening && !text.textContent) {{
+          const kind = summaryToggle.dataset.summaryKind;
+          text.textContent = kind === 'easy'
+            ? (ausgewaehlterEintrag?.ki_einfache_sprache || '')
+            : (ausgewaehlterEintrag?.ki_zusammenfassung || '');
+        }}
+        text.hidden = !isOpening;
+        summaryToggle.setAttribute('aria-expanded', String(isOpening));
+        return;
+      }}
       const locationButton = event.target.closest('[data-location]');
       if (!locationButton) return;
       focusLocation(locationButton.dataset.location || '');

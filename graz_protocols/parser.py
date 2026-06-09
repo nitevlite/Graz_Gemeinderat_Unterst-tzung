@@ -195,7 +195,10 @@ def parse_protocol(
         )
         amounts = extract_amounts(heading_body, chunk.body)
         title_location_details = extract_location_details(heading_body, street_names=street_names)
-        location_details = title_location_details or extract_location_details(chunk_text, street_names=street_names)
+        location_details = title_location_details or extract_location_details(
+            location_context_text(heading_body, chunk.body),
+            street_names=street_names,
+        )
         locations = unique_preserve_order(str(location["value"]) for location in location_details)
         confidence = score_confidence(business_numbers, status, title)
         record_id = build_record_id(meeting_date, source_file, chunk.record_type, item_no, len(records) + 1)
@@ -622,6 +625,21 @@ def extract_location_details(text: str, street_names: set[str] | None = None) ->
                 }
             )
     return details
+
+
+def location_context_text(heading_body: str, body: list[str], limit: int = 1600) -> str:
+    texts = [heading_body]
+    total = len(heading_body)
+    for line in body:
+        if FORMAL_RESULT_RE.search(line):
+            break
+        if any(pattern.search(line) for _, pattern in STATUS_PATTERNS):
+            break
+        texts.append(line)
+        total += len(line)
+        if total >= limit:
+            break
+    return "\n".join(texts)
 
 
 def find_street_names_in_text(text: str, street_names: set[str]) -> list[tuple[str, int, int]]:

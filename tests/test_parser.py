@@ -80,6 +80,25 @@ def test_title_street_wins_over_body_context_streets():
     assert records[0].locations == ["Marburger Straße"]
 
 
+def test_location_fallback_stops_at_result_text():
+    paragraphs = [
+        "Protokoll über die ordentliche öffentliche Sitzung des Gemeinderates am 11.12.2025",
+        "Tagesordnung",
+        "Stk. 48) GGZ - 070224/2004/0115 - Wirtschaftsplan 2026",
+        "Der Antrag wurde einstimmig angenommen.",
+        "Wartehäuschen Haltestelle Stregengasse",
+        "Verkehrskonzept Thalstraße",
+    ]
+
+    records = parse_protocol(
+        paragraphs,
+        "2025-12-11_Protokoll.docx",
+        street_names={"stregengasse", "thalstraße"},
+    )
+
+    assert records[0].locations == []
+
+
 def test_extracts_multiword_compound_street_from_title():
     paragraphs = [
         "Protokoll über die ordentliche öffentliche Sitzung des Gemeinderates am 24.04.2025",

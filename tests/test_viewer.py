@@ -143,6 +143,8 @@ def test_viewer_renders_ai_record_summaries_as_expandable_details():
     assert "KI-Zusammenfassung" in html
     assert "Einfache Sprache" in html
     assert "summary-block" in html
+    assert "data-summary-kind" in html
+    assert "text.textContent = kind === 'easy'" in html
 
 
 def test_viewer_normalizes_file_labels_and_status_filter():
