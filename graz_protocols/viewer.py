@@ -8,6 +8,8 @@ import re
 import sys
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
+from .mobility_sources import load_parking_garages, mobility_source_summary
+
 
 CATEGORY_RULES = [
     (
@@ -160,6 +162,12 @@ def main(argv: list[str] | None = None) -> int:
         default=Path("viewer.html"),
         help="HTML-Ausgabedatei. Standard: viewer.html.",
     )
+    parser.add_argument(
+        "--parking-cache",
+        type=Path,
+        default=Path("out") / "parkgaragen_graz.csv",
+        help="Optionaler Cache für den OGD-Datensatz Parkgaragen Graz.",
+    )
     args = parser.parse_args(argv)
 
     if not args.records.exists():
@@ -169,7 +177,11 @@ def main(argv: list[str] | None = None) -> int:
     records = read_jsonl(args.records)
     summary = read_json(args.summary) if args.summary.exists() else {}
     topics = read_json(args.topics) if args.topics and args.topics.exists() else []
-    args.output.write_text(build_html(records, summary, topics), encoding="utf-8")
+    garages, parking_summary = load_parking_garages(args.parking_cache)
+    mobility_summary = mobility_source_summary()
+    mobility_summary["parking"]["records"] = parking_summary.get("records", 0)
+    mobility_summary["parking"]["errors"] = parking_summary.get("errors", [])
+    args.output.write_text(build_html(records, summary, topics, garages, mobility_summary), encoding="utf-8")
     print(f"{args.output} mit {len(records)} Einträgen geschrieben.")
     return 0
 
@@ -188,10 +200,18 @@ def read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def build_html(records: list[dict], summary: dict, topics: list[dict] | None = None) -> str:
+def build_html(
+    records: list[dict],
+    summary: dict,
+    topics: list[dict] | None = None,
+    parking_garages: list[dict] | None = None,
+    mobility_sources: dict | None = None,
+) -> str:
     data = json.dumps([viewer_record(record) for record in records], ensure_ascii=False)
     summary_data = json.dumps(viewer_summary(summary), ensure_ascii=False)
     topics_data = json.dumps([viewer_topic(topic) for topic in topics or []], ensure_ascii=False)
+    parking_data = json.dumps(parking_garages or [], ensure_ascii=False)
+    mobility_data = json.dumps(mobility_sources or mobility_source_summary(), ensure_ascii=False)
     return f"""<!doctype html>
 <html lang="de">
 <head>
@@ -610,7 +630,9 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       gap: 12px;
       min-height: 720px;
     }}
-    #grazMap {{
+    #grazMap,
+    #roadworksMap,
+    #parkingMap {{
       min-height: 720px;
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -647,6 +669,37 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     .map-place span {{
       color: var(--muted);
       font-size: 12px;
+    }}
+    .map-place small {{
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.25;
+      margin-top: 2px;
+    }}
+    .split-form {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }}
+    .split-form .wide {{
+      grid-column: 1 / -1;
+    }}
+    .check-result {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fafc;
+      padding: 10px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      line-height: 1.45;
+    }}
+    .source-note {{
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
     }}
     .popup-list {{
       display: grid;
@@ -861,6 +914,8 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         <button class="side-item active" type="button" data-nav="search">Suche</button>
         <button class="side-item" type="button" data-nav="overview">Zeitstrahlen</button>
         <button class="side-item" type="button" data-nav="map">Karte</button>
+        <button class="side-item" type="button" data-nav="roadworks">Baustellen</button>
+        <button class="side-item" type="button" data-nav="parking">Tiefgaragen</button>
         <button class="side-item" type="button" data-nav="export">Export</button>
       </nav>
     </aside>
@@ -909,6 +964,37 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
           </div>
           <div class="map-note">Die Karte nutzt Online-Geocoding. Wenn ein Ort ungenau sitzt, liegt das meist an mehrdeutigen Ortsnamen oder daran, dass die Protokoll-Ortserkennung zu viel Kontext erwischt.</div>
         </section>
+        <section class="tab-panel map-panel" id="roadworksPanel">
+          <div class="map-head">
+            <h2>Baustellenplanung</h2>
+            <div class="map-status" id="roadworksStatus">Eigene Baustelle eingeben und Konflikte prüfen.</div>
+          </div>
+          <div class="split-form">
+            <label class="filter-cell"><span class="sr-label">Straße oder Ort</span><input id="roadworkLocation" type="text" placeholder="z. B. Conrad-von-Hötzendorf-Straße"></label>
+            <label class="filter-cell"><span class="sr-label">Art</span><select id="roadworkKind"><option>Baustelle</option><option>Totalsperre</option><option>Fahrstreifensperre</option><option>Materiallagerung</option><option>Veranstaltung</option></select></label>
+            <label class="filter-cell"><span class="sr-label">Start</span><input id="roadworkStart" type="date"></label>
+            <label class="filter-cell"><span class="sr-label">Ende</span><input id="roadworkEnd" type="date"></label>
+            <label class="filter-cell wide"><span class="sr-label">Beschreibung</span><input id="roadworkDescription" type="text" placeholder="kurz: Sperre, Umleitung, betroffene Abschnitte"></label>
+            <button id="roadworkCheck" type="button">Prüfen</button>
+          </div>
+          <div class="check-result" id="roadworkResult">Noch keine Baustelle geprüft.</div>
+          <div class="map-layout">
+            <div id="roadworksMap" aria-label="Karte für Baustellenplanung"></div>
+            <div class="map-list" id="roadworksList"></div>
+          </div>
+          <div class="source-note" id="roadworksSourceNote"></div>
+        </section>
+        <section class="tab-panel map-panel" id="parkingPanel">
+          <div class="map-head">
+            <h2>Tiefgaragen</h2>
+            <div class="map-status" id="parkingStatus">Verfügbarkeit: unbekannt.</div>
+          </div>
+          <div class="map-layout">
+            <div id="parkingMap" aria-label="Karte mit Tiefgaragen und Parkhäusern"></div>
+            <div class="map-list" id="parkingList"></div>
+          </div>
+          <div class="source-note" id="parkingSourceNote"></div>
+        </section>
         <section class="tab-panel" id="exportPanel">
           <section class="detail">
             <h2>Export</h2>
@@ -926,6 +1012,8 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     const records = {data};
     const summary = {summary_data};
     const topics = {topics_data};
+    const parkingGarages = {parking_data};
+    const mobilitySources = {mobility_data};
     const byId = (id) => document.getElementById(id);
     const search = byId('search');
     const yearFilter = byId('yearFilter');
@@ -945,6 +1033,17 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     const mapProgressBar = byId('mapProgressBar');
     const mapLegend = byId('mapLegend');
     const mapPlaces = byId('mapPlaces');
+    const roadworksStatus = byId('roadworksStatus');
+    const roadworksList = byId('roadworksList');
+    const roadworkLocation = byId('roadworkLocation');
+    const roadworkKind = byId('roadworkKind');
+    const roadworkStart = byId('roadworkStart');
+    const roadworkEnd = byId('roadworkEnd');
+    const roadworkDescription = byId('roadworkDescription');
+    const roadworkResult = byId('roadworkResult');
+    const roadworkCheck = byId('roadworkCheck');
+    const parkingStatus = byId('parkingStatus');
+    const parkingList = byId('parkingList');
     const exportCount = byId('exportCount');
     const digraMatchedCount = byId('digraMatchedCount');
     const digraFallbackCount = byId('digraFallbackCount');
@@ -954,6 +1053,10 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     let ausgewaehlterEintrag = null;
     let grazMap = null;
     let markerLayer = null;
+    let roadworksMap = null;
+    let roadworksLayer = null;
+    let parkingMap = null;
+    let parkingLayer = null;
     const markersByLocation = new Map();
     const markerCacheByLocation = new Map();
     const coordsByLocation = new Map();
@@ -1006,6 +1109,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         record.titel,
         record.status,
         record.kategorie,
+        record.einbringer,
         ...(record.betraege || []),
         ...(record.orte || []),
         record.ergebnis,
@@ -1097,6 +1201,18 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
           if (ausgewaehlterEintrag) focusRecordLocations(ausgewaehlterEintrag, false);
         }}, 80);
       }}
+      if (target === 'roadworks') {{
+        setTimeout(() => {{
+          initRoadworksMap();
+          roadworksMap?.invalidateSize();
+        }}, 80);
+      }}
+      if (target === 'parking') {{
+        setTimeout(() => {{
+          initParkingMap();
+          parkingMap?.invalidateSize();
+        }}, 80);
+      }}
     }}
 
     function initMap() {{
@@ -1105,13 +1221,152 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         return;
       }}
       grazMap = L.map('grazMap').setView([47.0707, 15.4395], 12);
-      L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap'
-      }}).addTo(grazMap);
+      addBaseLayer(grazMap);
       markerLayer = L.layerGroup().addTo(grazMap);
       renderMapPlaces();
       refreshMapMarkersIfNeeded();
+    }}
+
+    function addBaseLayer(map) {{
+      L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap'
+      }}).addTo(map);
+    }}
+
+    function initParkingMap() {{
+      if (!window.L || parkingMap) return;
+      parkingMap = L.map('parkingMap').setView([47.0707, 15.4395], 12);
+      addBaseLayer(parkingMap);
+      parkingLayer = L.layerGroup().addTo(parkingMap);
+      renderParkingGarages();
+    }}
+
+    function initRoadworksMap() {{
+      if (!window.L || roadworksMap) return;
+      roadworksMap = L.map('roadworksMap').setView([47.0707, 15.4395], 12);
+      addBaseLayer(roadworksMap);
+      roadworksLayer = L.layerGroup().addTo(roadworksMap);
+      renderRoadworksSourceNote();
+      renderRoadworkContext();
+    }}
+
+    function renderParkingGarages() {{
+      if (!parkingLayer) return;
+      parkingLayer.clearLayers();
+      const usable = parkingGarages
+        .map((garage, index) => ({{ ...garage, _index: index }}))
+        .filter((garage) => Number.isFinite(garage.lat) && Number.isFinite(garage.lon));
+      parkingStatus.textContent = `${{usable.length}} Garagen/Parkhäuser · Verfügbarkeit unbekannt`;
+      parkingList.innerHTML = usable.length ? usable.map((garage) => `
+        <button class="map-place" type="button" data-parking-index="${{garage._index}}">
+          <strong>${{escapeHtml(garage.name)}}</strong>
+          <span>${{escapeHtml(garage.kind || 'Parkgarage')}} · verfügbar: unbekannt</span>
+          <small>${{escapeHtml(garage.address || '')}}</small>
+        </button>
+      `).join('') : '<div class="empty">Keine Parkgaragen geladen. Prüfe den OGD-Cache oder die Netzwerkverbindung.</div>';
+      usable.forEach((garage) => {{
+        const marker = L.circleMarker([garage.lat, garage.lon], {{
+          radius: 7,
+          color: '#0f766e',
+          fillColor: '#14b8a6',
+          fillOpacity: 0.82,
+          weight: 2,
+        }}).addTo(parkingLayer);
+        marker.bindPopup(`
+          <strong>${{escapeHtml(garage.name)}}</strong>
+          <div>${{escapeHtml(garage.kind || 'Parkgarage')}}</div>
+          <div>${{escapeHtml(garage.address || '')}}</div>
+          <div>Verfügbarkeit: unbekannt</div>
+          <div>Quelle: ${{escapeHtml(garage.source || '')}} · ${{escapeHtml(garage.license || '')}}</div>
+        `);
+        marker.on('click', () => highlightParkingList(garage._index));
+      }});
+      renderParkingSourceNote();
+    }}
+
+    function highlightParkingList(index) {{
+      parkingList.querySelectorAll('[data-parking-index]').forEach((item) => {{
+        item.classList.toggle('active', item.dataset.parkingIndex === String(index));
+      }});
+    }}
+
+    function renderParkingSourceNote() {{
+      const source = mobilitySources.parking || {{}};
+      byId('parkingSourceNote').innerHTML = `
+        Quelle: ${{externalLink(source.dataset_url || '', 'Parkgaragen Graz / data.gv.at')}} ·
+        Lizenz: ${{escapeHtml(source.license || 'unbekannt')}} ·
+        Namensnennung: ${{escapeHtml(source.attribution || '-') }}.
+        Live-Verfügbarkeit wird nicht übernommen, weil keine offene Live-API mit klarer Weiterverwendungsfreigabe gefunden wurde.
+      `;
+    }}
+
+    function renderRoadworksSourceNote() {{
+      const source = mobilitySources.roadworks || {{}};
+      byId('roadworksSourceNote').innerHTML = `
+        Offizielle Info: ${{externalLink(source.info_url || '', 'Baustelleninformation Graz')}} ·
+        Straßenamt: ${{externalLink(source.office_url || '', 'Baustellen & temporäre Nutzungen')}}.
+        Hinweis: ${{escapeHtml(source.note || '')}}
+      `;
+    }}
+
+    function renderRoadworkContext() {{
+      if (!roadworksLayer) return;
+      roadworksLayer.clearLayers();
+      roadworksList.innerHTML = '<div class="empty">Noch keine eigene Baustelle auf der Karte.</div>';
+    }}
+
+    async function checkRoadworkPlan() {{
+      const location = roadworkLocation.value.trim();
+      if (!location) {{
+        roadworkResult.textContent = 'Bitte zuerst eine Straße oder einen Ort eingeben.';
+        return;
+      }}
+      initRoadworksMap();
+      const coords = await geocodeLocation(location);
+      const nearby = findNearbyRecords(location);
+      const hasFullClosure = roadworkKind.value === 'Totalsperre';
+      const timeText = [roadworkStart.value, roadworkEnd.value].filter(Boolean).join(' bis ') || 'Zeitraum nicht gesetzt';
+      const risk = hasFullClosure && nearby.length ? 'kritisch' : nearby.length >= 3 ? 'prüfen' : 'voraussichtlich möglich';
+      roadworkResult.innerHTML = `
+        <strong>${{escapeHtml(risk)}}</strong><br>
+        ${{escapeHtml(roadworkKind.value)}} bei ${{escapeHtml(location)}} · ${{escapeHtml(timeText)}}<br>
+        ${{nearby.length ? `${{nearby.length}} thematisch/örtlich nahe Gemeinderats-Einträge gefunden. Prüfe, ob Sperren, Umleitungen oder Projekte zusammengelegt werden können.` : 'Keine nahen Gemeinderats-Orte in den aktuellen Daten gefunden.'}}
+      `;
+      if (coords && roadworksLayer && roadworksMap) {{
+        roadworksLayer.clearLayers();
+        const marker = L.circleMarker([coords.lat, coords.lon], {{
+          radius: 9,
+          color: hasFullClosure ? '#b91c1c' : '#ca8a04',
+          fillColor: hasFullClosure ? '#ef4444' : '#facc15',
+          fillOpacity: 0.86,
+          weight: 3,
+        }}).addTo(roadworksLayer);
+        marker.bindPopup(`
+          <strong>${{escapeHtml(location)}}</strong>
+          <div>${{escapeHtml(roadworkKind.value)}} · ${{escapeHtml(timeText)}}</div>
+          <div>${{escapeHtml(roadworkDescription.value || 'Keine Beschreibung')}}</div>
+          <div>Bewertung: ${{escapeHtml(risk)}}</div>
+        `).openPopup();
+        roadworksMap.setView([coords.lat, coords.lon], 15);
+      }}
+      roadworksList.innerHTML = nearby.length ? nearby.slice(0, 20).map((record) => `
+        <button class="map-place" type="button" data-record-id="${{escapeHtml(record.record_id)}}">
+          <strong>${{escapeHtml(record.titel)}}</strong>
+          <span>${{escapeHtml(record.typ)}} · ${{escapeHtml(record.datum)}}</span>
+          <small>${{escapeHtml((record.orte || []).join(', '))}}</small>
+        </button>
+      `).join('') : '<div class="empty">Keine Konfliktkandidaten gefunden.</div>';
+    }}
+
+    function findNearbyRecords(location) {{
+      const query = location.toLocaleLowerCase('de-AT');
+      const tokens = query.split(/\\s+/).filter((token) => token.length >= 4);
+      return records.filter((record) => {{
+        const places = (record.orte || []).join(' ').toLocaleLowerCase('de-AT');
+        const title = String(record.titel || '').toLocaleLowerCase('de-AT');
+        return places.includes(query) || title.includes(query) || tokens.some((token) => places.includes(token));
+      }});
     }}
 
     function renderMapPlaces() {{
@@ -1120,7 +1375,12 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       if (placeKey === lastMapPlacesKey) return;
       lastMapPlacesKey = placeKey;
       const places = [...currentLocationIndex.entries()]
-        .map(([location, locationRecords]) => ({{ location, count: locationRecords.length }}))
+        .map(([location, locationRecords]) => ({{
+          location,
+          count: locationRecords.length,
+          types: [...new Set(locationRecords.map((record) => record.typ).filter(Boolean))].join(', '),
+          category: primaryCategoryForLocation(locationRecords)
+        }}))
         .sort((a, b) => b.count - a.count || a.location.localeCompare(b.location, 'de-AT'));
       if (!places.length) {{
         mapPlaces.innerHTML = '<div class="empty">Keine Orte erkannt.</div>';
@@ -1129,7 +1389,8 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       mapPlaces.innerHTML = places.map((place) => `
         <button class="map-place" type="button" data-location="${{escapeHtml(place.location)}}">
           <strong>${{escapeHtml(place.location)}}</strong>
-          <span>${{place.count}} Eintrag${{place.count === 1 ? '' : 'e'}}</span>
+          <span>${{place.count}} Eintrag${{place.count === 1 ? '' : 'e'}} · ${{escapeHtml(place.category)}}</span>
+          <small>${{escapeHtml(place.types)}}</small>
         </button>
       `).join('');
     }}
@@ -1281,13 +1542,15 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       if (!grazMap || !markerLayer || markersByLocation.has(location)) return;
       const locationRecords = currentLocationIndex.get(location) || [];
       const popupRecords = locationRecords.slice(0, 6).map((record) => `
-        <button type="button" data-popup-record-id="${{escapeHtml(record.record_id)}}">${{escapeHtml(record.datum)}} · ${{escapeHtml(record.titel)}}</button>
+        <button type="button" data-popup-record-id="${{escapeHtml(record.record_id)}}">${{escapeHtml(record.typ)}} · ${{escapeHtml(record.datum)}} · ${{escapeHtml(record.titel)}}</button>
       `).join('');
+      const typeSummary = [...new Set(locationRecords.map((record) => record.typ).filter(Boolean))].join(', ');
       const category = primaryCategoryForLocation(locationRecords);
       const color = categoryColor(category);
       const popupHtml = `
         <strong>${{escapeHtml(location)}}</strong>
         <div>${{escapeHtml(category)}}</div>
+        <div>${{escapeHtml(typeSummary)}}</div>
         <div class="popup-list">${{popupRecords}}</div>
       `;
       let marker = markerCacheByLocation.get(location);
@@ -1410,12 +1673,24 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       return blocks.length ? `<div class="summary-blocks">${{blocks.join('')}}</div>` : '';
     }}
 
+    function summaryDisplayText(record, kind) {{
+      const text = kind === 'easy'
+        ? (record?.ki_einfache_sprache || '')
+        : (record?.ki_zusammenfassung || '');
+      const needsContext = record?.einbringer && ['Schriftlicher Antrag', 'Schriftliche Anfrage', 'Dringlichkeitsantrag'].includes(record?.typ);
+      if (!needsContext) return text;
+      const lead = kind === 'easy'
+        ? `Das ist die Sicht oder Forderung von ${{record.einbringer}}.`
+        : `Einordnung: ${{record.einbringer}} bringt diesen Punkt ein; die Zusammenfassung beschreibt daher Antrag, Anfrage oder Forderung dieser Einbringung.`;
+      return `${{lead}}\n\n${{text}}`;
+    }}
+
     function csvCell(value) {{
       return `"${{String(value ?? '').replace(/"/g, '""')}}"`;
     }}
 
     function exportCsv() {{
-      const headers = ['Datum', 'Typ', 'Abschnitt', 'Stück', 'Status', 'Thema', 'Ergebnisquelle', 'Geschäftszahlen', 'Titel', 'Ergebnis', 'Beträge', 'Orte', 'DIGRA-Einlagezahl', 'DIGRA-Link', 'Quelldatei'];
+      const headers = ['Datum', 'Typ', 'Abschnitt', 'Stück', 'Status', 'Thema', 'Einbringer', 'Ergebnisquelle', 'Geschäftszahlen', 'Titel', 'Ergebnis', 'Beträge', 'Orte', 'DIGRA-Einlagezahl', 'DIGRA-Link', 'Quelldatei'];
       const rows = sichtbareEintraege.map((record) => [
         record.datum,
         record.typ,
@@ -1423,6 +1698,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         record.stueck_nr,
         record.status,
         record.kategorie,
+        record.einbringer,
         record.ergebnisquelle,
         joinList(record.geschaeftszahlen),
         record.titel,
@@ -1456,6 +1732,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
           ${{detailField('Datum', record.datum)}}
           ${{detailField('Typ', record.typ)}}
           ${{detailField('Thema', record.kategorie)}}
+          ${{detailField('Einbringer', record.einbringer)}}
           ${{detailField('Stück', record.stueck_nr)}}
           ${{detailField('Status', record.status)}}
           ${{detailField('Geschäftszahlen', joinList(record.geschaeftszahlen))}}
@@ -1659,9 +1936,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         const isOpening = text.hidden;
         if (isOpening && !text.textContent) {{
           const kind = summaryToggle.dataset.summaryKind;
-          text.textContent = kind === 'easy'
-            ? (ausgewaehlterEintrag?.ki_einfache_sprache || '')
-            : (ausgewaehlterEintrag?.ki_zusammenfassung || '');
+          text.textContent = summaryDisplayText(ausgewaehlterEintrag, kind);
         }}
         text.hidden = !isOpening;
         summaryToggle.setAttribute('aria-expanded', String(isOpening));
@@ -1675,6 +1950,20 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       const locationButton = event.target.closest('[data-location]');
       if (!locationButton) return;
       focusLocation(locationButton.dataset.location || '');
+    }});
+    parkingList.addEventListener('click', (event) => {{
+      const item = event.target.closest('[data-parking-index]');
+      if (!item) return;
+      const garage = parkingGarages[Number(item.dataset.parkingIndex)];
+      if (!garage || !parkingMap) return;
+      parkingMap.setView([garage.lat, garage.lon], 16);
+      highlightParkingList(item.dataset.parkingIndex);
+    }});
+    roadworkCheck.addEventListener('click', checkRoadworkPlan);
+    roadworksList.addEventListener('click', (event) => {{
+      const item = event.target.closest('[data-record-id]');
+      if (!item) return;
+      selectRecord(findRecordById(item.dataset.recordId));
     }});
     mapLegend.addEventListener('click', (event) => {{
       const categoryButton = event.target.closest('[data-map-category]');
@@ -1731,6 +2020,7 @@ def viewer_record(record: dict) -> dict:
         "status": german_status(str(record.get("status", ""))),
         "status_filter": german_status_filter(str(record.get("status", ""))),
         "kategorie": category,
+        "einbringer": record.get("submitter", ""),
         "ergebnis": record.get("result_text", ""),
         "ergebnisquelle": german_result_source(str(record.get("result_source", ""))),
         "digra_url": canonical_digra_url(str(record.get("digra_url", ""))),

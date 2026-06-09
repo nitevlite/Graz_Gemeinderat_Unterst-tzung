@@ -156,6 +156,7 @@ def record_prompt(record: dict) -> dict:
         "datum": record.get("meeting_date", ""),
         "typ": record.get("record_type", ""),
         "stueck": record.get("agenda_item_no", ""),
+        "einbringer": record.get("submitter", ""),
         "geschaeftszahlen": record.get("business_numbers", []),
         "titel": record.get("title", ""),
         "ergebnis": record.get("result_text", ""),
@@ -166,6 +167,9 @@ def record_prompt(record: dict) -> dict:
         "auftrag": (
             "Erstelle eine kurze fachliche Zusammenfassung der wichtigsten Punkte. "
             "Erstelle zusätzlich eine Version in einfacher Sprache für Menschen mit kognitiven Einschränkungen. "
+            "Bei schriftlichen Anträgen, Anfragen und Dringlichkeitsanträgen formuliere klar, dass der Einbringer "
+            "etwas fordert, beantragt, fragt oder auf ein Problem hinweist. Schreibe nicht pauschal, die Gemeinde "
+            "habe ein Problem, wenn nur ein Gemeinderatsmitglied oder Klub darauf hinweist. "
             "Keine Rohzitate und keine unsicheren Vermutungen."
         ),
     }

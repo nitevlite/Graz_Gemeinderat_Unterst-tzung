@@ -38,6 +38,7 @@ REQUIRED_FIELDS = {
     "source_snippet": str,
     "parser_confidence": float,
     "source_url": str,
+    "submitter": str,
 }
 
 

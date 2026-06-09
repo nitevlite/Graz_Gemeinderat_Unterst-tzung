@@ -13,6 +13,7 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
                 "parser_confidence": 1.0,
                 "record_id": "test-record",
                 "record_type": "agenda_item",
+                "submitter": "Berichterstatterin: GR Beispiel, KPÖ",
                 "digra_url": "https://digra.graz.at/document?ref=b7b33fe0-443a-49c8-9e95-22a77851b9f9",
                 "result_text": "Antrag: mehrheitlich angenommen",
                 "raw_result_text": "Der Antrag wurde mehrstimmig angenommen.",
@@ -48,12 +49,16 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert 'data-nav="search"' in html
     assert 'data-nav="overview"' in html
     assert 'data-nav="map"' in html
+    assert 'data-nav="roadworks"' in html
+    assert 'data-nav="parking"' in html
     assert 'data-nav="export"' in html
     assert "Zeitstrahlen" in html
     assert '<span class="side-dot">' not in html
     assert 'id="searchPanel"' in html
     assert 'id="overviewPanel"' in html
     assert 'id="mapPanel"' in html
+    assert 'id="roadworksPanel"' in html
+    assert 'id="parkingPanel"' in html
     assert 'id="exportPanel"' in html
     assert "table-card" in html
     assert "overflow-wrap: anywhere" in html
@@ -73,7 +78,11 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "graz-gemeinderat-treffer.csv" in html
     assert "topicsWrap" in html
     assert "Graz-Karte" in html
+    assert "Baustellenplanung" in html
+    assert "Tiefgaragen" in html
     assert "grazMap" in html
+    assert "roadworksMap" in html
+    assert "parkingMap" in html
     assert "min-height: 720px" in html
     assert "nominatim.openstreetmap.org" in html
     assert "openstreetmap.org" in html
@@ -97,6 +106,8 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "focusLocation(locationButton.dataset.location" in html
     assert "L.polyline(points" not in html
     assert "record-route" not in html
+    assert "record.typ" in html
+    assert "Einbringer" in html
     assert "highlightedLocations" in html
     assert "related-place" in html
     assert "updateMarkerHighlights()" in html
@@ -105,11 +116,15 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "renderTopics();" in html
     assert "DIGRA-Trefferwert" in html
     assert "digraLink(record.digra_url" in html
+    assert "parkingGarages" in html
+    assert "Verfügbarkeit: unbekannt" in html
+    assert "checkRoadworkPlan" in html
     assert "https://digra.graz.at/document?ref=b7b33fe0-443a-49c8-9e95-22a77851b9f9" in html
     assert 'target="_blank"' in html
     assert 'rel="noopener noreferrer"' in html
     assert "Quelldatei" in html
     assert "Geschäftszahlen" in html
+    assert "Berichterstatterin: GR Beispiel, KPÖ" in html
     assert "agenda_item" not in html
     assert "agenda_item_no" not in html
     assert "accepted_majority" not in html
@@ -147,7 +162,8 @@ def test_viewer_renders_ai_record_summaries_as_expandable_details():
     assert "Einfache Sprache" in html
     assert "summary-block" in html
     assert "data-summary-kind" in html
-    assert "text.textContent = kind === 'easy'" in html
+    assert "summaryDisplayText" in html
+    assert "Einordnung:" in html
 
 
 def test_viewer_normalizes_file_labels_and_status_filter():

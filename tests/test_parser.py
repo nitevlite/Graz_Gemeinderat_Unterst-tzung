@@ -211,6 +211,23 @@ def test_extracts_written_question_heading_without_stk_number():
     assert records[0].status == "assigned"
     assert records[0].result_text == "Verfahren: zugewiesen"
     assert records[0].raw_result_text == "Der geschäftsordnungsmäßigen Behandlung zugewiesen."
+    assert records[0].submitter == "Berichterstatter: KlObm Beispiel, KFG"
+
+
+def test_extracts_submitter_from_written_motion_reporter():
+    paragraphs = [
+        ParserParagraph("Protokoll über die öffentliche Sitzung des Gemeinderates am 14.11.2024", "Normal", 1),
+        ParserParagraph("Anträge (schriftlich)", "Heading1", 2),
+        ParserParagraph("Problematik Anbindung Gebiet Tiefental", "Heading2", 3),
+        ParserParagraph("(Berichterstatterin: GR Potzinger, ÖVP)", "Normal", 4),
+        ParserParagraph("Originaltext des Antrages:", "Normal", 5),
+        ParserParagraph("Der Gemeinderat wolle beschließen: Die Anbindung soll geprüft werden.", "Normal", 6),
+        ParserParagraph("Der Antrag wurde einstimmig angenommen.", "Normal", 7),
+    ]
+
+    records = parse_protocol(paragraphs, "2024-11-14_Protokoll.docx")
+
+    assert records[0].submitter == "Berichterstatterin: GR Potzinger, ÖVP"
 
 
 def test_uses_docx_heading_style_to_skip_toc_entries():

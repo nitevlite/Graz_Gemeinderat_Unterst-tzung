@@ -119,11 +119,16 @@ python -m graz_protocols.viewer --records out\agenda_items_digra.jsonl --summary
 Danach `viewer.html` im Browser öffnen. Die Datei ist erzeugte lokale Ausgabe und wird von Git ignoriert.
 
 Der Viewer zeigt deutsche Typen, deutsche Statuswerte und einheitliche `Ergebnisse`, zum Beispiel `Antrag: mehrheitlich angenommen` plus Parteilisten wie `Dagegen: KFG, NEOS, FPÖ`.
-Ein Klick auf eine Tabellenzeile öffnet eine Detailansicht mit Titel, Ergebnis, Ergebnisquelle, DIGRA-Einlagezahl, DIGRA-Link, Geschäftszahlen, Beträgen, Orten und Quelldatei.
+Ein Klick auf eine Tabellenzeile öffnet eine Detailansicht mit Titel, Ergebnis, Ergebnisquelle, DIGRA-Einlagezahl, DIGRA-Link, Geschäftszahlen, Einbringer, Beträgen, Orten und Quelldatei.
 Die aktuelle Trefferliste kann im Viewer als CSV exportiert werden. Filter gibt es unter anderem für Datum, Typ, Status, Ergebnisquelle, Beträge, Quelldatei und Abschnitt.
 Die Oberfläche ist als lokale App mit linker Navigation, KPI-Karten, Filterpanel, Detailansicht, Graz-Karte, Themenverläufen und Ergebnistabelle aufgebaut.
-Erkannte Orte sind anklickbar: der Viewer springt auf die Karte, lädt den Ort online über OpenStreetMap/Nominatim und zeigt die zugehörigen Einträge als Marker-Popup. Beim Öffnen eines Eintrags werden die dazugehörigen Orte grün hervorgehoben. Der Jahresfilter aktualisiert Tabelle, Themen und Karte gemeinsam. DIGRA-Links öffnen direkt die jeweilige DIGRA-Dokumentseite; Stadt-Graz-Links öffnen die Archivquelle.
+Erkannte Orte sind anklickbar: der Viewer springt auf die Karte, lädt den Ort online über OpenStreetMap/Nominatim und zeigt die zugehörigen Einträge samt Typ als Marker-Popup. Beim Öffnen eines Eintrags werden die dazugehörigen Orte grün hervorgehoben. Der Jahresfilter aktualisiert Tabelle, Themen und Karte gemeinsam. DIGRA-Links öffnen direkt die jeweilige DIGRA-Dokumentseite; Stadt-Graz-Links öffnen die Archivquelle.
 Originalformulierungen aus dem Protokoll werden im Viewer nicht angezeigt und bleiben nur in der ignorierten lokalen JSONL-Ausgabe als Rohspur erhalten.
+
+Der Viewer enthält zusätzliche Mobilitätsreiter:
+
+- `Baustellen`: Planungsformular für eigene Baustellen mit Ort, Zeitraum, Sperrtyp und Konfliktprüfung gegen erkannte Gemeinderats-Orte. Offizielle Baustelleninformationen werden verlinkt, aber nicht als Geoportal-Datensatz eingebettet, weil dafür keine OGD-Freigabe gefunden wurde.
+- `Tiefgaragen`: Karte für Parkgaragen aus dem OGD-Datensatz `Parkgaragen Graz` (`CC BY 4.0`, Quelle: `Stadt Graz - data.graz.gv.at`). Die Live-Verfügbarkeit bleibt `unbekannt`, solange keine offene Live-API mit klarer Weiterverwendungsfreigabe vorliegt.
 
 DIGRA-Auditbericht bauen:
 

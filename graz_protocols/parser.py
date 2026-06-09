@@ -59,6 +59,12 @@ LOCATION_TYPED_PATTERNS = [
     ("parcel", re.compile(r"\bGdst\.?\s*Nr\.?\s*[\d/]+", re.IGNORECASE)),
 ]
 REPORTER_RE = re.compile(r"\((?:Berichterstatter(?:in)?|GR|KlObm|KlObf)[^)]+\)")
+REPORTER_DETAIL_RE = re.compile(r"\((?P<role>Berichterstatter(?:in)?|GR|KlObm|KlObf)\s*:?\s*(?P<name>[^)]+)\)")
+MOTION_AUTHOR_RE = re.compile(
+    r"\b(?P<name>(?:GR(?:in)?\.?|Gemeinderätin|Gemeinderat|KlObm|KlObf)[^:\n]{2,120}?)\s+stellt\s+"
+    r"(?:folgenden|folgende|den)\s+(?:dringlichen\s+)?(?:Antrag|Anfrage)",
+    re.IGNORECASE,
+)
 TRAILING_PAGE_RE = re.compile(r"\t\d{1,4}$")
 
 SECTION_HEADINGS = {
@@ -159,6 +165,7 @@ class AgendaRecord:
     protocol_result_text: str = ""
     digra_match_score: float = 0.0
     source_url: str = ""
+    submitter: str = ""
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False, sort_keys=True)
@@ -185,6 +192,7 @@ def parse_protocol(
         seen.add(key)
 
         chunk_text = "\n".join([chunk.heading, *chunk.body])
+        submitter = extract_submitter(chunk_text)
         raw_result_text = extract_result_text(chunk_text)
         status, status_text = classify_status(raw_result_text or chunk_text)
         votes = extract_votes(raw_result_text, status)
@@ -222,6 +230,7 @@ def parse_protocol(
                 location_details=location_details,
                 source_snippet=make_snippet(chunk_text),
                 parser_confidence=confidence,
+                submitter=submitter,
             )
         )
     return records
@@ -396,6 +405,26 @@ def extract_title(heading_body: str) -> str:
     title = re.sub(r"^\s*[,;]\s*", "", title)
     title = re.sub(r"\s+", " ", title).strip(" ,;")
     return title
+
+
+def extract_submitter(text: str) -> str:
+    reporter_match = REPORTER_DETAIL_RE.search(text)
+    if reporter_match:
+        role = reporter_match.group("role").strip()
+        name = normalize_submitter_name(reporter_match.group("name"))
+        if name:
+            return f"{role}: {name}"
+
+    author_match = MOTION_AUTHOR_RE.search(text)
+    if author_match:
+        return normalize_submitter_name(author_match.group("name"))
+    return ""
+
+
+def normalize_submitter_name(value: str) -> str:
+    value = re.sub(r"\s+", " ", value).strip(" .,:;")
+    value = re.sub(r"^(?:Frau|Herr)\s+", "", value, flags=re.IGNORECASE)
+    return value
 
 
 def classify_status(text: str) -> tuple[str, str]:

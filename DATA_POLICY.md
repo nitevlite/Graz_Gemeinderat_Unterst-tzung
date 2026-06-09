@@ -59,3 +59,20 @@ Die GitHub Action `checks` führt denselben Check bei Push und Pull Request aus.
 ## Bereinigte Fixtures
 
 Wenn Tests Beispiele brauchen, kurze künstliche Ausschnitte erstellen, die die Struktur erhalten, aber keinen vollständigen Protokollinhalt kopieren.
+
+## Externe Mobilitätsdaten
+
+Direkt einbettbare externe Daten brauchen eine klare Weiterverwendungsgrundlage.
+
+Aktuell zulässig:
+
+- Parkgaragen Graz aus `data.gv.at` / `data.graz.gv.at`
+- Lizenz: `CC BY 4.0`
+- Namensnennung: `Stadt Graz - data.graz.gv.at`
+- Nutzung im Open-Source-Projekt ist mit Attribution vorgesehen; Live-Verfügbarkeit wird nicht übernommen, solange keine offene Live-API mit klarer Lizenz vorliegt.
+
+Aktuell nicht direkt einzubetten:
+
+- Baustellen-Geometrien aus der Stadt-Graz-Onlinekarte bzw. Geoportal-Services
+- Grund: keine OGD-Freigabe gefunden; die Geoportal-Nutzungsbedingungen sind restriktiv.
+- Zulässig im Projekt: Verlinkung auf die offizielle Baustelleninformation und eigene Planungs-/Prüfdaten, die Nutzer:innen selbst eingeben.

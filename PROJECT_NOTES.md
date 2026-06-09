@@ -79,6 +79,9 @@ Aktuelle Ergebnisbehandlung:
 - Ortskandidaten werden optional gegen `Straßennamen_Graz.xlsx` geprüft; Titel-Orte haben Vorrang vor späteren Vergleichsstraßen im Antragstext.
 - Straßengruppen und zusammengesetzte Straßennamen wie `Waltendorfer Hauptstraße – Schulgasse – Ruckerlberggasse` werden vollständig aus der Straßennamenliste erkannt.
 - Der Viewer zeigt vorhandene KI-Zusammenfassungen pro Stück als ausklappbare Blöcke: fachliche Kurzfassung und einfache Sprache.
+- Schriftliche Anträge, schriftliche Anfragen und Dringlichkeitsanträge erhalten nach Möglichkeit ein Feld `submitter` aus dem Berichterstatter-/Einbringer-Hinweis. Der Viewer zeigt dieses Feld als `Einbringer`.
+- Bei KI-Zusammenfassungen von Anträgen/Anfragen blendet der Viewer eine Einordnung ein, damit Forderungen einzelner Gemeinderatsmitglieder/Klubs nicht als Aussage der Gemeinde missverstanden werden.
+- Der Viewer hat zusätzliche Reiter `Baustellen` und `Tiefgaragen`. Baustellen sind vorerst eine Planungs-/Konfliktprüfung mit offizieller Verlinkung, keine kopierte Geoportal-Datenübernahme. Tiefgaragen nutzen den OGD-Datensatz `Parkgaragen Graz` mit `CC BY 4.0`; Live-Verfügbarkeit bleibt `unbekannt`.
 
 ## DIGRA-Abgleich
 

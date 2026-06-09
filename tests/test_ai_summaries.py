@@ -36,6 +36,8 @@ def test_annotate_record_summaries_uses_local_ollama():
         {
             "meeting_date": "2025-01-16",
             "title": "Unfallhäufungsstelle Marburger Straße",
+            "record_type": "written_motion",
+            "submitter": "Berichterstatterin: GR Beispiel, KPÖ",
             "result_text": "Verfahren: zugewiesen",
             "locations": ["Marburger Straße"],
         }
@@ -53,3 +55,6 @@ def test_annotate_record_summaries_uses_local_ollama():
     assert client.calls[0]["url"] == "http://localhost:11434/api/chat"
     assert client.calls[0]["json"]["model"] == "qwen2.5:7b-instruct"
     assert client.calls[0]["json"]["format"] == "json"
+    user_prompt = client.calls[0]["json"]["messages"][1]["content"]
+    assert "Berichterstatterin: GR Beispiel, KPÖ" in user_prompt
+    assert "Schreibe nicht pauschal, die Gemeinde" in user_prompt
