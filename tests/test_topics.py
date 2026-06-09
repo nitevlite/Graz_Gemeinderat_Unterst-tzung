@@ -10,6 +10,8 @@ def test_builds_topic_candidates_from_repeated_keywords_and_business_numbers():
             "agenda_item_no": 1,
             "business_numbers": ["A10-123/1"],
             "title": "Projekt Reininghaus Verkehrsanbindung",
+            "status": "accepted",
+            "result_text": "Antrag: angenommen",
             "result_source": "digra",
         },
         {
@@ -29,6 +31,8 @@ def test_builds_topic_candidates_from_repeated_keywords_and_business_numbers():
     assert business_candidate["label"] == "Projekt Reininghaus"
     assert any(candidate["label"] == "Projekt Reininghaus" for candidate in candidates)
     assert all("confidence" in candidate for candidate in candidates)
+    assert business_candidate["records"][0]["status"] == "accepted"
+    assert business_candidate["records"][0]["result_text"] == "Antrag: angenommen"
 
 
 def test_topic_label_avoids_business_codes_as_heading():

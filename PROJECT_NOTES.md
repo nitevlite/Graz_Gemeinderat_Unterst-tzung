@@ -61,6 +61,10 @@ Aktuelle Ergebnisbehandlung:
 - Der lokale Viewer hat eine Detailansicht pro Eintrag mit Titel, Ergebnis, Ergebnisquelle, DIGRA-Einlagezahl, DIGRA-Trefferwert, DIGRA-Link, Geschäftszahlen, Beträgen, Orten und Quelldatei.
 - Die Filterleiste ist global sichtbar und wirkt auf Suche, Zeitstrahlen, Karte und Export.
 - Die Karte ist ein eigener großer Tab; Marker werden erst beim Öffnen der Karte geladen und bei unveränderter Ortsauswahl nicht erneut geocodiert.
+- Zeitstrahl-Aktionen filtern direkt über Record-IDs statt über KI-Überschriftentext.
+- Zeitstrahlen zeigen KI-Hinweise und den letzten bekannten Ergebnisstand.
+- DIGRA-Links werden im Viewer auf stabile `document?ref=...`-URLs ohne flüchtige Session-Parameter normalisiert.
+- `city-index` legt einen lokalen Index älterer Stadt-Graz-Archivseiten an; bei DNS-/Netzwerkfehlern werden Fehler im Index dokumentiert.
 - Der lokale Viewer kann nach Ergebnisquelle filtern: `DIGRA`, `Protokoll`, `DIGRA fehlt`.
 - Der lokale Viewer kann nach Betragsvorkommen und Quelldatei filtern und die aktuelle Trefferliste als CSV exportieren.
 - Der lokale Viewer zeigt optional Themenverläufe aus `out\topic_candidates.json`.

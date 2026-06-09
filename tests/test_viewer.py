@@ -1,4 +1,4 @@
-from graz_protocols.viewer import build_html, viewer_record
+from graz_protocols.viewer import build_html, canonical_digra_url, viewer_record
 
 
 def test_viewer_uses_german_labels_and_hides_raw_text():
@@ -74,6 +74,8 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "openstreetmap.org" in html
     assert "currentLocationIndex = buildLocationIndex(sichtbareEintraege)" in html
     assert "refreshMapMarkersIfNeeded()" in html
+    assert "activeTopicRecordIds" in html
+    assert "data-topic-id" in html
     assert "focusRecordLocations(record" in html
     assert "L.polyline(points" in html
     assert "record-route" in html
@@ -114,6 +116,16 @@ def test_viewer_normalizes_file_labels_and_status_filter():
     assert record["status_filter"] == "Angenommen"
 
 
+def test_viewer_canonicalizes_digra_urls():
+    assert (
+        canonical_digra_url(
+            "https://digra.graz.at/document?ref=d811022e-2e21-408c-8e23-9622acfc1432&jfwid=abc"
+        )
+        == "https://digra.graz.at/document?ref=d811022e-2e21-408c-8e23-9622acfc1432"
+    )
+    assert canonical_digra_url("https://example.com/document?ref=x") == ""
+
+
 def test_viewer_renders_locations_as_map_buttons():
     html = build_html(
         [
@@ -149,13 +161,26 @@ def test_viewer_can_embed_topic_candidates():
         [
             {
                 "confidence": 0.95,
+                "ai_reason": "Gemeinsames Projekt über mehrere Sitzungen",
                 "business_number": "A 14-001665/2025",
                 "dates": ["2025-01-16", "2025-03-20"],
                 "label": "Flächenwidmungsplan Landeshauptstadt",
                 "reason": "gleiche Geschäftszahl-Basis",
                 "records": [
-                    {"meeting_date": "2025-01-16", "title": "Auflage des Entwurfs"},
-                    {"meeting_date": "2025-03-20", "title": "Beschluss"},
+                    {
+                        "meeting_date": "2025-01-16",
+                        "record_id": "record-a",
+                        "result_text": "Antrag: angenommen",
+                        "status": "accepted",
+                        "title": "Auflage des Entwurfs",
+                    },
+                    {
+                        "meeting_date": "2025-03-20",
+                        "record_id": "record-b",
+                        "result_text": "Antrag: mehrheitlich angenommen",
+                        "status": "accepted_majority",
+                        "title": "Beschluss",
+                    },
                 ],
                 "news": [{"title": "Gemeinderat beschließt Flächenwidmungsplan", "url": "https://www.graz.at/news"}],
                 "topic_id": "business-a-14-001665-2025",
@@ -171,6 +196,12 @@ def test_viewer_can_embed_topic_candidates():
     assert "Geschäftszahl:" in html
     assert "A 14-001665/2025" in html
     assert "gleiche Geschäftszahl-Basis" not in html
+    assert "KI-Hinweis:" in html
+    assert "Gemeinsames Projekt über mehrere Sitzungen" in html
+    assert "Letzter Stand:" in html
+    assert "Antrag: mehrheitlich angenommen" in html
+    assert "data-topic-id" in html
+    assert "record-b" in html
     assert "Auflage des Entwurfs" in html
     assert "Aktuelle Hinweise" in html
     assert "Gemeinderat beschließt Flächenwidmungsplan" in html

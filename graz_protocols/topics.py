@@ -117,6 +117,8 @@ def build_topic_candidates(records: list[dict]) -> list[dict]:
                         "record_type": record.get("record_type", ""),
                         "agenda_item_no": record.get("agenda_item_no", ""),
                         "title": record.get("title", ""),
+                        "status": record.get("status", ""),
+                        "result_text": record.get("result_text", ""),
                         "result_source": record.get("result_source", ""),
                     }
                     for record in sorted(group_records, key=lambda item: (item.get("meeting_date", ""), item.get("record_id", "")))

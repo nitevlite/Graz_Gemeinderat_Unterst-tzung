@@ -133,6 +133,14 @@ python -m graz_protocols.cli audit --records out\agenda_items_digra.jsonl --summ
 
 Der Bericht zeigt DIGRA-Ergebnisse, Protokoll-Fallbacks, fehlende Ergebnisse und niedrige DIGRA-Trefferwerte. Er bleibt als erzeugte lokale Ausgabe unter `out/` ignoriert.
 
+Stadt-Graz-Archivseiten für ältere Sitzungen indexieren:
+
+```powershell
+python -m graz_protocols.cli city-index --output out\city_archive_index.json
+```
+
+Der Index sammelt ältere Sitzungsseiten aus dem Stadt-Graz-Archiv ab 2004. Wenn `www.graz.at` lokal gerade nicht erreichbar ist, werden die Ladefehler im JSON unter `errors` dokumentiert.
+
 Themenkandidaten über mehrere Sitzungen erzeugen:
 
 ```powershell

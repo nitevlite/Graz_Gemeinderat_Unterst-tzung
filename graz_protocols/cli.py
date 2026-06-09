@@ -7,7 +7,7 @@ import json
 import sys
 
 from .audit import write_audit_report
-from .city_sources import enrich_records_with_city_links
+from .city_sources import enrich_records_with_city_links, write_city_meeting_index
 from .docx_text import read_docx_paragraph_blocks
 from .digra_import import (
     DEFAULT_DIGRA_TOOL_PATH,
@@ -37,6 +37,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_digra_export(args)
     if args.command == "topics":
         return run_topics(args)
+    if args.command == "city-index":
+        return run_city_index(args)
     parser.print_help()
     return 2
 
@@ -171,6 +173,10 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Aktuelle Stadt-Graz-RSS-News als Hinweise zu Topic-Kandidaten ergänzen.",
     )
+    city_index_cmd = subparsers.add_parser(
+        "city-index", help="Stadt-Graz-Archivseiten für ältere Gemeinderatssitzungen indexieren."
+    )
+    city_index_cmd.add_argument("--output", type=Path, default=Path("out") / "city_archive_index.json")
     return parser
 
 
@@ -298,6 +304,17 @@ def run_topics(args: argparse.Namespace) -> int:
         print(str(exc), file=sys.stderr)
         return 1
     print(f"Topic-Kandidaten nach {args.output} geschrieben.")
+    return 0
+
+
+def run_city_index(args: argparse.Namespace) -> int:
+    summary = write_city_meeting_index(args.output)
+    years = ", ".join(summary["years"])
+    print(f"{summary['city_meeting_pages']} Stadt-Graz-Sitzungsseiten nach {summary['output']} geschrieben.")
+    if years:
+        print(f"Jahre: {years}")
+    if summary.get("errors"):
+        print(f"Hinweis: {len(summary['errors'])} Stadt-Graz-Seiten konnten nicht geladen werden.", file=sys.stderr)
     return 0
 
 

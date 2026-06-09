@@ -15,6 +15,7 @@ from .parser import AgendaRecord
 
 
 ARCHIVE_URL = "https://www.graz.at/cms/beitrag/10142612/7768104"
+LEGACY_ARCHIVE_URL = "https://www.graz.at/cms/beitrag/10134085/7768145/Gemeinderat_ArchivNachlese.html"
 RSS_URL = "https://www.graz.at/rss"
 
 
@@ -23,6 +24,14 @@ class CityArchiveLink:
     meeting_date: str
     title: str
     url: str
+
+
+@dataclass(frozen=True)
+class CityMeetingPage:
+    meeting_date: str
+    title: str
+    url: str
+    source_url: str
 
 
 @dataclass(frozen=True)
@@ -75,6 +84,113 @@ def fetch_archive_links(archive_url: str = ARCHIVE_URL) -> list[CityArchiveLink]
     return parse_archive_links(response.text, archive_url)
 
 
+def fetch_city_meeting_pages(
+    *,
+    archive_url: str = ARCHIVE_URL,
+    legacy_archive_url: str = LEGACY_ARCHIVE_URL,
+    limit_pages: int = 40,
+) -> list[CityMeetingPage]:
+    pages_to_scan = [archive_url, legacy_archive_url]
+    scanned: set[str] = set()
+    meetings: list[CityMeetingPage] = []
+    while pages_to_scan and len(scanned) < limit_pages:
+        page_url = pages_to_scan.pop(0)
+        if page_url in scanned:
+            continue
+        scanned.add(page_url)
+        try:
+            response = requests.get(page_url, timeout=20)
+            response.raise_for_status()
+        except requests.RequestException:
+            continue
+        soup = BeautifulSoup(response.text, "html.parser")
+        for anchor in soup.find_all("a"):
+            href = anchor.get("href")
+            label = anchor.get_text(" ", strip=True)
+            if not href or not label:
+                continue
+            url = urljoin(page_url, href)
+            if "graz.at/cms/beitrag/" not in url:
+                continue
+            if annual_archive_label(label) and url not in scanned and url not in pages_to_scan:
+                pages_to_scan.append(url)
+            meeting_date = meeting_date_from_anchor(anchor, label)
+            if meeting_date and meeting_page_label(label):
+                meetings.append(
+                    CityMeetingPage(
+                        meeting_date=meeting_date,
+                        title=label,
+                        url=url,
+                        source_url=page_url,
+                    )
+                )
+    return unique_meeting_pages(meetings)
+
+
+def write_city_meeting_index(output_path: Path) -> dict:
+    pages, errors = fetch_city_meeting_pages_with_errors()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(
+            {"source": ARCHIVE_URL, "legacy_source": LEGACY_ARCHIVE_URL, "pages": [page.__dict__ for page in pages], "errors": errors},
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    years = sorted({page.meeting_date[:4] for page in pages})
+    return {"city_meeting_pages": len(pages), "years": years, "output": str(output_path), "errors": errors}
+
+
+def fetch_city_meeting_pages_with_errors(
+    *,
+    archive_url: str = ARCHIVE_URL,
+    legacy_archive_url: str = LEGACY_ARCHIVE_URL,
+    limit_pages: int = 40,
+) -> tuple[list[CityMeetingPage], list[dict[str, str]]]:
+    pages_to_scan = [archive_url, legacy_archive_url]
+    scanned: set[str] = set()
+    meetings: list[CityMeetingPage] = []
+    errors: list[dict[str, str]] = []
+    while pages_to_scan and len(scanned) < limit_pages:
+        page_url = pages_to_scan.pop(0)
+        if page_url in scanned:
+            continue
+        scanned.add(page_url)
+        try:
+            response = requests.get(page_url, timeout=20)
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            errors.append({"url": page_url, "error": str(exc)})
+            continue
+        discovered_pages, discovered_links = parse_city_meeting_page_index(response.text, page_url)
+        meetings.extend(discovered_pages)
+        for url in discovered_links:
+            if url not in scanned and url not in pages_to_scan:
+                pages_to_scan.append(url)
+    return unique_meeting_pages(meetings), errors
+
+
+def parse_city_meeting_page_index(html: str, page_url: str) -> tuple[list[CityMeetingPage], list[str]]:
+    soup = BeautifulSoup(html, "html.parser")
+    meetings: list[CityMeetingPage] = []
+    linked_indexes: list[str] = []
+    for anchor in soup.find_all("a"):
+        href = anchor.get("href")
+        label = anchor.get_text(" ", strip=True)
+        if not href or not label:
+            continue
+        url = urljoin(page_url, href)
+        if "graz.at/cms/beitrag/" not in url:
+            continue
+        if annual_archive_label(label):
+            linked_indexes.append(url)
+        meeting_date = meeting_date_from_anchor(anchor, label)
+        if meeting_date and (meeting_page_label(label) or useful_archive_label(label)):
+            meetings.append(CityMeetingPage(meeting_date=meeting_date, title=label, url=url, source_url=page_url))
+    return meetings, linked_indexes
+
+
 def parse_archive_links(html: str, base_url: str) -> list[CityArchiveLink]:
     soup = BeautifulSoup(html, "html.parser")
     text = soup.get_text("\n")
@@ -100,6 +216,28 @@ def parse_archive_links(html: str, base_url: str) -> list[CityArchiveLink]:
             continue
         links.append(CityArchiveLink(meeting_date=meeting_date, title=label, url=urljoin(base_url, href)))
     return unique_links(links)
+
+
+def annual_archive_label(label: str) -> bool:
+    normalized = label.casefold()
+    return bool(re.fullmatch(r"(?:gr-sitzungen\s+)?20\d{2}(?:\s*\(.*\))?", normalized.strip()))
+
+
+def meeting_page_label(label: str) -> bool:
+    normalized = label.casefold()
+    return bool(re.search(r"\b\d{1,2}\.\d{1,2}\.\d{4}\b", label)) or "gemeinderatssitzung" in normalized
+
+
+def meeting_date_from_anchor(anchor, label: str) -> str:
+    values = [label]
+    parent = anchor.find_parent()
+    if parent:
+        values.append(parent.get_text(" ", strip=True))
+    for value in values:
+        match = re.search(r"\b\d{1,2}\.\d{1,2}\.\d{4}\b", value)
+        if match:
+            return normalize_date(match.group(0))
+    return ""
 
 
 def useful_archive_label(label: str) -> bool:
@@ -219,4 +357,16 @@ def unique_links(links: list[CityArchiveLink]) -> list[CityArchiveLink]:
             continue
         seen.add(key)
         result.append(link)
+    return result
+
+
+def unique_meeting_pages(pages: list[CityMeetingPage]) -> list[CityMeetingPage]:
+    seen: set[tuple[str, str]] = set()
+    result: list[CityMeetingPage] = []
+    for page in sorted(pages, key=lambda item: (item.meeting_date, item.title, item.url)):
+        key = (page.meeting_date, page.url)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(page)
     return result

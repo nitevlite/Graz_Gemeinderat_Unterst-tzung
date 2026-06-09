@@ -6,6 +6,7 @@ import html
 import json
 import re
 import sys
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -730,6 +731,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     let activeTabName = 'search';
     let lastMarkerLocationKey = '';
     let markerLoadRun = 0;
+    let activeTopicRecordIds = null;
 
     function escapeHtml(value) {{
       return String(value ?? '').replace(/[&<>"']/g, (char) => ({{
@@ -1110,6 +1112,8 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         const news = (topic.news || []).slice(0, 3).map((item) => `
           <a href="${{escapeHtml(item.url || '')}}" target="_blank" rel="noopener noreferrer">${{escapeHtml(item.title || '')}}</a>
         `).join('');
+        const aiInfo = topic.ai_reason ? `<div class="topic-meta">KI-Hinweis: ${{escapeHtml(topic.ai_reason)}}</div>` : '';
+        const statusInfo = topic.latest_result ? `<div class="topic-meta">Letzter Stand: ${{escapeHtml(topic.latest_result)}}${{topic.latest_date ? ` am ${{escapeHtml(topic.latest_date)}}` : ''}}</div>` : '';
         return `
           <article class="topic">
             <div class="topic-head">
@@ -1122,9 +1126,11 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
               Zeitstrahl: ${{escapeHtml(topicDates.join(' bis '))}}
               ${{topic.business_number ? ` · Geschäftszahl: ${{escapeHtml(topic.business_number)}}` : ''}}
             </div>
+            ${{aiInfo}}
+            ${{statusInfo}}
             <div class="timeline">${{timeline}}</div>
             ${{news ? `<div class="topic-meta">Aktuelle Hinweise: ${{news}}</div>` : ''}}
-            <button class="topic-action" type="button" data-topic-query="${{escapeHtml(topic.label || '')}}">Einträge dazu filtern</button>
+            <button class="topic-action" type="button" data-topic-id="${{escapeHtml(topic.topic_id || '')}}">Einträge dazu filtern</button>
           </article>
         `;
       }}).join('');
@@ -1134,6 +1140,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     function filteredRecords() {{
       const query = search.value.trim().toLocaleLowerCase('de-AT');
       return records.filter((record) => {{
+        if (activeTopicRecordIds && !activeTopicRecordIds.has(record.record_id)) return false;
         if (dateFilter.value && record.datum !== dateFilter.value) return false;
         if (yearFilter.value && !String(record.datum || '').startsWith(yearFilter.value + '-')) return false;
         if (typeFilter.value && record.typ !== typeFilter.value) return false;
@@ -1216,7 +1223,11 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     fillSelect(sourceFilter, records.map((record) => record.ergebnisquelle));
     fillSelect(fileFilter, records.map((record) => record.quell_datei));
     fillSelect(sectionFilter, records.map((record) => record.abschnitt));
-    [search, yearFilter, dateFilter, typeFilter, statusFilter, sourceFilter, amountFilter, fileFilter, sectionFilter].forEach((el) => el.addEventListener('input', render));
+    search.addEventListener('input', () => {{
+      activeTopicRecordIds = null;
+      render();
+    }});
+    [yearFilter, dateFilter, typeFilter, statusFilter, sourceFilter, amountFilter, fileFilter, sectionFilter].forEach((el) => el.addEventListener('input', render));
     csvExport.addEventListener('click', exportCsv);
     tableWrap.addEventListener('click', (event) => {{
       const locationButton = event.target.closest('[data-location]');
@@ -1251,10 +1262,13 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         selectRecord(findRecordById(step.dataset.recordId), true);
         return;
       }}
-      const action = event.target.closest('[data-topic-query]');
+      const action = event.target.closest('[data-topic-id]');
       if (action) {{
-        search.value = action.dataset.topicQuery || '';
+        const topic = topics.find((item) => item.topic_id === action.dataset.topicId);
+        activeTopicRecordIds = new Set((topic?.records || []).map((record) => record.record_id).filter(Boolean));
+        search.value = '';
         render();
+        activateTab('search');
       }}
     }});
     document.querySelectorAll('[data-nav]').forEach((item) => {{
@@ -1284,7 +1298,7 @@ def viewer_record(record: dict) -> dict:
         "status_filter": german_status_filter(str(record.get("status", ""))),
         "ergebnis": record.get("result_text", ""),
         "ergebnisquelle": german_result_source(str(record.get("result_source", ""))),
-        "digra_url": record.get("digra_url", ""),
+        "digra_url": canonical_digra_url(str(record.get("digra_url", ""))),
         "digra_einlagezahl": record.get("digra_business_number", ""),
         "digra_trefferwert": format_score(record.get("digra_match_score", 0)),
         "source_url": record.get("source_url", ""),
@@ -1305,12 +1319,30 @@ def viewer_summary(summary: dict) -> dict:
     }
 
 
+def canonical_digra_url(value: str) -> str:
+    if not value:
+        return ""
+    parsed = urlparse(value.strip())
+    if parsed.netloc != "digra.graz.at" or parsed.path != "/document":
+        return ""
+    ref = parse_qs(parsed.query).get("ref", [""])[0]
+    if not ref:
+        return ""
+    return urlunparse(("https", "digra.graz.at", "/document", "", urlencode({"ref": ref}), ""))
+
+
 def viewer_topic(topic: dict) -> dict:
+    records = [record for record in topic.get("records", []) if isinstance(record, dict)]
+    latest_record = max(records, key=lambda record: (record.get("meeting_date", ""), record.get("record_id", "")), default={})
     return {
         "topic_id": topic.get("topic_id", ""),
         "label": topic.get("label", ""),
         "business_number": topic.get("business_number", ""),
         "reason": "",
+        "ai_reason": topic.get("ai_reason", ""),
+        "label_source": topic.get("label_source", ""),
+        "latest_date": latest_record.get("meeting_date", ""),
+        "latest_result": latest_record.get("result_text", ""),
         "confidence": format_score(topic.get("confidence", 0)),
         "dates": topic.get("dates", []),
         "records": [
@@ -1320,9 +1352,9 @@ def viewer_topic(topic: dict) -> dict:
                 "record_id": record.get("record_id", ""),
                 "result_source": german_result_source(str(record.get("result_source", ""))),
                 "result_text": record.get("result_text", ""),
+                "status": german_status(str(record.get("status", ""))),
             }
-            for record in topic.get("records", [])
-            if isinstance(record, dict)
+            for record in records
         ],
         "news": topic.get("news", []),
     }
