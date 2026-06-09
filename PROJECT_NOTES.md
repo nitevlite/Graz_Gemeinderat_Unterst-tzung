@@ -59,6 +59,8 @@ Aktuelle Ergebnisbehandlung:
 - Parteiangaben wie `(Gegen KFG, NEOS, FPÖ)` werden zu `Dagegen: ...` normalisiert.
 - Der lokale Viewer zeigt deutsche Typen, deutsche Statuswerte und nur vereinheitlichte `Ergebnisse`.
 - Der lokale Viewer hat eine Detailansicht pro Eintrag mit Titel, Ergebnis, Ergebnisquelle, DIGRA-Einlagezahl, DIGRA-Trefferwert, DIGRA-Link, Geschäftszahlen, Beträgen, Orten und Quelldatei.
+- Die Filterleiste ist global sichtbar und wirkt auf Suche, Zeitstrahlen, Karte und Export.
+- Die Karte ist ein eigener großer Tab; Marker werden erst beim Öffnen der Karte geladen und bei unveränderter Ortsauswahl nicht erneut geocodiert.
 - Der lokale Viewer kann nach Ergebnisquelle filtern: `DIGRA`, `Protokoll`, `DIGRA fehlt`.
 - Der lokale Viewer kann nach Betragsvorkommen und Quelldatei filtern und die aktuelle Trefferliste als CSV exportieren.
 - Der lokale Viewer zeigt optional Themenverläufe aus `out\topic_candidates.json`.

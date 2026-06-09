@@ -155,10 +155,10 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       color: #334155;
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 10px 11px;
-      font-size: 14px;
-      font-weight: 600;
+      gap: 0;
+      padding: 11px 12px;
+      font-size: 16px;
+      font-weight: 700;
       background: transparent;
       cursor: pointer;
       text-align: left;
@@ -172,10 +172,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       color: var(--accent-dark);
     }}
     .side-dot {{
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      background: currentColor;
+      display: none;
     }}
     .side-note {{
       color: var(--muted);
@@ -424,10 +421,10 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       display: grid;
       grid-template-columns: minmax(0, 1fr) 260px;
       gap: 12px;
-      min-height: 580px;
+      min-height: 720px;
     }}
     #grazMap {{
-      min-height: 580px;
+      min-height: 720px;
       border: 1px solid var(--line);
       border-radius: 8px;
       overflow: hidden;
@@ -437,7 +434,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       border: 1px solid var(--line);
       border-radius: 8px;
       overflow: auto;
-      max-height: 580px;
+      max-height: 720px;
       background: #fbfdff;
     }}
     .map-place {{
@@ -640,35 +637,29 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         </div>
       </div>
       <nav class="side-nav" aria-label="Ansichten">
-        <button class="side-item active" type="button" data-nav="search"><span class="side-dot"></span>Suche</button>
-        <button class="side-item" type="button" data-nav="overview"><span class="side-dot"></span>Übersicht</button>
-        <button class="side-item" type="button" data-nav="map"><span class="side-dot"></span>Karte</button>
-        <button class="side-item" type="button" data-nav="digra"><span class="side-dot"></span>DIGRA</button>
-        <button class="side-item" type="button" data-nav="export"><span class="side-dot"></span>Export</button>
+        <button class="side-item active" type="button" data-nav="search">Suche</button>
+        <button class="side-item" type="button" data-nav="overview">Zeitstrahlen</button>
+        <button class="side-item" type="button" data-nav="map">Karte</button>
+        <button class="side-item" type="button" data-nav="export">Export</button>
       </nav>
     </aside>
     <div class="content-shell">
       <header>
         <h1>Gemeinderatsprotokolle</h1>
-        <div class="meta">
-          <span>Lokale HTML-Ansicht</span>
-          <span>Ergebnisse bevorzugt aus DIGRA</span>
-          <span>Parser-Fallback nur bei fehlenden DIGRA-Daten</span>
-        </div>
       </header>
       <main>
+        <section class="toolbar" id="searchSection" aria-label="Filter">
+          <label class="filter-cell wide"><span class="sr-label">Suche</span><input id="search" type="search" placeholder="Thema, Straße, Geschäftszahl, Betrag"></label>
+          <label class="filter-cell"><span class="sr-label">Jahr</span><select id="yearFilter"><option value="">Alle Jahre</option></select></label>
+          <label class="filter-cell"><span class="sr-label">Datum</span><select id="dateFilter"><option value="">Alle Daten</option></select></label>
+          <label class="filter-cell"><span class="sr-label">Typ</span><select id="typeFilter"><option value="">Alle Typen</option></select></label>
+          <label class="filter-cell"><span class="sr-label">Status</span><select id="statusFilter"><option value="">Alle Status</option></select></label>
+          <label class="filter-cell"><span class="sr-label">Ergebnisquelle</span><select id="sourceFilter"><option value="">Alle Quellen</option></select></label>
+          <label class="filter-cell"><span class="sr-label">Beträge</span><select id="amountFilter"><option value="">Alle Beträge</option><option value="mit">Mit Betrag</option><option value="ohne">Ohne Betrag</option></select></label>
+          <label class="filter-cell"><span class="sr-label">Dateien</span><select id="fileFilter"><option value="">Alle Dateien</option></select></label>
+          <label class="filter-cell"><span class="sr-label">Abschnitte</span><select id="sectionFilter"><option value="">Alle Abschnitte</option></select></label>
+        </section>
         <section class="tab-panel active" id="searchPanel">
-          <section class="toolbar" id="searchSection" aria-label="Filter">
-            <label class="filter-cell wide"><span class="sr-label">Suche</span><input id="search" type="search" placeholder="Thema, Straße, Geschäftszahl, Betrag"></label>
-            <label class="filter-cell"><span class="sr-label">Jahr</span><select id="yearFilter"><option value="">Alle Jahre</option></select></label>
-            <label class="filter-cell"><span class="sr-label">Datum</span><select id="dateFilter"><option value="">Alle Daten</option></select></label>
-            <label class="filter-cell"><span class="sr-label">Typ</span><select id="typeFilter"><option value="">Alle Typen</option></select></label>
-            <label class="filter-cell"><span class="sr-label">Status</span><select id="statusFilter"><option value="">Alle Status</option></select></label>
-            <label class="filter-cell"><span class="sr-label">Ergebnisquelle</span><select id="sourceFilter"><option value="">Alle Quellen</option></select></label>
-            <label class="filter-cell"><span class="sr-label">Beträge</span><select id="amountFilter"><option value="">Alle Beträge</option><option value="mit">Mit Betrag</option><option value="ohne">Ohne Betrag</option></select></label>
-            <label class="filter-cell"><span class="sr-label">Dateien</span><select id="fileFilter"><option value="">Alle Dateien</option></select></label>
-            <label class="filter-cell"><span class="sr-label">Abschnitte</span><select id="sectionFilter"><option value="">Alle Abschnitte</option></select></label>
-          </section>
           <section class="detail" id="detailWrap"></section>
           <div id="tableWrap"></div>
         </section>
@@ -691,14 +682,6 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
             <div class="map-list" id="mapPlaces"></div>
           </div>
           <div class="map-note">Die Karte nutzt Online-Geocoding. Wenn ein Ort ungenau sitzt, liegt das meist an mehrdeutigen Ortsnamen oder daran, dass die Protokoll-Ortserkennung zu viel Kontext erwischt.</div>
-        </section>
-        <section class="tab-panel" id="digraPanel">
-          <section class="stats">
-            <div class="stat"><b id="digraMatchedCount">0</b><span>DIGRA-Treffer</span></div>
-            <div class="stat"><b id="digraFallbackCount">0</b><span>Protokoll-Fallbacks</span></div>
-            <div class="stat"><b id="cityLinkCount">0</b><span>Stadt-Graz-Links</span></div>
-            <div class="stat"><b id="digraMissingCount">0</b><span>ohne Ergebnis</span></div>
-          </section>
         </section>
         <section class="tab-panel" id="exportPanel">
           <section class="detail">
@@ -744,6 +727,9 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     let routeLayer = null;
     const markersByLocation = new Map();
     let currentLocationIndex = buildLocationIndex(records);
+    let activeTabName = 'search';
+    let lastMarkerLocationKey = '';
+    let markerLoadRun = 0;
 
     function escapeHtml(value) {{
       return String(value ?? '').replace(/[&<>"']/g, (char) => ({{
@@ -822,6 +808,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     }}
 
     function activateTab(target) {{
+      activeTabName = target;
       document.querySelectorAll('[data-nav]').forEach((item) => {{
         item.classList.toggle('active', item.dataset.nav === target);
       }});
@@ -831,6 +818,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       if (target === 'map' && grazMap) {{
         setTimeout(() => {{
           grazMap.invalidateSize();
+          refreshMapMarkersIfNeeded();
           if (ausgewaehlterEintrag) focusRecordLocations(ausgewaehlterEintrag, false);
         }}, 80);
       }}
@@ -849,7 +837,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       markerLayer = L.layerGroup().addTo(grazMap);
       routeLayer = L.layerGroup().addTo(grazMap);
       renderMapPlaces();
-      loadVisibleMapMarkers();
+      refreshMapMarkersIfNeeded();
     }}
 
     function renderMapPlaces() {{
@@ -871,19 +859,38 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
 
     async function loadVisibleMapMarkers() {{
       if (!markerLayer) return;
+      const markerLocationKey = [...currentLocationIndex.keys()].sort().join('|');
+      if (markerLocationKey === lastMarkerLocationKey) return;
+      lastMarkerLocationKey = markerLocationKey;
+      const runId = ++markerLoadRun;
       markerLayer.clearLayers();
       if (routeLayer) routeLayer.clearLayers();
       markersByLocation.clear();
       const places = [...currentLocationIndex.keys()].slice(0, 120);
+      if (!places.length) {{
+        mapStatus.textContent = 'Keine Orte für diese Filter.';
+        return;
+      }}
       let loaded = 0;
+      mapStatus.textContent = 'Orte werden geladen...';
       for (const place of places) {{
+        if (runId !== markerLoadRun) return;
         const coords = await geocodeLocation(place);
+        if (runId !== markerLoadRun) return;
         if (coords) {{
           addLocationMarker(place, coords);
           loaded += 1;
           mapStatus.textContent = `${{loaded}} Orte auf der Karte`;
         }}
       }}
+    }}
+
+    function refreshMapMarkersIfNeeded() {{
+      if (activeTabName !== 'map') {{
+        mapStatus.textContent = 'Karte wird beim Öffnen aktualisiert.';
+        return;
+      }}
+      loadVisibleMapMarkers();
     }}
 
     async function geocodeLocation(location) {{
@@ -1108,7 +1115,6 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
             <div class="topic-head">
               <span class="topic-label">
                 <span>${{escapeHtml(topic.label || 'Thema')}}</span>
-                <span class="badge">${{escapeHtml(topic.reason || '')}}</span>
               </span>
               <span class="badge">${{escapeHtml(topic.confidence || '')}}</span>
             </div>
@@ -1158,7 +1164,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       if (digraMissingCount) digraMissingCount.textContent = records.filter((r) => !r.ergebnis || r.status_filter === 'Unbekannt').length;
       currentLocationIndex = buildLocationIndex(sichtbareEintraege);
       renderMapPlaces();
-      loadVisibleMapMarkers();
+      refreshMapMarkersIfNeeded();
       renderDetail(ausgewaehlterEintrag);
       renderTopics();
 
@@ -1304,7 +1310,7 @@ def viewer_topic(topic: dict) -> dict:
         "topic_id": topic.get("topic_id", ""),
         "label": topic.get("label", ""),
         "business_number": topic.get("business_number", ""),
-        "reason": topic.get("reason", ""),
+        "reason": "",
         "confidence": format_score(topic.get("confidence", 0)),
         "dates": topic.get("dates", []),
         "records": [
