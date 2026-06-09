@@ -202,6 +202,132 @@ def test_agenda_item_can_match_digra_by_distinctive_title_tokens_when_numbers_di
     assert score >= 0.5
 
 
+def test_agenda_item_does_not_match_by_generic_admin_tokens_when_numbers_differ():
+    record = AgendaRecord(
+        record_id="stadtmuseum",
+        record_type="agenda_item",
+        source_file="test.docx",
+        meeting_date="2025-04-24",
+        section="Tagesordnung",
+        agenda_item_no=21,
+        business_numbers=[],
+        title="Stadtmuseum Graz GmbH; Stimmrechtsermächtigung für den Vertreter der Stadt Graz gem. § 87 (4) des Statuts der Landeshauptstadt Graz 1967; Umlaufbeschluss",
+        status="unknown",
+        status_text="",
+        result_text="Unbekannt",
+        raw_result_text="",
+        votes=[],
+        amounts=[],
+        locations=[],
+        source_snippet="",
+        parser_confidence=0.8,
+    )
+    entry = DigraEntry(
+        meeting_date="2025-04-24",
+        meeting_number="1",
+        record_type="agenda_item",
+        section="Tagesordnung",
+        order_in_type=40,
+        agenda_item_no=40,
+        business_number="575/1",
+        title="Holding Graz Kommunale Dienstleistungen GmbH Energiewerk Graz Anpassung des Entsorgungsvertrages Generalversammlung gemäß § 87 (4) des Statutes der Landeshauptstadt Graz 1967; Umlaufbeschluss",
+        url="https://digra.graz.at/document?ref=wrong",
+        status="accepted_unanimous",
+        result_text="Antrag: einstimmig angenommen",
+        raw_result_text="einstimmig angenommen",
+        votes=[],
+    )
+
+    match, score = find_best_digra_entry(record, [entry], set(), order_in_type=21)
+
+    assert match is None
+    assert score == 0.0
+
+
+def test_agenda_item_can_match_short_digra_title_with_high_similarity_when_numbers_differ():
+    record = AgendaRecord(
+        record_id="ggz",
+        record_type="agenda_item",
+        source_file="test.docx",
+        meeting_date="2025-12-11",
+        section="Tagesordnung",
+        agenda_item_no=48,
+        business_numbers=[],
+        title="GGZ - 070224/2004/0115 - Wirtschaftsplan 2026",
+        status="unknown",
+        status_text="",
+        result_text="Unbekannt",
+        raw_result_text="",
+        votes=[],
+        amounts=[],
+        locations=[],
+        source_snippet="",
+        parser_confidence=0.8,
+    )
+    entry = DigraEntry(
+        meeting_date="2025-12-11",
+        meeting_number="1",
+        record_type="agenda_item",
+        section="Tagesordnung",
+        order_in_type=62,
+        agenda_item_no=62,
+        business_number="1955/1",
+        title="Wirtschaftsplan 2026",
+        url="https://digra.graz.at/document?ref=ggz",
+        status="accepted_unanimous",
+        result_text="Antrag: einstimmig angenommen",
+        raw_result_text="einstimmig angenommen",
+        votes=[],
+    )
+
+    match, score = find_best_digra_entry(record, [entry], set(), order_in_type=48)
+
+    assert match == entry
+    assert score >= 0.8
+
+
+def test_agenda_item_does_not_steal_similar_company_admin_digra_entry():
+    record = AgendaRecord(
+        record_id="fh",
+        record_type="agenda_item",
+        source_file="test.docx",
+        meeting_date="2025-04-24",
+        section="Tagesordnung",
+        agenda_item_no=16,
+        business_numbers=[],
+        title="FH Standort Graz GmbH – Jahresabschluss zum 31.12.2024: Ermächtigung des Vertreters der Stadt Graz gem. § 87 (4) des Statuts der Landeshauptstadt Graz; Umlaufbeschluss",
+        status="unknown",
+        status_text="",
+        result_text="Unbekannt",
+        raw_result_text="",
+        votes=[],
+        amounts=[],
+        locations=[],
+        source_snippet="",
+        parser_confidence=0.8,
+    )
+    entry = DigraEntry(
+        meeting_date="2025-04-24",
+        meeting_number="1",
+        record_type="agenda_item",
+        section="Tagesordnung",
+        order_in_type=38,
+        agenda_item_no=38,
+        business_number="554/1",
+        title="Stadtmuseum Graz GmbH; Stimmrechtsermächtigung für den Vertreter der Stadt Graz gem. § 87 (4) des Statuts der Landeshauptstadt Graz 1967; Umlaufbeschluss",
+        url="https://digra.graz.at/document?ref=stadtmuseum",
+        status="accepted_unanimous",
+        result_text="Antrag: einstimmig angenommen",
+        raw_result_text="einstimmig angenommen",
+        votes=[],
+    )
+
+    match, score = find_best_digra_entry(record, [entry], set(), order_in_type=16)
+
+    assert match is None
+    assert score == 0.0
+
+
 def test_canonicalizes_digra_session_urls():
     assert (
         canonical_digra_url("https://digra.graz.at/document?ref=62ffdb64-e7eb-41a9-917d-349c5ef37a9c&jfwid=abc")

@@ -28,6 +28,42 @@ MIN_AGENDA_TITLE_SCORE = 0.5
 MIN_GENERIC_TITLE_SCORE = 0.55
 MIN_ORDER_TITLE_SCORE = 0.5
 MIN_FALLBACK_LINK_SCORE = 0.7
+GENERIC_MATCH_TOKENS = {
+    "abteilung",
+    "abschluss",
+    "budgetvorsorge",
+    "dienststelle",
+    "ermächtigung",
+    "ermaechtigung",
+    "euro",
+    "feststellung",
+    "förderung",
+    "foerderung",
+    "generalversammlung",
+    "gemäß",
+    "gemaess",
+    "gmbh",
+    "graz",
+    "grazer",
+    "höhe",
+    "hoehe",
+    "ihv",
+    "jahr",
+    "jahre",
+    "jahresabschluss",
+    "landeshauptstadt",
+    "projektgenehmigung",
+    "richtlinien",
+    "stadt",
+    "statut",
+    "statuts",
+    "statutes",
+    "stimmrechtsermächtigung",
+    "stimmrechtsermaechtigung",
+    "umlaufbeschluss",
+    "vertreter",
+    "vertreters",
+}
 
 BUSINESS_NUMBER_RE = re.compile(r"\b\d{1,6}/\d{1,4}\b")
 DATE_RE = re.compile(r"\b\d{1,2}\.\d{1,2}\.\d{4}\b")
@@ -366,9 +402,15 @@ def find_best_digra_entry(
     best, score = best_by_title(record, available, order_in_type, minimum=0.0)
     if best is None:
         return None, 0.0
-    if score >= MIN_GENERIC_TITLE_SCORE:
+    distinctive_overlap = distinctive_token_overlap(record.title, best.title)
+    if score >= MIN_GENERIC_TITLE_SCORE and (
+        record.record_type != "agenda_item"
+        or best.agenda_item_no == record.agenda_item_no
+        or distinctive_overlap >= 2
+        or (score >= 0.8 and distinctive_overlap >= 1)
+    ):
         return best, score
-    if record.record_type == "agenda_item" and score >= MIN_AGENDA_TITLE_SCORE and distinctive_token_overlap(record.title, best.title) >= 2:
+    if record.record_type == "agenda_item" and score >= MIN_AGENDA_TITLE_SCORE and distinctive_overlap >= 2:
         return best, score
     if best.order_in_type == order_in_type and record.record_type != "agenda_item" and score >= MIN_ORDER_TITLE_SCORE:
         return best, score
@@ -411,11 +453,20 @@ def title_similarity(left: str, right: str) -> float:
 def distinctive_token_overlap(left: str, right: str) -> int:
     left_tokens = distinctive_tokens(normalize_match_text(left))
     right_tokens = distinctive_tokens(normalize_match_text(right))
-    return len(left_tokens & right_tokens)
+    exact = left_tokens & right_tokens
+    fuzzy = {
+        left_token
+        for left_token in left_tokens - exact
+        for right_token in right_tokens - exact
+        if len(left_token) >= 6
+        and len(right_token) >= 6
+        and SequenceMatcher(None, left_token, right_token).ratio() >= 0.86
+    }
+    return len(exact) + len(fuzzy)
 
 
 def distinctive_tokens(value: str) -> set[str]:
-    return {token for token in value.split() if len(token) >= 4}
+    return {token for token in value.split() if len(token) >= 4 and token not in GENERIC_MATCH_TOKENS}
 
 
 def normalize_match_text(value: str) -> str:
