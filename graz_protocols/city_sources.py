@@ -126,9 +126,12 @@ def archive_rank(title: str) -> int:
 
 
 def fetch_news_items(rss_url: str = RSS_URL) -> list[NewsItem]:
-    response = requests.get(rss_url, timeout=20)
-    response.raise_for_status()
-    return parse_news_items(response.text)
+    try:
+        response = requests.get(rss_url, timeout=20)
+        response.raise_for_status()
+        return parse_news_items(response.text)
+    except (requests.RequestException, ET.ParseError):
+        return []
 
 
 def parse_news_items(xml_text: str) -> list[NewsItem]:

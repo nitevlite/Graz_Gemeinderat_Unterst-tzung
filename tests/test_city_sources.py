@@ -1,4 +1,6 @@
-from graz_protocols.city_sources import enrich_topics_with_news, parse_archive_links, parse_news_items
+import requests
+
+from graz_protocols.city_sources import enrich_topics_with_news, fetch_news_items, parse_archive_links, parse_news_items
 
 
 def test_parse_archive_links_extracts_overview_by_date():
@@ -32,3 +34,12 @@ def test_enrich_topics_with_news_matches_rss_items():
 
     assert enriched[0]["news"][0]["title"] == "Gemeinderat beschließt neuen Klimaschutzplan"
     assert enriched[0]["news"][0]["published"] == "2026-05-22"
+
+
+def test_fetch_news_items_tolerates_network_errors(monkeypatch):
+    def fail_get(*args, **kwargs):
+        raise requests.ConnectionError("offline")
+
+    monkeypatch.setattr("graz_protocols.city_sources.requests.get", fail_get)
+
+    assert fetch_news_items() == []

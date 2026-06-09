@@ -191,6 +191,12 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       display: flex;
       flex-direction: column;
     }}
+    .tab-panel {{
+      display: none;
+    }}
+    .tab-panel.active {{
+      display: block;
+    }}
     header {{
       padding: 22px 28px;
       background: var(--bg);
@@ -418,10 +424,10 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       display: grid;
       grid-template-columns: minmax(0, 1fr) 260px;
       gap: 12px;
-      min-height: 430px;
+      min-height: 580px;
     }}
     #grazMap {{
-      min-height: 430px;
+      min-height: 580px;
       border: 1px solid var(--line);
       border-radius: 8px;
       overflow: hidden;
@@ -431,7 +437,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       border: 1px solid var(--line);
       border-radius: 8px;
       overflow: auto;
-      max-height: 430px;
+      max-height: 580px;
       background: #fbfdff;
     }}
     .map-place {{
@@ -479,6 +485,11 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       stroke-width: 2;
       fill: #2563eb;
       fill-opacity: 0.8;
+    }}
+    .leaflet-interactive.record-route {{
+      stroke: #0f766e;
+      stroke-width: 4;
+      stroke-opacity: 0.78;
     }}
     .topics h2 {{
       margin: 0 0 10px;
@@ -629,8 +640,9 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         </div>
       </div>
       <nav class="side-nav" aria-label="Ansichten">
-        <button class="side-item active" type="button" data-nav="overview"><span class="side-dot"></span>Übersicht</button>
-        <button class="side-item" type="button" data-nav="search"><span class="side-dot"></span>Suche</button>
+        <button class="side-item active" type="button" data-nav="search"><span class="side-dot"></span>Suche</button>
+        <button class="side-item" type="button" data-nav="overview"><span class="side-dot"></span>Übersicht</button>
+        <button class="side-item" type="button" data-nav="map"><span class="side-dot"></span>Karte</button>
         <button class="side-item" type="button" data-nav="digra"><span class="side-dot"></span>DIGRA</button>
         <button class="side-item" type="button" data-nav="export"><span class="side-dot"></span>Export</button>
       </nav>
@@ -645,26 +657,31 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         </div>
       </header>
       <main>
-        <section class="stats" id="overviewSection">
-          <div class="stat"><b id="visibleCount">0</b><span>sichtbare Treffer</span></div>
-          <div class="stat"><b id="totalCount">0</b><span>Einträge gesamt</span></div>
-          <div class="stat"><b id="fileCount">0</b><span>Dateien mit Einträgen</span></div>
-          <div class="stat"><b id="digraCount">0</b><span>DIGRA-Ergebnisse</span></div>
+        <section class="tab-panel active" id="searchPanel">
+          <section class="toolbar" id="searchSection" aria-label="Filter">
+            <label class="filter-cell wide"><span class="sr-label">Suche</span><input id="search" type="search" placeholder="Thema, Straße, Geschäftszahl, Betrag"></label>
+            <label class="filter-cell"><span class="sr-label">Jahr</span><select id="yearFilter"><option value="">Alle Jahre</option></select></label>
+            <label class="filter-cell"><span class="sr-label">Datum</span><select id="dateFilter"><option value="">Alle Daten</option></select></label>
+            <label class="filter-cell"><span class="sr-label">Typ</span><select id="typeFilter"><option value="">Alle Typen</option></select></label>
+            <label class="filter-cell"><span class="sr-label">Status</span><select id="statusFilter"><option value="">Alle Status</option></select></label>
+            <label class="filter-cell"><span class="sr-label">Ergebnisquelle</span><select id="sourceFilter"><option value="">Alle Quellen</option></select></label>
+            <label class="filter-cell"><span class="sr-label">Beträge</span><select id="amountFilter"><option value="">Alle Beträge</option><option value="mit">Mit Betrag</option><option value="ohne">Ohne Betrag</option></select></label>
+            <label class="filter-cell"><span class="sr-label">Dateien</span><select id="fileFilter"><option value="">Alle Dateien</option></select></label>
+            <label class="filter-cell"><span class="sr-label">Abschnitte</span><select id="sectionFilter"><option value="">Alle Abschnitte</option></select></label>
+          </section>
+          <section class="detail" id="detailWrap"></section>
+          <div id="tableWrap"></div>
         </section>
-        <section class="toolbar" id="searchSection" aria-label="Filter">
-          <label class="filter-cell wide"><span class="sr-label">Suche</span><input id="search" type="search" placeholder="Thema, Straße, Geschäftszahl, Betrag"></label>
-          <label class="filter-cell"><span class="sr-label">Jahr</span><select id="yearFilter"><option value="">Alle Jahre</option></select></label>
-          <label class="filter-cell"><span class="sr-label">Datum</span><select id="dateFilter"><option value="">Alle Daten</option></select></label>
-          <label class="filter-cell"><span class="sr-label">Typ</span><select id="typeFilter"><option value="">Alle Typen</option></select></label>
-          <label class="filter-cell"><span class="sr-label">Status</span><select id="statusFilter"><option value="">Alle Status</option></select></label>
-          <label class="filter-cell"><span class="sr-label">Ergebnisquelle</span><select id="sourceFilter"><option value="">Alle Quellen</option></select></label>
-          <label class="filter-cell"><span class="sr-label">Beträge</span><select id="amountFilter"><option value="">Alle Beträge</option><option value="mit">Mit Betrag</option><option value="ohne">Ohne Betrag</option></select></label>
-          <label class="filter-cell"><span class="sr-label">Dateien</span><select id="fileFilter"><option value="">Alle Dateien</option></select></label>
-          <label class="filter-cell"><span class="sr-label">Abschnitte</span><select id="sectionFilter"><option value="">Alle Abschnitte</option></select></label>
-          <label class="filter-cell"><span class="sr-label">Export</span><button id="csvExport" type="button">CSV Export</button></label>
+        <section class="tab-panel" id="overviewPanel">
+          <section class="stats" id="overviewSection">
+            <div class="stat"><b id="visibleCount">0</b><span>sichtbare Treffer</span></div>
+            <div class="stat"><b id="totalCount">0</b><span>Einträge gesamt</span></div>
+            <div class="stat"><b id="fileCount">0</b><span>Dateien mit Einträgen</span></div>
+            <div class="stat"><b id="digraCount">0</b><span>DIGRA-Ergebnisse</span></div>
+          </section>
+          <section class="topics" id="topicsWrap"></section>
         </section>
-        <section class="detail" id="detailWrap"></section>
-        <section class="map-panel" id="mapSection">
+        <section class="tab-panel map-panel" id="mapPanel">
           <div class="map-head">
             <h2>Graz-Karte</h2>
             <div class="map-status" id="mapStatus">Orte werden bei Bedarf geladen.</div>
@@ -675,8 +692,24 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
           </div>
           <div class="map-note">Die Karte nutzt Online-Geocoding. Wenn ein Ort ungenau sitzt, liegt das meist an mehrdeutigen Ortsnamen oder daran, dass die Protokoll-Ortserkennung zu viel Kontext erwischt.</div>
         </section>
-        <section class="topics" id="topicsWrap"></section>
-        <div id="tableWrap"></div>
+        <section class="tab-panel" id="digraPanel">
+          <section class="stats">
+            <div class="stat"><b id="digraMatchedCount">0</b><span>DIGRA-Treffer</span></div>
+            <div class="stat"><b id="digraFallbackCount">0</b><span>Protokoll-Fallbacks</span></div>
+            <div class="stat"><b id="cityLinkCount">0</b><span>Stadt-Graz-Links</span></div>
+            <div class="stat"><b id="digraMissingCount">0</b><span>ohne Ergebnis</span></div>
+          </section>
+        </section>
+        <section class="tab-panel" id="exportPanel">
+          <section class="detail">
+            <h2>Export</h2>
+            <div class="detail-grid">
+              <div class="detail-field"><strong>Aktuelle Auswahl</strong><span id="exportCount">0 Einträge</span></div>
+              <div class="detail-field"><strong>Format</strong><span>CSV mit den sichtbaren Treffern</span></div>
+              <div class="detail-field"><strong>Aktion</strong><span><button id="csvExport" type="button">CSV Export</button></span></div>
+            </div>
+          </section>
+        </section>
       </main>
     </div>
   </div>
@@ -699,10 +732,16 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     const detailWrap = byId('detailWrap');
     const mapStatus = byId('mapStatus');
     const mapPlaces = byId('mapPlaces');
+    const exportCount = byId('exportCount');
+    const digraMatchedCount = byId('digraMatchedCount');
+    const digraFallbackCount = byId('digraFallbackCount');
+    const cityLinkCount = byId('cityLinkCount');
+    const digraMissingCount = byId('digraMissingCount');
     let sichtbareEintraege = [];
     let ausgewaehlterEintrag = null;
     let grazMap = null;
     let markerLayer = null;
+    let routeLayer = null;
     const markersByLocation = new Map();
     let currentLocationIndex = buildLocationIndex(records);
 
@@ -775,23 +814,26 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       if (!record) return;
       ausgewaehlterEintrag = record;
       renderDetail(record);
-      detailWrap.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
       if (focusMap && (record.orte || []).length) {{
-        focusLocation(record.orte[0]);
+        focusRecordLocations(record);
+      }} else {{
+        activateTab('search');
       }}
     }}
 
-    function setActiveNav(target) {{
+    function activateTab(target) {{
       document.querySelectorAll('[data-nav]').forEach((item) => {{
         item.classList.toggle('active', item.dataset.nav === target);
       }});
-    }}
-
-    function scrollToElement(elementId, navTarget) {{
-      const element = byId(elementId);
-      if (!element) return;
-      setActiveNav(navTarget);
-      element.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+      document.querySelectorAll('.tab-panel').forEach((panel) => {{
+        panel.classList.toggle('active', panel.id === `${{target}}Panel`);
+      }});
+      if (target === 'map' && grazMap) {{
+        setTimeout(() => {{
+          grazMap.invalidateSize();
+          if (ausgewaehlterEintrag) focusRecordLocations(ausgewaehlterEintrag, false);
+        }}, 80);
+      }}
     }}
 
     function initMap() {{
@@ -805,6 +847,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         attribution: '&copy; OpenStreetMap'
       }}).addTo(grazMap);
       markerLayer = L.layerGroup().addTo(grazMap);
+      routeLayer = L.layerGroup().addTo(grazMap);
       renderMapPlaces();
       loadVisibleMapMarkers();
     }}
@@ -829,6 +872,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     async function loadVisibleMapMarkers() {{
       if (!markerLayer) return;
       markerLayer.clearLayers();
+      if (routeLayer) routeLayer.clearLayers();
       markersByLocation.clear();
       const places = [...currentLocationIndex.keys()].slice(0, 120);
       let loaded = 0;
@@ -898,8 +942,36 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       const marker = markersByLocation.get(location);
       grazMap.setView([coords.lat, coords.lon], 16);
       if (marker) marker.openPopup();
-      setActiveNav('digra');
-      byId('mapSection').scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+      activateTab('map');
+    }}
+
+    async function focusRecordLocations(record, switchTab = true) {{
+      if (!record || !grazMap) return;
+      const locations = [...new Set((record.orte || []).filter(Boolean).filter(mappableLocation))];
+      if (!locations.length) return;
+      if (switchTab) activateTab('map');
+      if (routeLayer) routeLayer.clearLayers();
+      const points = [];
+      for (const location of locations) {{
+        const coords = await geocodeLocation(location);
+        if (!coords) continue;
+        addLocationMarker(location, coords);
+        points.push([coords.lat, coords.lon]);
+      }}
+      if (!points.length) return;
+      if (points.length > 1 && routeLayer) {{
+        L.polyline(points, {{
+          color: '#0f766e',
+          weight: 4,
+          opacity: 0.78,
+          className: 'record-route',
+        }}).addTo(routeLayer);
+        grazMap.fitBounds(points, {{ padding: [44, 44], maxZoom: 15 }});
+      }} else {{
+        grazMap.setView(points[0], 16);
+      }}
+      const firstMarker = markersByLocation.get(locations[0]);
+      if (firstMarker) firstMarker.openPopup();
     }}
 
     function detailField(label, value) {{
@@ -1024,7 +1096,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
           <button class="timeline-step" type="button" data-record-id="${{escapeHtml(record.record_id || '')}}">
             <span class="timeline-date">${{escapeHtml(record.meeting_date || '-')}}</span>
             <span class="timeline-title">${{escapeHtml(record.title || '-')}}</span>
-            <span class="timeline-result">${{escapeHtml(record.result_text || record.result_source || '')}}</span>
+            <span class="timeline-result">Abstimmung: ${{escapeHtml(record.result_text || 'kein Ergebnis')}} ${{record.result_source ? `(${{escapeHtml(record.result_source)}})` : ''}}</span>
           </button>
         `).join('');
         const topicDates = [...new Set(topic.visibleRecords.map((record) => record.meeting_date).filter(Boolean))].sort();
@@ -1079,6 +1151,11 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       byId('totalCount').textContent = records.length;
       byId('fileCount').textContent = summary.dateien_mit_eintraegen ?? new Set(records.map((r) => r.quell_datei)).size;
       byId('digraCount').textContent = summary.digra_ergebnisse ?? records.filter((r) => r.ergebnisquelle === 'DIGRA').length;
+      if (exportCount) exportCount.textContent = `${{sichtbareEintraege.length}} Einträge`;
+      if (digraMatchedCount) digraMatchedCount.textContent = summary.digra_treffer ?? records.filter((r) => r.digra_url).length;
+      if (digraFallbackCount) digraFallbackCount.textContent = summary.digra_protokoll_fallbacks ?? records.filter((r) => r.ergebnisquelle === 'Protokoll').length;
+      if (cityLinkCount) cityLinkCount.textContent = summary.stadt_graz_links ?? records.filter((r) => r.source_url).length;
+      if (digraMissingCount) digraMissingCount.textContent = records.filter((r) => !r.ergebnis || r.status_filter === 'Unbekannt').length;
       currentLocationIndex = buildLocationIndex(sichtbareEintraege);
       renderMapPlaces();
       loadVisibleMapMarkers();
@@ -1177,13 +1254,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     document.querySelectorAll('[data-nav]').forEach((item) => {{
       item.addEventListener('click', () => {{
         const target = item.dataset.nav;
-        if (target === 'overview') scrollToElement('overviewSection', 'overview');
-        if (target === 'search') scrollToElement('searchSection', 'search');
-        if (target === 'digra') scrollToElement('mapSection', 'digra');
-        if (target === 'export') {{
-          setActiveNav('export');
-          exportCsv();
-        }}
+        activateTab(target);
       }});
     }});
     initMap();
@@ -1222,6 +1293,9 @@ def viewer_summary(summary: dict) -> dict:
         "dateien_mit_eintraegen": summary.get("files_with_records", 0),
         "unklare_eintraege": summary.get("records_by_status", {}).get("unknown", 0),
         "digra_ergebnisse": summary.get("digra_results_used", 0),
+        "digra_treffer": summary.get("digra_records_matched", 0),
+        "digra_protokoll_fallbacks": summary.get("digra_protocol_fallbacks", 0),
+        "stadt_graz_links": summary.get("city_archive_links_applied", 0),
     }
 
 

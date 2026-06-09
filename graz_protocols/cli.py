@@ -151,9 +151,20 @@ def build_parser() -> argparse.ArgumentParser:
     topics_cmd.add_argument(
         "--ai-headings",
         action="store_true",
-        help="Optionale KI-Unterstützung für bessere Themenüberschriften nutzen. Benötigt OPENAI_API_KEY.",
+        help="Optionale KI-Unterstützung für bessere Themenüberschriften nutzen. Standard: lokales Ollama.",
     )
-    topics_cmd.add_argument("--ai-model", default="", help="Optionales OpenAI-Modell für --ai-headings.")
+    topics_cmd.add_argument(
+        "--ai-provider",
+        choices=["ollama", "openai"],
+        default="ollama",
+        help="KI-Provider für --ai-headings. Standard: ollama.",
+    )
+    topics_cmd.add_argument("--ai-model", default="", help="Optionales KI-Modell für --ai-headings.")
+    topics_cmd.add_argument(
+        "--ai-base-url",
+        default="",
+        help="Basis-URL für Ollama, z. B. http://localhost:11434. Standard: OLLAMA_HOST oder localhost.",
+    )
     topics_cmd.add_argument("--ai-limit", type=int, default=50, help="Maximale Anzahl KI-beschrifteter Topics.")
     topics_cmd.add_argument(
         "--city-news",
@@ -277,7 +288,9 @@ def run_topics(args: argparse.Namespace) -> int:
             args.records,
             args.output,
             ai_headings=args.ai_headings,
+            ai_provider=args.ai_provider,
             ai_model=args.ai_model,
+            ai_base_url=args.ai_base_url,
             ai_limit=args.ai_limit,
             city_news=args.city_news,
         )

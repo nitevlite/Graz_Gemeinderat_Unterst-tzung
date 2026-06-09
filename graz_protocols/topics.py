@@ -50,7 +50,9 @@ def write_topic_candidates(
     output_path: Path,
     *,
     ai_headings: bool = False,
+    ai_provider: str = "ollama",
     ai_model: str = "",
+    ai_base_url: str = "",
     ai_limit: int = 50,
     city_news: bool = False,
 ) -> None:
@@ -59,7 +61,13 @@ def write_topic_candidates(
     if ai_headings:
         from .ai_topics import DEFAULT_AI_MODEL, annotate_topic_headings
 
-        candidates = annotate_topic_headings(candidates, model=ai_model or DEFAULT_AI_MODEL, limit=ai_limit)
+        candidates = annotate_topic_headings(
+            candidates,
+            provider=ai_provider,
+            model=ai_model or DEFAULT_AI_MODEL,
+            base_url=ai_base_url,
+            limit=ai_limit,
+        )
     if city_news:
         from .city_sources import enrich_topics_with_news, fetch_news_items
 

@@ -114,11 +114,10 @@ python -m graz_protocols.cli topics --records out\agenda_items_digra.jsonl --out
 Optionale KI-Überschriften für Topics:
 
 ```powershell
-$env:OPENAI_API_KEY="..."
-python -m graz_protocols.cli topics --records out\agenda_items_digra.jsonl --output out\topic_candidates.json --ai-headings --ai-limit 50
+python -m graz_protocols.cli topics --records out\agenda_items_digra.jsonl --output out\topic_candidates.json --city-news --ai-headings --ai-model qwen2.5:7b-instruct --ai-limit 50
 ```
 
-Ohne `--ai-headings` oder ohne API-Key bleibt die rein lokale regelbasierte Überschriftenerzeugung aktiv.
+Standard ist lokales Ollama auf `http://localhost:11434`. Wenn das Modell lokal anders heißt, den Namen aus `ollama list` als `--ai-model` verwenden. Ohne `--ai-headings` bleibt die rein lokale regelbasierte Überschriftenerzeugung aktiv. OpenAI ist nur explizit über `--ai-provider openai` und `OPENAI_API_KEY` aktivierbar.
 
 ## Dokumentation aktuell halten
 

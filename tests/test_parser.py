@@ -31,6 +31,20 @@ def test_extracts_stk_record_with_status_amount_and_location():
     assert len(record.source_snippet) < 601
 
 
+def test_street_name_list_filters_non_street_locations():
+    paragraphs = [
+        "Protokoll über die ordentliche öffentliche Sitzung des Gemeinderates am 14.11.2024",
+        "Tagesordnung",
+        "Stk. 9) A8-000001/2024 Sanierung Beispielgasse, KG Andritz, EZ 12, Gdst. Nr. 123/4",
+        "Der Antrag wurde einstimmig angenommen.",
+    ]
+
+    records = parse_protocol(paragraphs, "2024-11-14_Protokoll.docx", street_names={"beispielgasse"})
+
+    assert records[0].locations == ["Beispielgasse"]
+    assert [location["type"] for location in records[0].location_details] == ["street"]
+
+
 def test_skips_table_of_contents_stk_entries():
     paragraphs = [
         "6.1\tStk. 5) A5-076766/2024/0005 Beispielpunkt\t64",

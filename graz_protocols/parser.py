@@ -585,7 +585,9 @@ def extract_location_details(text: str, street_names: set[str] | None = None) ->
     for location_type, pattern in LOCATION_TYPED_PATTERNS:
         for match in pattern.finditer(text):
             value = match.group(0).strip()
-            if street_names is not None and location_type in {"street", "place", "park", "bridge"}:
+            if street_names is not None and location_type not in {"street", "place", "park", "bridge"}:
+                continue
+            if street_names is not None:
                 if normalize_street_name(value) not in street_names:
                     continue
             key = (location_type, value.casefold())

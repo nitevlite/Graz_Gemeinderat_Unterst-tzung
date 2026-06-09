@@ -13,28 +13,27 @@ class FakeResponse:
 
 
 class FakeHttpClient:
-    def __init__(self):
+    def __init__(self, payload: dict | None = None):
         self.calls: list[dict] = []
+        self.payload = payload or {
+            "output": [
+                {
+                    "content": [
+                        {
+                            "text": (
+                                '{"label":"Klimabeirat und Klimaschutzplan",'
+                                '"reason":"Gemeinsamer Inhalt der beiden Überschriften",'
+                                '"confidence":0.82}'
+                            )
+                        }
+                    ]
+                }
+            ]
+        }
 
     def post(self, url: str, **kwargs: object) -> FakeResponse:
         self.calls.append({"url": url, **kwargs})
-        return FakeResponse(
-            {
-                "output": [
-                    {
-                        "content": [
-                            {
-                                "text": (
-                                    '{"label":"Klimabeirat und Klimaschutzplan",'
-                                    '"reason":"Gemeinsamer Inhalt der beiden Überschriften",'
-                                    '"confidence":0.82}'
-                                )
-                            }
-                        ]
-                    }
-                ]
-            }
-        )
+        return FakeResponse(self.payload)
 
 
 def test_annotate_topic_headings_uses_structured_response_payload():
@@ -52,7 +51,7 @@ def test_annotate_topic_headings_uses_structured_response_payload():
         }
     ]
 
-    annotated = annotate_topic_headings(candidates, api_key="test-key", http_client=client)
+    annotated = annotate_topic_headings(candidates, provider="openai", api_key="test-key", http_client=client)
 
     assert annotated[0]["label"] == "Klimabeirat und Klimaschutzplan"
     assert annotated[0]["rule_label"] == "Geschäftsordnung Klimabeirats"
@@ -61,3 +60,39 @@ def test_annotate_topic_headings_uses_structured_response_payload():
     assert annotated[0]["label_source"] == "ki"
     assert client.calls[0]["headers"]["Authorization"] == "Bearer test-key"
     assert client.calls[0]["json"]["text"]["format"]["type"] == "json_schema"
+
+
+def test_annotate_topic_headings_uses_ollama_by_default():
+    client = FakeHttpClient(
+        {
+            "message": {
+                "content": (
+                    '```json\n{"label":"Klimabeirat und Klimaschutzplan",'
+                    '"reason":"Gemeinsamer Inhalt",'
+                    '"confidence":0.77}\n```'
+                )
+            }
+        }
+    )
+    candidates = [
+        {
+            "label": "Geschäftsordnung Klimabeirats",
+            "records": [
+                {"meeting_date": "2025-11-13", "title": "Geschäftsordnung des Klimabeirats der Stadt Graz"},
+            ],
+        }
+    ]
+
+    annotated = annotate_topic_headings(
+        candidates,
+        model="qwen2.5:7b-instruct",
+        base_url="http://localhost:11434",
+        http_client=client,
+    )
+
+    assert annotated[0]["label"] == "Klimabeirat und Klimaschutzplan"
+    assert annotated[0]["ai_confidence"] == 0.77
+    assert client.calls[0]["url"] == "http://localhost:11434/api/chat"
+    assert client.calls[0]["json"]["model"] == "qwen2.5:7b-instruct"
+    assert client.calls[0]["json"]["format"] == "json"
+    assert "Authorization" not in client.calls[0]

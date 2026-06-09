@@ -39,7 +39,7 @@ Aktuelle Module:
 - `graz_protocols/schema.py`: Validierung des JSONL-Datenmodells
 - `graz_protocols/street_names.py`: XLSX-Import und Normalisierung der Grazer Straßennamenliste
 - `graz_protocols/topics.py`: Themenkandidaten über Geschäftszahlen und Titel-Keywords
-- `graz_protocols/ai_topics.py`: optionale KI-Überschriften für Themenverläufe über die OpenAI Responses API
+- `graz_protocols/ai_topics.py`: optionale KI-Überschriften für Themenverläufe, standardmäßig über lokales Ollama/Qwen, optional über OpenAI
 - `graz_protocols/cli.py`: Stapelverarbeitung über die Kommandozeile
 - `graz_protocols/sqlite_export.py`: lokale SQLite-Ausgabe mit Tabelle `eintraege`, normalisierten Tabellen und FTS5
 - `graz_protocols/viewer.py`: erzeugte lokale Doppelklick-HTML-Ansicht

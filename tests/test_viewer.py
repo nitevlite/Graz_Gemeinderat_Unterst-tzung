@@ -43,8 +43,16 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "Angenommen" in html
     assert "Entscheidungsregister" in html
     assert "Ergebnisse bevorzugt aus DIGRA" in html
+    assert 'data-nav="search"' in html
     assert 'data-nav="overview"' in html
+    assert 'data-nav="map"' in html
+    assert 'data-nav="digra"' in html
     assert 'data-nav="export"' in html
+    assert 'id="searchPanel"' in html
+    assert 'id="overviewPanel"' in html
+    assert 'id="mapPanel"' in html
+    assert 'id="digraPanel"' in html
+    assert 'id="exportPanel"' in html
     assert "table-card" in html
     assert "--accent: #2563eb" in html
     assert "#ff5900" not in html
@@ -59,9 +67,13 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "topicsWrap" in html
     assert "Graz-Karte" in html
     assert "grazMap" in html
+    assert "min-height: 580px" in html
     assert "nominatim.openstreetmap.org" in html
     assert "openstreetmap.org" in html
     assert "currentLocationIndex = buildLocationIndex(sichtbareEintraege)" in html
+    assert "focusRecordLocations(record" in html
+    assert "L.polyline(points" in html
+    assert "record-route" in html
     assert "visibleTopics = topics.map" in html
     assert "filter(topicRecordMatchesFilters)" in html
     assert "renderTopics();" in html

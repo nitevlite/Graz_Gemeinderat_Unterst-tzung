@@ -140,12 +140,13 @@ python -m graz_protocols.cli topics --records out\agenda_items_digra.jsonl --out
 ```
 
 Die Kandidaten enthalten Confidence, Begründung, verknüpfte Einträge und optional aktuelle Stadt-Graz-RSS-Hinweise. Sie können im Viewer angezeigt und später manuell bestätigt werden.
-Optional kann eine KI bessere Themenüberschriften vorschlagen. Dafür muss `OPENAI_API_KEY` gesetzt sein:
+Optional kann die lokale Ollama-KI bessere Themenüberschriften vorschlagen. Standard ist `qwen2.5:7b-instruct` auf `http://localhost:11434`:
 
 ```powershell
-python -m graz_protocols.cli topics --records out\agenda_items_digra.jsonl --output out\topic_candidates.json --ai-headings --ai-limit 50
+python -m graz_protocols.cli topics --records out\agenda_items_digra.jsonl --output out\topic_candidates.json --city-news --ai-headings --ai-model qwen2.5:7b-instruct --ai-limit 50
 ```
 
+Falls das Modell in Ollama anders heißt, den Namen aus `ollama list` bei `--ai-model` einsetzen. OpenAI bleibt explizit möglich über `--ai-provider openai` und `OPENAI_API_KEY`.
 Die KI-Überschrift wird nachvollziehbar mit `rule_label`, `ai_label`, `ai_reason`, `ai_confidence` und `label_source` gespeichert.
 
 ## GitHub-Backlog
