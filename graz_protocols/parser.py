@@ -602,7 +602,54 @@ def extract_location_details(text: str, street_names: set[str] | None = None) ->
                     "confidence": 0.9 if location_type in {"parcel", "land_register", "cadastral_municipality"} else 0.75,
                 }
             )
+    if street_names is not None:
+        for value, start, end in find_street_names_in_text(text, street_names):
+            key = ("street", value.casefold())
+            if key in seen:
+                continue
+            seen.add(key)
+            details.append(
+                {
+                    "type": "street",
+                    "value": value,
+                    "context": make_context(text, start, end),
+                    "confidence": 0.8,
+                }
+            )
     return details
+
+
+def find_street_names_in_text(text: str, street_names: set[str]) -> list[tuple[str, int, int]]:
+    street_names = {normalize_street_name(name) for name in street_names}
+    normalized_to_display: dict[str, str] = {}
+    for value in re.findall(r"\b[\wÄÖÜäöüß.-]+(?:straße|strasse|gasse|weg|platz|park|brücke|bruecke|allee|kai|ufer)\b", text, re.IGNORECASE):
+        normalized = normalize_street_name(value)
+        if normalized in street_names:
+            normalized_to_display[normalized] = value.strip()
+
+    # Hyphenated planning titles often omit the repeated prefix, e.g.
+    # "Waltendorfer Hauptstraße-Schulgasse-Ruckerlberggasse".
+    for match in re.finditer(
+        r"\b(?P<prefix>[A-ZÄÖÜ][\wÄÖÜäöüß.-]+)\s+(?P<suffixes>[\wÄÖÜäöüß.-]+(?:straße|strasse|gasse|weg|platz|park|brücke|bruecke|allee|kai|ufer)(?:\s*[-–]\s*[\wÄÖÜäöüß.-]+(?:straße|strasse|gasse|weg|platz|park|brücke|bruecke|allee|kai|ufer)){1,})\b",
+        text,
+    ):
+        prefix = match.group("prefix")
+        suffixes = re.split(r"\s*[-–]\s*", match.group("suffixes"))
+        for suffix in suffixes:
+            candidates = [suffix, f"{prefix} {suffix}"]
+            for candidate in candidates:
+                normalized = normalize_street_name(candidate)
+                if normalized in street_names:
+                    normalized_to_display.setdefault(normalized, candidate)
+
+    result: list[tuple[str, int, int]] = []
+    for normalized, display in normalized_to_display.items():
+        direct_match = re.search(re.escape(display), text, re.IGNORECASE)
+        if direct_match:
+            result.append((display, direct_match.start(), direct_match.end()))
+        else:
+            result.append((display, 0, min(len(text), len(display))))
+    return result
 
 
 def make_context(text: str, start: int, end: int, limit: int = 160) -> str:

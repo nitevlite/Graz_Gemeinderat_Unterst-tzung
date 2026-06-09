@@ -1,4 +1,4 @@
-from graz_protocols.viewer import build_html, canonical_digra_url, viewer_record
+from graz_protocols.viewer import build_html, canonical_digra_url, meaningful_ai_reason, viewer_record
 
 
 def test_viewer_uses_german_labels_and_hides_raw_text():
@@ -56,6 +56,7 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert 'id="mapPanel"' in html
     assert 'id="exportPanel"' in html
     assert "table-card" in html
+    assert "overflow-wrap: anywhere" in html
     assert "--accent: #2563eb" in html
     assert "#ff5900" not in html
     assert "Lokale Doppelklick-Ansicht. Protokolldateien bleiben außerhalb von Git." not in html
@@ -124,6 +125,12 @@ def test_viewer_canonicalizes_digra_urls():
         == "https://digra.graz.at/document?ref=d811022e-2e21-408c-8e23-9622acfc1432"
     )
     assert canonical_digra_url("https://example.com/document?ref=x") == ""
+
+
+def test_viewer_hides_generic_ai_reasons():
+    assert meaningful_ai_reason("Kurze Bezeichnung des Themas") == ""
+    assert meaningful_ai_reason("kompakt und beinhaltet den wesentlichen Inhalt.") == ""
+    assert meaningful_ai_reason("Mehrere Beschlüsse betreffen denselben Bebauungsplan.") != ""
 
 
 def test_viewer_renders_locations_as_map_buttons():

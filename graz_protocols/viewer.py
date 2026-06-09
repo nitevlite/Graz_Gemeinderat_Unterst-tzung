@@ -297,7 +297,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     tbody tr:last-child td {{ border-bottom: 0; }}
     tr:hover td {{ background: #f8fbff; }}
     .title {{ min-width: 280px; font-weight: 600; }}
-    .amount-col {{ width: 110px; max-width: 130px; }}
+    .amount-col {{ width: 105px; min-width: 95px; max-width: 115px; overflow-wrap: anywhere; word-break: break-word; }}
     .places-col {{ min-width: 220px; max-width: 320px; }}
     .results-col {{ min-width: 300px; width: 28%; }}
     .result {{
@@ -317,7 +317,9 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     .amount {{
       color: var(--warn);
       font-weight: 600;
-      white-space: nowrap;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }}
     .detail {{
       background: var(--panel);
@@ -368,6 +370,14 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
+    }}
+    .source-url {{
+      display: block;
+      max-width: 260px;
+      overflow-wrap: anywhere;
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 3px;
     }}
     .detail-empty {{
       color: var(--muted);
@@ -992,7 +1002,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       if (!value.startsWith('https://digra.graz.at/')) {{
         return '-';
       }}
-      return `<a href="${{escapeHtml(value)}}" target="_blank" rel="noopener noreferrer">${{escapeHtml(text)}}</a>`;
+      return `<a href="${{escapeHtml(value)}}" target="_blank" rel="noopener noreferrer">${{escapeHtml(text)}}</a> <span class="source-url">${{escapeHtml(value)}}</span>`;
     }}
 
     function externalLink(url, text) {{
@@ -1339,7 +1349,7 @@ def viewer_topic(topic: dict) -> dict:
         "label": topic.get("label", ""),
         "business_number": topic.get("business_number", ""),
         "reason": "",
-        "ai_reason": topic.get("ai_reason", ""),
+        "ai_reason": meaningful_ai_reason(str(topic.get("ai_reason", ""))),
         "label_source": topic.get("label_source", ""),
         "latest_date": latest_record.get("meeting_date", ""),
         "latest_result": latest_record.get("result_text", ""),
@@ -1358,6 +1368,27 @@ def viewer_topic(topic: dict) -> dict:
         ],
         "news": topic.get("news", []),
     }
+
+
+def meaningful_ai_reason(value: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        return ""
+    normalized = re.sub(r"\s+", " ", cleaned.casefold()).strip(" .")
+    generic_patterns = [
+        "kurze bezeichnung des themas",
+        "kompakte beschreibung des gemeinsamen themas",
+        "kompakt und beinhaltet den wesentlichen inhalt",
+        "kompakte beschreibung des gemeinsamen inhalts",
+        "kurze zusammenfassung der beiden themen",
+        "gleiche geschäftszahl-basis",
+        "gleiche geschaeftszahl-basis",
+    ]
+    if any(pattern in normalized for pattern in generic_patterns):
+        return ""
+    if len(normalized.split()) <= 3 and ("kurz" in normalized or "kompakt" in normalized):
+        return ""
+    return cleaned
 
 
 def german_record_type(value: str) -> str:

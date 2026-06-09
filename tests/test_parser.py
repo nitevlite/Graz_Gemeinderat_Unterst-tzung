@@ -45,6 +45,23 @@ def test_street_name_list_filters_non_street_locations():
     assert [location["type"] for location in records[0].location_details] == ["street"]
 
 
+def test_extracts_all_streets_from_hyphenated_planning_title():
+    paragraphs = [
+        "Protokoll über die ordentliche öffentliche Sitzung des Gemeinderates am 22.01.2026",
+        "Tagesordnung",
+        "Stk. 23) A14-000001/2026 16.0 Bebauungsplan Waltendorfer Hauptstraße-Schulgasse-Ruckerlberggasse",
+        "Der Antrag wurde mehrheitlich angenommen.",
+    ]
+
+    records = parse_protocol(
+        paragraphs,
+        "2026-01-22_Protokoll.docx",
+        street_names={"waltendorfer hauptstrasse", "schulgasse", "ruckerlberggasse"},
+    )
+
+    assert records[0].locations == ["Waltendorfer Hauptstraße", "Schulgasse", "Ruckerlberggasse"]
+
+
 def test_skips_table_of_contents_stk_entries():
     paragraphs = [
         "6.1\tStk. 5) A5-076766/2024/0005 Beispielpunkt\t64",
