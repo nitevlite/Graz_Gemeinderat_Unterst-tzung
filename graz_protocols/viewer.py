@@ -1149,9 +1149,37 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         return;
       }}
       let loaded = 0;
+      let fromCache = 0;
+      const missingPlaces = [];
       mapStatus.textContent = `0/${{places.length}} Orte auf der Karte`;
       updateMapProgress(0, places.length, true);
-      for (const place of places) {{
+      for (const [index, place] of places.entries()) {{
+        if (runId !== markerLoadRun) return;
+        const cachedCoords = cachedCoordsForLocation(place);
+        if (cachedCoords) {{
+          loaded += 1;
+          fromCache += 1;
+          addLocationMarker(place, cachedCoords);
+          if ((index + 1) % 50 === 0) await nextFrame();
+          continue;
+        }}
+        missingPlaces.push(place);
+      }}
+      if (fromCache) {{
+        mapStatus.textContent = `${{fromCache}}/${{places.length}} Orte aus Cache`;
+        updateMapProgress(loaded, places.length, Boolean(missingPlaces.length));
+        updateMarkerHighlights();
+        await nextFrame();
+      }}
+      if (!missingPlaces.length) {{
+        if (runId === markerLoadRun) {{
+          updateMarkerHighlights();
+          mapStatus.textContent = `${{markersByLocation.size}}/${{places.length}} Orte auf der Karte`;
+          updateMapProgress(places.length, places.length, false);
+        }}
+        return;
+      }}
+      for (const place of missingPlaces) {{
         if (runId !== markerLoadRun) return;
         const coords = await geocodeLocation(place);
         if (runId !== markerLoadRun) return;
@@ -1193,23 +1221,36 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       loadVisibleMapMarkers();
     }}
 
-    async function geocodeLocation(location) {{
+    function locationCacheKey(location) {{
+      return `graz-location:${{location}}`;
+    }}
+
+    function cachedCoordsForLocation(location) {{
       if (coordsByLocation.has(location)) {{
         return coordsByLocation.get(location);
       }}
+      const cacheKey = locationCacheKey(location);
+      const cached = localStorage.getItem(cacheKey);
+      if (!cached) return null;
+      try {{
+        const coords = JSON.parse(cached);
+        if (!Number.isFinite(coords?.lat) || !Number.isFinite(coords?.lon)) {{
+          localStorage.removeItem(cacheKey);
+          return null;
+        }}
+        coordsByLocation.set(location, coords);
+        return coords;
+      }} catch {{
+        localStorage.removeItem(cacheKey);
+        return null;
+      }}
+    }}
+
+    async function geocodeLocation(location) {{
+      const cachedCoords = cachedCoordsForLocation(location);
+      if (cachedCoords) return cachedCoords;
       if (geocodePromisesByLocation.has(location)) {{
         return geocodePromisesByLocation.get(location);
-      }}
-      const cacheKey = `graz-location:${{location}}`;
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {{
-        try {{
-          const coords = JSON.parse(cached);
-          coordsByLocation.set(location, coords);
-          return coords;
-        }} catch {{
-          localStorage.removeItem(cacheKey);
-        }}
       }}
       const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=at&q=${{encodeURIComponent(location + ', Graz, Österreich')}}`;
       const promise = (async () => {{
@@ -1220,7 +1261,7 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
         if (!first) return null;
         const coords = {{ lat: Number(first.lat), lon: Number(first.lon) }};
         if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lon)) return null;
-        localStorage.setItem(cacheKey, JSON.stringify(coords));
+        localStorage.setItem(locationCacheKey(location), JSON.stringify(coords));
         coordsByLocation.set(location, coords);
         await new Promise((resolve) => setTimeout(resolve, 250));
         return coords;

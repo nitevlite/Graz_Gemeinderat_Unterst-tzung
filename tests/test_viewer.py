@@ -83,6 +83,9 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "mapProgressBar" in html
     assert "${loaded}/${places.length} Orte geprüft" in html
     assert "${markersByLocation.size}/${places.length} Orte auf der Karte" in html
+    assert "cachedCoordsForLocation" in html
+    assert "Orte aus Cache" in html
+    assert "locationCacheKey(location)" in html
     assert "refreshMapMarkersIfNeeded()" in html
     assert "activeTopicRecordIds" in html
     assert "data-topic-id" in html
