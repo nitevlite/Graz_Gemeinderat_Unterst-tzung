@@ -139,6 +139,18 @@ Letzter DIGRA-Lauf am 2026-06-08:
 - Viewer-Karte: Online-Geocoding nur im Browser bei Bedarf, keine Koordinaten-Exporte im Git.
 - DIGRA-Audit nach strengerer Zuordnung: keine Links mit Trefferwert unter 0,5.
 
+Aktualisierung am 2026-06-09:
+
+- DIGRA-Links werden beim Import und beim Cache-Lesen kanonisch gespeichert: `https://digra.graz.at/document?ref=...`; Session-Parameter wie `jfwid` werden entfernt.
+- Rebuild: 18 DOCX-Dateien, 1135 Einträge, 914 DIGRA-Links, 0 fehlerhafte DIGRA-Linkformen.
+- KI-Datei: `out\agenda_items_digra_ai.jsonl` enthält 1135/1135 kurze KI-Zusammenfassungen und 1135/1135 Texte in einfacher Sprache.
+- Viewer: `viewer.html` zeigt KI-Zusammenfassungen im Detailbereich eines ausgewählten Eintrags als ausklappbare Blöcke `KI-Zusammenfassung` und `Einfache Sprache`.
+- Karte: Beim Öffnen des Kartenreiters werden alle Orte der aktuellen Filterauswahl geocodiert; ein Ladebalken zeigt den Fortschritt, bis alle Orte geprüft sind.
+- Karte: Beim Fokussieren eines Eintrags werden alle Orte dieses Eintrags markiert; zugehörige Marker werden grün hervorgehoben.
+- Ortserkennung: Straßentypen wie `Gürtel`, `Lände`, `Steig`, `Steg`, `Zeile` und `Graben` sind in der Suffixliste enthalten.
+- Ortserkennung: Mehrwort-Straßen aus der offiziellen Excel-Liste, z. B. `Triester Straße`, werden erkannt.
+- Prüfstand: Titelabgleich gegen `Straßennamen_Graz.xlsx` meldet 0 fehlende Titel-Straßen. `Friedenssteig` bleibt leer, weil der Name nicht in der bereitgestellten Excel-Liste enthalten ist.
+
 Erzeugte Ausgabe ist absichtlich ignoriert.
 
 ## Nächster Ausbauschritt

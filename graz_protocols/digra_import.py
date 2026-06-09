@@ -8,6 +8,7 @@ import json
 import re
 import sys
 from typing import Iterable
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from .parser import (
     AgendaRecord,
@@ -39,6 +40,18 @@ PARTY_NOTE_RE = re.compile(
     r"\b(?P<label>Zustimmung|Dagegen|Gegen|Enthaltung|Gegenstimmen?)\s*:\s*(?P<parties>[^.;\n]+)",
     re.IGNORECASE,
 )
+
+
+def canonical_digra_url(value: str) -> str:
+    if not value:
+        return ""
+    parsed = urlparse(value.strip())
+    if parsed.netloc != "digra.graz.at" or parsed.path != "/document":
+        return ""
+    ref = parse_qs(parsed.query).get("ref", [""])[0]
+    if not ref:
+        return ""
+    return urlunparse(("https", "digra.graz.at", "/document", "", urlencode({"ref": ref}), ""))
 
 
 @dataclass(frozen=True)
@@ -98,7 +111,7 @@ def enrich_records_with_digra(
                     raw_result_text=entry.raw_result_text,
                     votes=entry.votes,
                     result_source=DIGRA_SOURCE,
-                    digra_url=entry.url,
+                    digra_url=canonical_digra_url(entry.url),
                     digra_business_number=entry.business_number,
                     protocol_result_text=record.result_text,
                     digra_match_score=match_score,
@@ -115,7 +128,7 @@ def enrich_records_with_digra(
                     raw_result_text="",
                     votes=[],
                     result_source=DIGRA_MISSING_SOURCE,
-                    digra_url=entry.url if entry and match_score >= MIN_FALLBACK_LINK_SCORE else "",
+                    digra_url=canonical_digra_url(entry.url) if entry and match_score >= MIN_FALLBACK_LINK_SCORE else "",
                     digra_business_number=entry.business_number if entry and match_score >= MIN_FALLBACK_LINK_SCORE else "",
                     protocol_result_text=record.result_text,
                     digra_match_score=match_score,
@@ -127,7 +140,7 @@ def enrich_records_with_digra(
             replace(
                 record,
                 result_source=PROTOCOL_SOURCE if record.result_text and record.result_text != "Unbekannt" else DIGRA_MISSING_SOURCE,
-                digra_url=entry.url if entry and match_score >= MIN_FALLBACK_LINK_SCORE else "",
+                digra_url=canonical_digra_url(entry.url) if entry and match_score >= MIN_FALLBACK_LINK_SCORE else "",
                 digra_business_number=entry.business_number if entry and match_score >= MIN_FALLBACK_LINK_SCORE else "",
                 protocol_result_text=record.result_text,
                 digra_match_score=match_score,
@@ -150,7 +163,7 @@ def load_or_fetch_entries(dates: list[str], tool_path: Path, cache_path: Path | 
         payload = json.loads(cache_path.read_text(encoding="utf-8"))
         cached_dates = set(payload.get("dates", []))
         if payload.get("cache_version") == CACHE_VERSION and set(dates).issubset(cached_dates):
-            return [DigraEntry(**entry) for entry in payload.get("entries", [])]
+            return [DigraEntry(**{**entry, "url": canonical_digra_url(str(entry.get("url", "")))}) for entry in payload.get("entries", [])]
 
     entries = fetch_digra_entries(dates, tool_path)
     if cache_path is not None:
@@ -198,7 +211,7 @@ def fetch_digra_entries(dates: list[str], tool_path: Path = DEFAULT_DIGRA_TOOL_P
                         agenda_item_no=extract_agenda_item_no(desc_lines, order),
                         business_number=business_number,
                         title=extract_title_from_digra(desc_lines),
-                        url=digra_entry.href,
+                        url=canonical_digra_url(digra_entry.href),
                         status=result.status,
                         result_text=result.result_text,
                         raw_result_text=result.raw_result_text,
@@ -232,7 +245,7 @@ def digra_entries_to_records(entries: list[DigraEntry]) -> list[AgendaRecord]:
                 source_snippet="",
                 parser_confidence=0.8 if entry.title else 0.5,
                 result_source=DIGRA_SOURCE if entry.result_text else DIGRA_MISSING_SOURCE,
-                digra_url=entry.url,
+                digra_url=canonical_digra_url(entry.url),
                 digra_business_number=entry.business_number,
                 protocol_result_text="",
                 digra_match_score=1.0,

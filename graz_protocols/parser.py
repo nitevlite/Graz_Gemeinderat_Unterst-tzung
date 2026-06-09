@@ -38,15 +38,19 @@ AMOUNT_RE = re.compile(
     r"€\s*\d[\d.\s]*(?:,\s*(?:\d{1,2}|-+))?",
     re.IGNORECASE,
 )
+STREET_SUFFIX_RE = (
+    r"(?:straße|strasse|gasse|weg|platz|park|brücke|bruecke|allee|kai|ufer|ring|"
+    r"gürtel|guertel|graben|lände|laende|steig|steg|zeile)"
+)
 LOCATION_RE = re.compile(
-    r"\b[\wÄÖÜäöüß.-]+(?:straße|strasse|gasse|weg|platz|park|brücke|bruecke|allee|kai|ufer|ring)\b"
+    rf"\b[\wÄÖÜäöüß.-]+{STREET_SUFFIX_RE}\b"
     r"|\bKG\s+[A-ZÄÖÜ][\wÄÖÜäöüß.-]+"
     r"|\bEZ\s+\d+"
     r"|\bGdst\.?\s*Nr\.?\s*[\d/]+",
     re.IGNORECASE,
 )
 LOCATION_TYPED_PATTERNS = [
-    ("street", re.compile(r"\b[\wÄÖÜäöüß.-]+(?:straße|strasse|gasse|weg|allee|kai|ufer|ring)\b", re.IGNORECASE)),
+    ("street", re.compile(rf"\b[\wÄÖÜäöüß.-]+{STREET_SUFFIX_RE}\b", re.IGNORECASE)),
     ("place", re.compile(r"\b[\wÄÖÜäöüß.-]+platz\b", re.IGNORECASE)),
     ("park", re.compile(r"\b[\wÄÖÜäöüß.-]+park\b", re.IGNORECASE)),
     ("bridge", re.compile(r"\b[\wÄÖÜäöüß.-]+(?:brücke|bruecke)\b", re.IGNORECASE)),
@@ -623,13 +627,13 @@ def extract_location_details(text: str, street_names: set[str] | None = None) ->
 def find_street_names_in_text(text: str, street_names: set[str]) -> list[tuple[str, int, int]]:
     street_names = {normalize_street_name(name) for name in street_names}
     normalized_to_display: dict[str, str] = {}
-    for value in re.findall(r"\b[\wÄÖÜäöüß.-]+(?:straße|strasse|gasse|weg|platz|park|brücke|bruecke|allee|kai|ufer|ring)\b", text, re.IGNORECASE):
+    for value in re.findall(rf"\b[\wÄÖÜäöüß.-]+{STREET_SUFFIX_RE}\b", text, re.IGNORECASE):
         normalized = normalize_street_name(value)
         if normalized in street_names:
             normalized_to_display[normalized] = value.strip()
     for match in re.finditer(
-        r"\b[A-ZÄÖÜ][\wÄÖÜäöüß.-]+(?:\s+[A-ZÄÖÜa-zäöüß][\wÄÖÜäöüß.-]+){1,3}"
-        r"(?:straße|strasse|gasse|weg|platz|park|brücke|bruecke|allee|kai|ufer|ring)?\b",
+        r"\b[A-ZÄÖÜ][\wÄÖÜäöüß.-]+(?:\s+[A-ZÄÖÜa-zäöüß][\wÄÖÜäöüß.-]+){1,4}"
+        rf"{STREET_SUFFIX_RE}?\b",
         text,
     ):
         words = match.group(0).strip().split()
@@ -643,7 +647,7 @@ def find_street_names_in_text(text: str, street_names: set[str]) -> list[tuple[s
     # Hyphenated planning titles often omit the repeated prefix, e.g.
     # "Waltendorfer Hauptstraße-Schulgasse-Ruckerlberggasse".
     for match in re.finditer(
-        r"\b(?P<prefix>[A-ZÄÖÜ][\wÄÖÜäöüß.-]+)\s+(?P<suffixes>[\wÄÖÜäöüß.-]+(?:straße|strasse|gasse|weg|platz|park|brücke|bruecke|allee|kai|ufer|ring)(?:\s*[-–]\s*[\wÄÖÜäöüß.-]+(?:straße|strasse|gasse|weg|platz|park|brücke|bruecke|allee|kai|ufer|ring)){1,})\b",
+        rf"\b(?P<prefix>[A-ZÄÖÜ][\wÄÖÜäöüß.-]+)\s+(?P<suffixes>[\wÄÖÜäöüß.-]+{STREET_SUFFIX_RE}(?:\s*[-–]\s*[\wÄÖÜäöüß.-]+{STREET_SUFFIX_RE}){{1,}})\b",
         text,
     ):
         prefix = match.group("prefix")
@@ -662,7 +666,7 @@ def find_street_names_in_text(text: str, street_names: set[str]) -> list[tuple[s
             result.append((display, direct_match.start(), direct_match.end()))
         else:
             result.append((display, 0, min(len(text), len(display))))
-    return result
+    return sorted(result, key=lambda item: (item[1], item[2], item[0].casefold()))
 
 
 def make_context(text: str, start: int, end: int, limit: int = 160) -> str:

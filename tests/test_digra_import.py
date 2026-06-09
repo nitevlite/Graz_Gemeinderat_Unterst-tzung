@@ -1,6 +1,12 @@
 from bs4 import BeautifulSoup
 
-from graz_protocols.digra_import import DigraEntry, enrich_records_with_digra, fetch_digra_result, find_best_digra_entry
+from graz_protocols.digra_import import (
+    DigraEntry,
+    canonical_digra_url,
+    enrich_records_with_digra,
+    fetch_digra_result,
+    find_best_digra_entry,
+)
 from graz_protocols.parser import AgendaRecord
 
 
@@ -152,3 +158,11 @@ def test_protocol_fallback_does_not_keep_uncertain_digra_link(monkeypatch):
     assert enriched[0].result_source == "protokoll"
     assert enriched[0].digra_url == ""
     assert enriched[0].digra_business_number == ""
+
+
+def test_canonicalizes_digra_session_urls():
+    assert (
+        canonical_digra_url("https://digra.graz.at/document?ref=62ffdb64-e7eb-41a9-917d-349c5ef37a9c&jfwid=abc")
+        == "https://digra.graz.at/document?ref=62ffdb64-e7eb-41a9-917d-349c5ef37a9c"
+    )
+    assert canonical_digra_url("https://example.com/document?ref=x") == ""

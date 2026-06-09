@@ -114,6 +114,40 @@ def test_extracts_ring_street_from_title():
     assert records[0].locations == ["Joanneumring"]
 
 
+def test_extracts_graz_street_suffixes_from_title():
+    paragraphs = [
+        "Protokoll über die ordentliche öffentliche Sitzung des Gemeinderates am 05.06.2025",
+        "Anträge (schriftlich)",
+        "Stk. 12) Verkehrssituation Schönaugürtel / Friedenssteig",
+        "Der geschäftsordnungsmäßigen Behandlung zugewiesen.",
+    ]
+
+    records = parse_protocol(
+        paragraphs,
+        "2025-06-05_Protokoll.docx",
+        street_names={"schönaugürtel", "friedenssteig"},
+    )
+
+    assert records[0].locations == ["Schönaugürtel", "Friedenssteig"]
+
+
+def test_extracts_official_multiword_street_from_exact_list_match():
+    paragraphs = [
+        "Protokoll über die ordentliche öffentliche Sitzung des Gemeinderates am 13.02.2025",
+        "Anträge (schriftlich)",
+        "Stk. 18) Höchstgeschwindigkeit in der Triester Straße",
+        "Der geschäftsordnungsmäßigen Behandlung zugewiesen.",
+    ]
+
+    records = parse_protocol(
+        paragraphs,
+        "2025-02-13_Protokoll.docx",
+        street_names={"triester straße"},
+    )
+
+    assert records[0].locations == ["Triester Straße"]
+
+
 def test_skips_table_of_contents_stk_entries():
     paragraphs = [
         "6.1\tStk. 5) A5-076766/2024/0005 Beispielpunkt\t64",

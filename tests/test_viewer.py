@@ -76,7 +76,9 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "currentLocationIndex = buildLocationIndex(sichtbareEintraege)" in html
     assert ".slice(0, 120)" not in html
     assert ".slice(0, 80)" not in html
-    assert "${loaded}/${places.length} Orte auf der Karte" in html
+    assert "mapProgressBar" in html
+    assert "${loaded}/${places.length} Orte geprüft" in html
+    assert "${markersByLocation.size}/${places.length} Orte auf der Karte" in html
     assert "refreshMapMarkersIfNeeded()" in html
     assert "activeTopicRecordIds" in html
     assert "data-topic-id" in html

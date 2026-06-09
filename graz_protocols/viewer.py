@@ -445,6 +445,23 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       font-size: 12px;
       text-align: right;
     }}
+    .map-progress {{
+      height: 6px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: #dbeafe;
+      margin-bottom: 10px;
+      display: none;
+    }}
+    .map-progress.is-active {{
+      display: block;
+    }}
+    .map-progress-bar {{
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      transition: width 160ms ease;
+    }}
     .map-note {{
       color: var(--muted);
       font-size: 12px;
@@ -711,6 +728,9 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
             <h2>Graz-Karte</h2>
             <div class="map-status" id="mapStatus">Orte werden bei Bedarf geladen.</div>
           </div>
+          <div class="map-progress" id="mapProgress" aria-hidden="true">
+            <div class="map-progress-bar" id="mapProgressBar"></div>
+          </div>
           <div class="map-layout">
             <div id="grazMap" aria-label="Karte mit erkannten Orten"></div>
             <div class="map-list" id="mapPlaces"></div>
@@ -748,6 +768,8 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
     const tableWrap = byId('tableWrap');
     const detailWrap = byId('detailWrap');
     const mapStatus = byId('mapStatus');
+    const mapProgress = byId('mapProgress');
+    const mapProgressBar = byId('mapProgressBar');
     const mapPlaces = byId('mapPlaces');
     const exportCount = byId('exportCount');
     const digraMatchedCount = byId('digraMatchedCount');
@@ -901,24 +923,35 @@ def build_html(records: list[dict], summary: dict, topics: list[dict] | None = N
       const places = [...currentLocationIndex.keys()];
       if (!places.length) {{
         mapStatus.textContent = 'Keine Orte für diese Filter.';
+        updateMapProgress(0, 0, false);
         return;
       }}
       let loaded = 0;
       mapStatus.textContent = `0/${{places.length}} Orte auf der Karte`;
+      updateMapProgress(0, places.length, true);
       for (const place of places) {{
         if (runId !== markerLoadRun) return;
         const coords = await geocodeLocation(place);
         if (runId !== markerLoadRun) return;
+        loaded += 1;
         if (coords) {{
           addLocationMarker(place, coords);
           updateMarkerHighlights();
-          loaded += 1;
-          mapStatus.textContent = `${{loaded}}/${{places.length}} Orte auf der Karte`;
         }}
+        mapStatus.textContent = `${{loaded}}/${{places.length}} Orte geprüft`;
+        updateMapProgress(loaded, places.length, loaded < places.length);
       }}
       if (runId === markerLoadRun) {{
-        mapStatus.textContent = `${{loaded}}/${{places.length}} Orte auf der Karte`;
+        mapStatus.textContent = `${{markersByLocation.size}}/${{places.length}} Orte auf der Karte`;
+        updateMapProgress(places.length, places.length, false);
       }}
+    }}
+
+    function updateMapProgress(done, total, active) {{
+      if (!mapProgress || !mapProgressBar) return;
+      const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+      mapProgress.classList.toggle('is-active', Boolean(active && total > 0));
+      mapProgressBar.style.width = `${{Math.max(0, Math.min(100, percent))}}%`;
     }}
 
     function refreshMapMarkersIfNeeded() {{
