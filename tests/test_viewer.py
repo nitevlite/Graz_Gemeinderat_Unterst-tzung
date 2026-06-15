@@ -862,6 +862,42 @@ def test_viewer_suppresses_broad_document_location_context_from_normal_places():
     assert record["orte"] == []
 
 
+def test_viewer_keeps_attachment_title_locations_despite_broad_document_context():
+    broad_source = (
+        "Das Stadtentwicklungskonzept behandelt mehrere Änderungspunkte. "
+        "Weitere Abschnitte nennen Bergstraße, Köstenbaumgasse, Brückengasse, "
+        "Brucknerstraße, Petersgasse und Sandgasse. "
+    ) * 12
+    record = viewer_record(
+        {
+            "meeting_date": "2025-10-16",
+            "record_type": "agenda_item",
+            "status": "accepted_unanimous",
+            "title": "4.08 B Stadtentwicklungskonzept der Landeshauptstadt Graz - 8. Änderung Teil B",
+            "source_snippet": broad_source,
+            "locations": [
+                "Mitterstraße",
+                "Bergstraße",
+                "Köstenbaumgasse",
+                "Brückengasse",
+            ],
+            "location_details": [
+                {"value": "Mitterstraße", "context": "Mitterstraße"},
+                {"value": "Bergstraße", "context": "Bergstraße"},
+                {"value": "Köstenbaumgasse", "context": "Köstenbaumgasse"},
+                {"value": "Brückengasse", "context": "Brückengasse"},
+            ],
+            "attachment_titles": [
+                "2 - Mitterstraße - Entwicklungsplan",
+                "3 - Bergstraße - Deckplan 5",
+                "5 - Brückengasse - Köstenbaumgasse - Entwicklungsplan",
+            ],
+        }
+    )
+
+    assert record["orte"] == ["Mitterstraße", "Bergstraße", "Köstenbaumgasse", "Brückengasse"]
+
+
 def test_viewer_renders_ai_record_summaries_as_expandable_details():
     html = build_html(
         [

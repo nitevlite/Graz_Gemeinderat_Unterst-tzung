@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from difflib import SequenceMatcher
 from pathlib import Path
 import importlib
@@ -24,7 +24,7 @@ DEFAULT_DIGRA_TOOL_PATH = Path(r"E:\01_StadtGrazProtokolle\Digra_Export_Tool\app
 DIGRA_SOURCE = "digra"
 DIGRA_MISSING_SOURCE = "digra_fehlt"
 PROTOCOL_SOURCE = "protokoll"
-CACHE_VERSION = 10
+CACHE_VERSION = 11
 MIN_AGENDA_TITLE_SCORE = 0.5
 MIN_GENERIC_TITLE_SCORE = 0.55
 MIN_ORDER_TITLE_SCORE = 0.5
@@ -146,6 +146,7 @@ class DigraEntry:
     votes: list[dict[str, object]]
     submitter: str = ""
     source_snippet: str = ""
+    attachment_titles: list[str] = field(default_factory=list)
 
 
 def enrich_records_with_digra(
@@ -193,6 +194,7 @@ def enrich_records_with_digra(
                     digra_business_number=entry.business_number,
                     protocol_result_text=record.result_text,
                     digra_match_score=match_score,
+                    attachment_titles=entry.attachment_titles,
                 )
             )
             continue
@@ -215,6 +217,7 @@ def enrich_records_with_digra(
                     digra_business_number=entry.business_number if entry and match_score >= MIN_FALLBACK_LINK_SCORE else "",
                     protocol_result_text=record.result_text,
                     digra_match_score=match_score,
+                    attachment_titles=entry.attachment_titles if entry and match_score >= MIN_FALLBACK_LINK_SCORE else [],
                 )
             )
             continue
@@ -228,6 +231,7 @@ def enrich_records_with_digra(
                 digra_business_number=entry.business_number if entry and match_score >= MIN_FALLBACK_LINK_SCORE else "",
                 protocol_result_text=record.result_text,
                 digra_match_score=match_score,
+                attachment_titles=entry.attachment_titles if entry and match_score >= MIN_FALLBACK_LINK_SCORE else [],
             )
         )
 
@@ -332,6 +336,7 @@ def fetch_digra_entries(dates: list[str], tool_path: Path = DEFAULT_DIGRA_TOOL_P
                         votes=result.votes,
                         submitter=result.submitter,
                         source_snippet=result.source_snippet,
+                        attachment_titles=result.attachment_titles,
                     )
                 )
     return entries
@@ -374,6 +379,7 @@ def digra_entries_to_records(entries: list[DigraEntry]) -> list[AgendaRecord]:
                 amounts=[],
                 locations=[],
                 source_snippet=entry.source_snippet,
+                attachment_titles=entry.attachment_titles,
                 parser_confidence=0.8 if entry.title else 0.5,
                 result_source=DIGRA_SOURCE if entry.result_text else DIGRA_MISSING_SOURCE,
                 digra_url=canonical_digra_url(entry.url),
@@ -420,10 +426,12 @@ class DigraResult:
     subject_title: str = ""
     record_type_override: str = ""
     source_snippet: str = ""
+    attachment_titles: list[str] = field(default_factory=list)
 
 
 def fetch_digra_result(exporter, session, url: str) -> DigraResult:
     soup = exporter.fetch_soup(session, url)
+    attachment_titles = extract_digra_attachment_titles(soup)
     document_title = soup.title.get_text(" ", strip=True) if soup.title else ""
     preview = soup.select_one("div.preview") or soup.body or soup
     lines = [line.strip() for line in preview.get_text("\n").splitlines() if line.strip()]
@@ -433,14 +441,27 @@ def fetch_digra_result(exporter, session, url: str) -> DigraResult:
     record_type_override = extract_digra_record_type(lines)
     marker_index = next((index for index, line in enumerate(lines) if line.casefold() == "beschlussvermerk"), -1)
     if marker_index < 0:
-        return DigraResult("unknown", "", "", [], document_title, submitter, subject_title, record_type_override, source_snippet)
+        return DigraResult(
+            "unknown", "", "", [], document_title, submitter, subject_title, record_type_override, source_snippet, attachment_titles
+        )
 
     decision_votes = extract_decision_votes(lines[marker_index + 1 : marker_index + 24])
     if decision_votes:
         raw_result_text = "\n".join(str(vote.get("raw_text", "")) for vote in decision_votes if vote.get("raw_text"))
         status = aggregate_split_vote_status(decision_votes)
         result_text = format_split_result_text(decision_votes)
-        return DigraResult(status, result_text, raw_result_text, decision_votes, document_title, submitter, subject_title, record_type_override, source_snippet)
+        return DigraResult(
+            status,
+            result_text,
+            raw_result_text,
+            decision_votes,
+            document_title,
+            submitter,
+            subject_title,
+            record_type_override,
+            source_snippet,
+            attachment_titles,
+        )
 
     outcome_line = ""
     note_lines: list[str] = []
@@ -464,14 +485,18 @@ def fetch_digra_result(exporter, session, url: str) -> DigraResult:
             note_lines.append(line)
 
     if not outcome_line:
-        return DigraResult("unknown", "", "", [], document_title, submitter, subject_title, record_type_override, source_snippet)
+        return DigraResult(
+            "unknown", "", "", [], document_title, submitter, subject_title, record_type_override, source_snippet, attachment_titles
+        )
 
     if outcome_line.casefold() == "getrennt abgestimmt":
         raw_result_text = "\n".join([outcome_line, *note_lines])
         votes = extract_split_votes(note_lines, raw_result_text)
         status = aggregate_split_vote_status(votes)
         result_text = format_split_result_text(votes) if votes else ""
-        return DigraResult(status, result_text, raw_result_text, votes, document_title, submitter, subject_title, record_type_override, source_snippet)
+        return DigraResult(
+            status, result_text, raw_result_text, votes, document_title, submitter, subject_title, record_type_override, source_snippet, attachment_titles
+        )
 
     if NO_MAJORITY_RE.match(outcome_line):
         raw_result_text = "\n".join([outcome_line, *note_lines])
@@ -494,6 +519,7 @@ def fetch_digra_result(exporter, session, url: str) -> DigraResult:
             subject_title,
             record_type_override,
             source_snippet,
+            attachment_titles,
         )
 
     if NOTED_RE.match(outcome_line):
@@ -508,6 +534,7 @@ def fetch_digra_result(exporter, session, url: str) -> DigraResult:
             subject_title,
             record_type_override,
             source_snippet,
+            attachment_titles,
         )
 
     if ANSWERED_RE.match(outcome_line):
@@ -522,11 +549,14 @@ def fetch_digra_result(exporter, session, url: str) -> DigraResult:
             subject_title,
             record_type_override or "question_hour",
             source_snippet,
+            attachment_titles,
         )
 
     outcome_match = OUTCOME_LINE_RE.match(outcome_line)
     if outcome_match is None:
-        return DigraResult("unknown", "", "", [], document_title, submitter, subject_title, record_type_override, source_snippet)
+        return DigraResult(
+            "unknown", "", "", [], document_title, submitter, subject_title, record_type_override, source_snippet, attachment_titles
+        )
     status = normalize_vote_outcome(outcome_match.group("modifier") or "", outcome_match.group("decision"))
     raw_result_text = "\n".join([outcome_line, *note_lines])
     vote = {
@@ -551,6 +581,7 @@ def fetch_digra_result(exporter, session, url: str) -> DigraResult:
         subject_title,
         record_type_override,
         source_snippet,
+        attachment_titles,
     )
 
 
@@ -665,6 +696,21 @@ def collect_decision_note_lines(lines: list[str]) -> list[str]:
             continue
         notes.append(cleaned)
     return notes
+
+def extract_digra_attachment_titles(soup) -> list[str]:  # noqa: ANN001
+    titles: list[str] = []
+    seen: set[str] = set()
+    for link in soup.select('a[href*="document/attachment"]'):
+        title = re.sub(r"\s+", " ", str(link.get("title") or link.get_text(" ", strip=True) or "")).strip()
+        if not title:
+            continue
+        key = title.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        titles.append(title)
+    return titles
+
 
 
 def extract_digra_subject_title(lines: list[str]) -> str:

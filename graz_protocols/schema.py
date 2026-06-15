@@ -56,6 +56,7 @@ REQUIRED_FIELDS = {
     "local_source_url": str,
     "submitter": str,
     "question_parts": dict,
+    "attachment_titles": list,
 }
 
 

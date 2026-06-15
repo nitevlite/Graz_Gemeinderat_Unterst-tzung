@@ -173,6 +173,7 @@ class AgendaRecord:
     source_page: int = 0
     local_source_url: str = ""
     submitter: str = ""
+    attachment_titles: list[str] = field(default_factory=list)
     question_parts: dict[str, str] = field(default_factory=dict)
 
     def to_json(self) -> str:

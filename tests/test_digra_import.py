@@ -46,6 +46,29 @@ def test_digra_written_motion_without_result_is_assigned():
     assert records[0].raw_result_text == "Der geschäftsordnungsmäßigen Behandlung zugewiesen."
 
 
+def test_digra_entries_keep_attachment_titles():
+    entry = DigraEntry(
+        meeting_date="2026-05-21",
+        meeting_number="58",
+        record_type="agenda_item",
+        section="Tagesordnung",
+        order_in_type=1,
+        agenda_item_no=1,
+        business_number="123/2026",
+        title="Stadtentwicklung",
+        url="https://digra.graz.at/document?ref=test",
+        status="accepted_unanimous",
+        result_text="Antrag: einstimmig angenommen",
+        raw_result_text="einstimmig angenommen",
+        votes=[],
+        attachment_titles=["2 - Mitterstraße - Entwicklungsplan"],
+    )
+
+    records = digra_entries_to_records([entry])
+
+    assert records[0].attachment_titles == ["2 - Mitterstraße - Entwicklungsplan"]
+
+
 def test_extracts_result_only_from_digra_decision_note():
     html = """
     <html>
@@ -294,6 +317,33 @@ def test_extracts_multiline_digra_subject_and_document_snippet():
     )
     assert "Gamsjäger-Katzensteiner" in result.source_snippet
     assert "erst kurzfristig geklärt" in result.source_snippet
+
+
+def test_fetch_digra_result_extracts_attachment_titles():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 1678/1</title></head>
+      <body>
+        <div class="preview">
+          <p>Bericht an den Gemeinderat</p>
+          <p>Datum:</p>
+          <p>16.10.2025</p>
+          <p>4.08 B Stadtentwicklungskonzept</p>
+          <p>Beschlussvermerk</p>
+          <p>Gemeinderat</p>
+          <p>am 16.10.2025</p>
+          <p>einstimmig angenommen</p>
+        </div>
+        <a href="document/attachment?ref=test&amp;att=1" title="2 - Mitterstraße - Entwicklungsplan">Download</a>
+        <a href="document/attachment?ref=test&amp;att=2">3 - Bergstraße - Deckplan 5</a>
+        <a href="/documents?init=true" title="Materialien">Materialien</a>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+
+    assert result.attachment_titles == ["2 - Mitterstraße - Entwicklungsplan", "3 - Bergstraße - Deckplan 5"]
 
 
 def test_extracts_split_digra_vote_results():

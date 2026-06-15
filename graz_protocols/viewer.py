@@ -7427,11 +7427,15 @@ def inferred_viewer_locations(record: dict, result_text: str = "") -> list[str]:
 
 
 def direct_location_text(record: dict, result_text: str = "") -> str:
+    attachment_titles = record.get("attachment_titles", [])
+    if not isinstance(attachment_titles, list):
+        attachment_titles = []
     return " ".join(
         str(value or "")
         for value in [
             record.get("title", ""),
             result_text,
+            *attachment_titles,
             record.get("result_text", ""),
             record.get("section", ""),
         ]
