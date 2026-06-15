@@ -48,6 +48,13 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "Tagesordnungspunkt" in html
     assert '<meta name="robots" content="noindex, nofollow, noarchive">' in html
     assert '<meta name="googlebot" content="noindex, nofollow, noarchive">' in html
+    assert '<meta name="application-name" content="Graz Protokolle">' in html
+    assert '<meta name="apple-mobile-web-app-title" content="Graz Protokolle">' in html
+    assert '<meta name="theme-color" content="#f7f8fa">' in html
+    assert '<link rel="icon" type="image/png" sizes="16x16" href="bi/favicon-16.png">' in html
+    assert '<link rel="icon" type="image/png" sizes="32x32" href="bi/favicon-32.png">' in html
+    assert '<link rel="apple-touch-icon" sizes="180x180" href="bi/apple-touch-icon.png">' in html
+    assert '<link rel="manifest" href="site.webmanifest">' in html
     assert "mehrheitlich angenommen" in html
     assert "angenommen (mehrheitlich)" in html
     assert "Angenommen" in html
@@ -58,8 +65,10 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "Parser-Fallback nur bei fehlenden DIGRA-Daten" not in html
     assert 'data-nav="search"' in html
     assert 'data-nav="start"' in html
+    assert 'data-nav="participation"' in html
     assert 'data-nav="overview"' not in html
     assert 'data-nav="map"' in html
+    assert 'data-nav="council"' in html
     assert 'data-nav="roadworks"' in html
     assert 'id="staffLoginButton"' not in html
     assert 'data-nav="parking"' in html
@@ -77,6 +86,7 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert 'id="startPanel"' in html
     assert 'id="overviewPanel"' not in html
     assert 'id="mapPanel"' in html
+    assert 'id="councilPanel"' in html
     assert 'id="roadworksPanel"' in html
     assert 'id="staffPanel"' not in html
     assert 'id="parkingPanel"' in html
@@ -194,6 +204,7 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "Graz-Karte" in html
     assert '<h1 id="viewTitle">Start</h1>' in html
     assert "roadworks: 'Baustellen'" in html
+    assert "council: 'Gemeinderat'" in html
     assert "parking: 'Tiefgaragen'" in html
     assert "pharmacies: 'Apotheken'" in html
     assert "doctors: 'Ärzte'" in html
@@ -202,6 +213,27 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "Baustellen/Veranstaltungen" not in html
     assert "Baustelle/Veranstaltung" not in html
     assert "Services & Ämter" in html
+    assert "Sitzverteilung und Stadtregierung" in html
+    assert "const civicCouncil" in html
+    assert "renderCouncil()" in html
+    assert "council-dot" in html
+    assert "council-seat-label" in html
+    assert "council-histogram" in html
+    assert "council-histogram-grid" in html
+    assert "council-column-fill" in html
+    assert "council-column-percent" in html
+    assert "council-bar" not in html
+    assert "${share.toLocaleString('de-AT')} %" in html
+    assert "${seats} Sitze" in html
+    assert "Mandate nach Fraktion" in html
+    assert "member:" in html
+    assert "councilHemicyclePositions(seats.length, kind)" in html
+    assert "if (kind === 'senate') return" in html
+    assert "color-mix(in srgb, var(--party-color)" in html
+    assert "data-council-group" in html
+    assert "Mehrheit ab" in html
+    assert "GR-Mitglieder" in html
+    assert html.index('data-nav="council"') < html.index('data-nav="services"')
     assert html.index('data-nav="services"') < html.index('data-nav="roadworks"')
     assert "Baustelle planen" not in html
     assert "Baustelle prüfen" not in html
@@ -420,12 +452,21 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "max-width: 78ch" not in html
     assert "max-width: 85ch" not in html
     assert "source-rank" in html
+    assert "data-source-record-id" in html
+    assert "Eintragsdetails öffnen" in html
+    assert "answer-title-link" in html
+    assert "openSourceRecordDetails" in html
+    assert "aiSources.addEventListener('click', openSourceRecordDetails)" in html
+    assert "aiAnswer.addEventListener('click', openSourceRecordDetails)" in html
+    assert "activateSearchSubtab('details', false)" in html
     assert "source-kind" in html
     assert "source-facts" in html
     assert "sourceDescription(source)" in html
     assert "source-matches" in html
     assert "Relevanz:" not in html
     assert "recordSourceRoleForAi" in html
+    assert "questionAnswerStatus(record)" in html
+    assert "schriftlich beantwortet" in html
     assert "stellte dazu einen selbständigen Antrag" in html
     assert "stellte dazu eine schriftliche Frage" in html
     assert "stellte dazu in der Fragestunde eine Frage" in html
@@ -563,6 +604,71 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "raw_text" not in html
 
 
+def test_viewer_contains_separate_civic_feedback_page_and_popup():
+    html = build_html(
+        [
+            {
+                "agenda_item_no": 12,
+                "amounts": [],
+                "business_numbers": ["A 10/2099"],
+                "digra_url": "https://digra.graz.at/document?ref=11111111-1111-4111-8111-111111111111",
+                "meeting_date": "2099-01-15",
+                "parser_confidence": 1.0,
+                "record_id": "future-record",
+                "record_type": "agenda_item",
+                "result_source": "digra_missing",
+                "result_text": "",
+                "section": "Tagesordnung",
+                "source_file": "digra",
+                "status": "unknown",
+                "title": "Zukünftiges Stück zur Bürgerbeteiligung",
+            }
+        ],
+        {"records_by_status": {"unknown": 1}},
+    )
+
+    assert 'data-nav="participation"' in html
+    assert 'id="participationPanel"' in html
+    assert 'id="civicFeedbackModal"' in html
+    assert "Zur Mitreden-Seite" in html
+    assert "Dieses Meinungsbild ist nicht amtlich und nicht verbindlich" in html
+    assert "grazViewerCivicFeedbackV1" in html
+    assert "data-open-civic-feedback" in html
+    assert "Dafür" in html
+    assert "Dagegen" in html
+    assert "Unsicher" in html
+    assert "nicht an einen Server gesendet" in html
+
+
+def test_civic_feedback_keeps_future_records_with_existing_digra_results():
+    html = build_html(
+        [
+            {
+                "agenda_item_no": 7,
+                "amounts": [],
+                "business_numbers": ["A 10/2099"],
+                "digra_url": "https://digra.graz.at/document?ref=22222222-2222-4222-8222-222222222222",
+                "meeting_date": "2099-01-15",
+                "parser_confidence": 1.0,
+                "record_id": "future-accepted-record",
+                "record_type": "agenda_item",
+                "result_source": "digra",
+                "result_text": "Ausschuss am 10.01.2099: einstimmig angenommen",
+                "section": "Tagesordnung",
+                "source_file": "digra",
+                "status": "accepted_unanimous",
+                "title": "Zukünftiges Stück mit Vorberatung",
+                "votes": [{"outcome": "accepted_unanimous", "outcome_text": "einstimmig angenommen"}],
+            }
+        ],
+        {"records_by_status": {"accepted_unanimous": 1}},
+    )
+
+    assert "if (date >= todayIsoDate()) return true" in html
+    assert "Bereits sichtbare DIGRA-Ergebnisse können Vorberatung" in html
+    assert "Zukünftiges Stück mit Vorberatung" in html
+
+
 def test_viewer_assigns_unclear_written_submissions():
     record = viewer_record(
         {
@@ -582,6 +688,61 @@ def test_viewer_assigns_unclear_written_submissions():
     assert record["status"] == "zugewiesen"
     assert record["status_filter"] == "Zugewiesen"
     assert record["ergebnis"] == "Verfahren: zugewiesen"
+
+
+def test_viewer_does_not_mark_question_hour_without_digra_result_as_answered():
+    record = viewer_record(
+        {
+            "record_id": "2026-03-12-digra-question_hour-17-1471",
+            "record_type": "question_hour",
+            "meeting_date": "2026-03-12",
+            "status": "unknown",
+            "result_source": "digra_fehlt",
+            "result_text": "DIGRA-Ergebnis fehlt",
+            "title": "Frage für die Fragestunde (§ 16a GO-GR)",
+        }
+    )
+
+    assert record["status"] == "unklar"
+    assert record["status_filter"] == "Unklar"
+    assert record["ergebnis"] == "DIGRA-Ergebnis fehlt"
+
+
+def test_viewer_marks_question_hour_as_written_answered_only_when_documented():
+    record = viewer_record(
+        {
+            "record_id": "2026-03-12-digra-question_hour-17-1471",
+            "record_type": "question_hour",
+            "meeting_date": "2026-03-12",
+            "status": "source_available",
+            "result_source": "digra",
+            "result_text": "Gemeinderat am 12.03.2026: schriftlich beantwortet",
+            "title": "Frage für die Fragestunde (§ 16a GO-GR)",
+        }
+    )
+
+    assert record["status"] == "schriftlich beantwortet"
+    assert record["status_filter"] == "Beantwortet"
+    assert record["ergebnis"] == "schriftlich beantwortet"
+
+
+def test_viewer_marks_question_hour_with_oral_vote_as_oral_answered():
+    record = viewer_record(
+        {
+            "record_id": "2026-05-21-digra-question_hour-13-1689",
+            "record_type": "question_hour",
+            "meeting_date": "2026-05-21",
+            "status": "source_available",
+            "result_source": "digra",
+            "result_text": "Gemeinderat am 21.05.2026: mündlich beantwortet",
+            "title": "Frage für die Fragestunde (§ 16a GO-GR)",
+            "votes": [{"outcome_text": "mündlich beantwortet"}],
+        }
+    )
+
+    assert record["status"] == "mündlich beantwortet"
+    assert record["status_filter"] == "Beantwortet"
+    assert record["ergebnis"] == "mündlich beantwortet"
 
 
 def test_viewer_labels_city_protocol_result_sources():
@@ -669,12 +830,13 @@ def test_viewer_renders_ai_record_summaries_as_expandable_details():
         {},
     )
 
-    assert "KI-Zusammenfassung" in html
-    assert "Einfache Sprache" in html
+    assert "Zusammenfassung" in html
+    assert "KI-Zusammenfassung" not in html
+    assert "Einfache Sprache" not in html
     assert "summary-block" in html
     assert "summary-toggle-sub" in html
     assert "Inhalt, Einordnung und Ergebnisstand kompakt zusammengefasst." in html
-    assert "Gleicher Inhalt einfacher formuliert." in html
+    assert "Gleicher Inhalt einfacher formuliert." not in html
     assert "data-summary-kind" in html
     assert "summaryDisplayText" in html
     assert "clippedSummaryDisplayText" in html
@@ -698,9 +860,8 @@ def test_viewer_normalizes_contradictory_unanimous_ai_summary_with_against_votes
     )
 
     assert "mehrheitlich angenommen" in record["ki_zusammenfassung"]
-    assert "mehrheitlich angenommen" in record["ki_einfache_sprache"]
     assert "einstimmig angenommen" not in record["ki_zusammenfassung"]
-    assert "einstimmig angenommen" not in record["ki_einfache_sprache"]
+    assert "ki_einfache_sprache" not in record
 
 
 def test_viewer_replaces_bad_question_summary_display_text():
@@ -729,6 +890,7 @@ def test_viewer_replaces_bad_question_summary_display_text():
     assert "Gefragt hat GR. Eichberger" not in record["ki_zusammenfassung"]
     assert "Adressiert ist die Frage an Bgm.-Stvin. Rücker" in record["ki_zusammenfassung"]
     assert "Eine Antwort ist in der lokalen Datenbasis nicht erfasst." in record["ki_zusammenfassung"]
+    assert "schriftlich beantwortet" not in record["ki_zusammenfassung"]
     assert "Frage:" not in record["ki_zusammenfassung"]
     assert "Werter Herr Bürgermeister" not in record["ki_zusammenfassung"]
     assert "Werter Herr Gemeinderat" not in record["ki_zusammenfassung"]
@@ -769,7 +931,7 @@ def test_viewer_normalizes_file_labels_and_status_filter():
         }
     )
 
-    assert record["quell_datei"] == "Protokoll 2024-11-14.docx"
+    assert record["quell_datei"] == ""
     assert record["status"] == "angenommen (einstimmig)"
     assert record["status_filter"] == "Angenommen"
 
@@ -975,6 +1137,60 @@ def test_viewer_uses_source_snippet_title_when_record_title_is_only_reporter():
     )
 
     assert record["titel"] == "Umsetzung der Vorschläge zur Stärkung der Grazer Bezirksdemokratie: Änderung von Geschäftsordnungen"
+
+
+def test_viewer_does_not_guess_title_from_plain_document_body():
+    record = viewer_record(
+        {
+            "record_type": "written_motion",
+            "status": "unknown",
+            "title": "Selbständiger Antrag (§ 17 GO-GR)",
+            "source_snippet": (
+                "Druckknopfampel in der Eckertstraße Höhe Nummer 115. "
+                "Der Antrag bezieht sich auf die Querungssituation vor Ort."
+            ),
+        }
+    )
+
+    assert record["titel"] == "Selbständiger Antrag (§ 17 GO-GR)"
+
+
+def test_viewer_uses_structured_betreff_when_record_title_is_only_generic_type():
+    record = viewer_record(
+        {
+            "record_type": "written_motion",
+            "status": "unknown",
+            "title": "Selbständiger Antrag (§ 17 GO-GR)",
+            "source_snippet": (
+                "Betreff: Druckknopfampel in der Eckertstraße Höhe Nummer 115\n"
+                "Der Antrag bezieht sich auf die Querungssituation vor Ort."
+            ),
+        }
+    )
+
+    assert record["titel"] == "Druckknopfampel in der Eckertstraße Höhe Nummer 115"
+
+
+def test_viewer_labels_missing_digra_result_with_link_as_digra_source():
+    record = viewer_record(
+        {
+            "record_type": "written_motion",
+            "status": "unknown",
+            "result_source": "digra_fehlt",
+            "digra_url": "https://digra.graz.at/document?ref=test",
+            "title": "Beispielantrag",
+        }
+    )
+
+    assert record["ergebnisquelle"] == "DIGRA"
+
+
+def test_start_answer_source_title_is_aligned_next_to_reference():
+    html = build_html([], {})
+
+    assert ".answer-item-title" in html
+    assert "align-items: baseline" in html
+    assert "flex-wrap: wrap" in html
 
 
 def test_viewer_prefers_structured_topic_and_betreff_titles_for_archive_sources():

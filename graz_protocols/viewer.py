@@ -9,7 +9,7 @@ import sys
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from .city_sources import archive_asset_title_from_url, is_attendance_asset
-from .civic_services import civic_service_summary, load_civic_services
+from .civic_services import civic_service_summary, load_civic_council, load_civic_services
 from .mobility_sources import load_health_places, load_parking_garages, load_roadworks, mobility_source_summary
 from .parser import extract_location_details
 
@@ -266,6 +266,7 @@ def main(argv: list[str] | None = None) -> int:
     pharmacies, pharmacies_summary = load_health_places("pharmacy", args.pharmacy_cache)
     doctors, doctors_summary = load_health_places("doctor", args.doctors_cache)
     civic_services, civic_services_summary = load_civic_services()
+    civic_council = load_civic_council(fetch_live=True)
     mobility_summary = mobility_source_summary()
     mobility_summary["parking"]["records"] = parking_summary.get("records", 0)
     mobility_summary["parking"]["errors"] = parking_summary.get("errors", [])
@@ -277,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
     mobility_summary["doctors"]["errors"] = doctors_summary.get("errors", [])
     mobility_summary["civic_services"] = civic_services_summary
     args.output.write_text(
-        build_html(records, summary, topics, garages, mobility_summary, roadworks, pharmacies, doctors, civic_services),
+        build_html(records, summary, topics, garages, mobility_summary, roadworks, pharmacies, doctors, civic_services, civic_council),
         encoding="utf-8",
     )
     print(f"{args.output} mit {len(records)} Einträgen geschrieben.")
@@ -357,6 +358,7 @@ def build_html(
     pharmacies: list[dict] | None = None,
     doctors: list[dict] | None = None,
     civic_services: list[dict] | None = None,
+    civic_council: dict | None = None,
 ) -> str:
     data = json.dumps([viewer_record(record) for record in records], ensure_ascii=False)
     summary_data = json.dumps(viewer_summary(summary), ensure_ascii=False)
@@ -367,6 +369,7 @@ def build_html(
     pharmacies_data = json.dumps(pharmacies or [], ensure_ascii=False)
     doctors_data = json.dumps(doctors or [], ensure_ascii=False)
     civic_services_data = json.dumps(civic_services or load_civic_services()[0], ensure_ascii=False)
+    civic_council_data = json.dumps(civic_council or load_civic_council(), ensure_ascii=False)
     if "civic_services" not in (mobility_sources or {}):
         mobility_sources = {**(mobility_sources or mobility_source_summary()), "civic_services": civic_service_summary()}
         mobility_data = json.dumps(mobility_sources, ensure_ascii=False)
@@ -389,6 +392,13 @@ def build_html(
   <meta name="robots" content="noindex, nofollow, noarchive">
   <meta name="googlebot" content="noindex, nofollow, noarchive">
   <title>Graz Gemeinderatsprotokolle</title>
+  <meta name="application-name" content="Graz Protokolle">
+  <meta name="apple-mobile-web-app-title" content="Graz Protokolle">
+  <meta name="theme-color" content="#f7f8fa">
+  <link rel="icon" type="image/png" sizes="16x16" href="bi/favicon-16.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="bi/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="bi/apple-touch-icon.png">
+  <link rel="manifest" href="site.webmanifest">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
@@ -681,10 +691,11 @@ def build_html(
     .mobile-card-only {{
       display: none;
     }}
-    .title {{ min-width: 230px; font-weight: 600; }}
-    .amount-col {{ width: 90px; min-width: 80px; max-width: 105px; overflow-wrap: anywhere; word-break: break-word; }}
-    .places-col {{ min-width: 170px; max-width: 260px; }}
-    .status-col {{ min-width: 130px; }}
+    .title {{ min-width: 190px; max-width: 300px; font-weight: 600; }}
+    .business-col {{ width: 104px; min-width: 96px; max-width: 124px; overflow-wrap: anywhere; word-break: break-word; }}
+    .amount-col {{ width: 145px; min-width: 130px; max-width: 210px; overflow-wrap: anywhere; word-break: break-word; }}
+    .places-col {{ min-width: 220px; max-width: 340px; }}
+    .status-col {{ width: 96px; min-width: 88px; max-width: 112px; overflow-wrap: anywhere; }}
     .status-col .source-link {{
       display: inline-block;
       margin-top: 5px;
@@ -757,6 +768,175 @@ def build_html(
     }}
     .detail-field span {{
       white-space: pre-wrap;
+    }}
+    .participation-banner,
+    .participation-card,
+    .participation-detail,
+    .participation-local-note {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }}
+    .participation-banner {{
+      padding: 12px;
+      margin-bottom: 12px;
+      display: grid;
+      gap: 8px;
+      background: #f8fbff;
+    }}
+    .participation-banner h2,
+    .participation-detail h2 {{
+      margin: 0;
+      font-size: 16px;
+      letter-spacing: 0;
+    }}
+    .participation-banner p,
+    .participation-local-note p {{
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.45;
+    }}
+    .participation-layout {{
+      display: grid;
+      grid-template-columns: minmax(260px, 0.95fr) minmax(320px, 1.45fr);
+      gap: 12px;
+      align-items: start;
+    }}
+    .participation-list {{
+      display: grid;
+      gap: 8px;
+    }}
+    .participation-card {{
+      padding: 10px;
+      text-align: left;
+      background: white;
+      color: var(--ink);
+      border-color: var(--line);
+      font-weight: 500;
+    }}
+    .participation-card:hover,
+    .participation-card.active {{
+      border-color: var(--accent);
+      background: #eff6ff;
+      color: var(--ink);
+    }}
+    .participation-card strong {{
+      display: block;
+      margin-bottom: 4px;
+      font-size: 13px;
+    }}
+    .participation-card small {{
+      display: block;
+      color: var(--muted);
+      line-height: 1.4;
+    }}
+    .participation-detail {{
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }}
+    .participation-actions {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(90px, 1fr));
+      gap: 8px;
+    }}
+    .participation-stance {{
+      background: white;
+      color: var(--ink);
+      border-color: var(--line-strong);
+    }}
+    .participation-stance.active {{
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }}
+    .participation-form {{
+      display: grid;
+      gap: 8px;
+    }}
+    .participation-form label {{
+      display: grid;
+      gap: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+    }}
+    .participation-form label > * {{
+      color: var(--ink);
+      font-weight: 400;
+    }}
+    .participation-local-note {{
+      padding: 9px;
+      background: #f8fafc;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }}
+    .participation-detail-cta {{
+      margin-top: 12px;
+      padding: 10px;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      background: #eff6ff;
+      display: grid;
+      gap: 7px;
+    }}
+    .participation-detail-cta p {{
+      margin: 0;
+      color: #1e3a8a;
+      line-height: 1.4;
+    }}
+    .civic-modal {{
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: none;
+      place-items: center;
+      padding: 18px;
+      background: rgba(15, 23, 42, 0.48);
+    }}
+    .civic-modal.is-open {{
+      display: grid;
+    }}
+    .civic-modal-card {{
+      width: min(560px, 100%);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      box-shadow: 0 18px 55px rgba(15, 23, 42, 0.24);
+      padding: 16px;
+      display: grid;
+      gap: 10px;
+    }}
+    .civic-modal-card h2 {{
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: 0;
+    }}
+    .civic-modal-card p {{
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.45;
+    }}
+    .civic-modal-actions {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }}
+    .civic-modal-actions button {{
+      width: auto;
+      min-width: 132px;
+    }}
+    .secondary-button {{
+      background: white;
+      color: var(--ink);
+      border-color: var(--line-strong);
+    }}
+    .secondary-button:hover {{
+      background: #f8fafc;
+      color: var(--ink);
     }}
     .local-list {{
       display: grid;
@@ -1113,9 +1293,31 @@ def build_html(
       border-top: 1px solid #e2e8f0;
     }}
     .answer-item-title {{
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 0 6px;
       font-size: 13px;
       font-weight: 600;
       line-height: 1.42;
+    }}
+    .answer-title-link {{
+      border: 0;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 600;
+      min-width: 0;
+      padding: 0;
+      text-align: left;
+      text-decoration: underline;
+      text-decoration-color: #cbd5e1;
+      text-underline-offset: 3px;
+    }}
+    .answer-title-link:hover {{
+      color: var(--accent-dark);
+      text-decoration-color: var(--accent);
     }}
     .answer-more {{
       margin-top: 8px;
@@ -1230,8 +1432,13 @@ def build_html(
       line-height: 1.35;
       color: inherit;
       text-decoration: none;
+      width: 100%;
+      text-align: left;
+      font-family: inherit;
+      cursor: pointer;
     }}
-    .source-card[href]:hover {{
+    .source-card[href]:hover,
+    button.source-card:hover {{
       border-color: #bfdbfe;
       background: #f8fbff;
     }}
@@ -1385,6 +1592,231 @@ def build_html(
       font-size: 12px;
       margin-top: 8px;
       line-height: 1.4;
+    }}
+    .council-layout {{
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      align-items: start;
+    }}
+    .council-stage {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfdff;
+      padding: 14px;
+      min-width: 0;
+    }}
+    .council-header {{
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: baseline;
+      margin-bottom: 12px;
+    }}
+    .council-header h3 {{
+      margin: 0;
+      font-size: 15px;
+    }}
+    .council-summary {{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }}
+    .council-dots {{
+      position: relative;
+      height: clamp(250px, 38vw, 430px);
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--line);
+      overflow: visible;
+    }}
+    .council-seat {{
+      position: absolute;
+      left: var(--seat-left);
+      top: var(--seat-top);
+      width: 74px;
+      display: grid;
+      justify-items: center;
+      gap: 3px;
+      transform: translate(-50%, -50%);
+      transition: opacity 120ms ease;
+    }}
+    .council-seat.is-dimmed {{
+      opacity: 0.24;
+    }}
+    .council-dot {{
+      display: block;
+      position: relative;
+      width: 24px;
+      height: 24px;
+      border: 2px solid rgba(15, 23, 42, 0.22);
+      border-radius: 999px;
+      background: var(--party-color);
+      color: var(--party-text);
+      cursor: help;
+      outline: none;
+      text-decoration: none;
+      transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+    }}
+    .council-dot:hover,
+    .council-dot:focus-visible,
+    .council-seat.is-focused .council-dot {{
+      background: var(--party-color);
+      color: var(--party-text);
+      border-color: color-mix(in srgb, var(--party-color) 70%, #111827);
+      transform: translateY(-2px) scale(1.08);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--party-color) 24%, transparent);
+      z-index: 2;
+    }}
+    .council-dot::after {{
+      content: attr(data-tooltip);
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 8px);
+      transform: translateX(-50%);
+      width: max-content;
+      max-width: 220px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: #111827;
+      color: #fff;
+      padding: 7px 8px;
+      font-size: 11px;
+      line-height: 1.25;
+      text-align: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 120ms ease;
+      white-space: normal;
+    }}
+    .council-dot:hover::after,
+    .council-dot:focus-visible::after {{
+      opacity: 1;
+    }}
+    .council-seat-label {{
+      width: 74px;
+      color: #475569;
+      font-size: 8px;
+      font-weight: 850;
+      line-height: 1.08;
+      text-align: center;
+      overflow-wrap: anywhere;
+    }}
+    .council-senate {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      align-items: flex-start;
+      margin-top: 8px;
+      padding-bottom: 4px;
+    }}
+    .council-senate .council-seat {{
+      position: static;
+      left: auto;
+      top: auto;
+      transform: none;
+    }}
+    .council-side {{
+      display: grid;
+      gap: 10px;
+    }}
+    .council-histogram {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px;
+    }}
+    .council-histogram h3 {{
+      margin: 0 0 10px;
+      font-size: 14px;
+    }}
+    .council-histogram-grid {{
+      min-height: 220px;
+      display: grid;
+      grid-template-columns: repeat(8, minmax(44px, 1fr));
+      gap: 10px;
+      align-items: end;
+      padding-top: 8px;
+    }}
+    .council-column {{
+      min-width: 0;
+      display: grid;
+      grid-template-rows: auto minmax(110px, 1fr) auto auto;
+      gap: 6px;
+      align-items: end;
+      justify-items: center;
+      cursor: default;
+    }}
+    .council-column-percent {{
+      color: #475569;
+      font-size: 11px;
+      font-weight: 850;
+      line-height: 1.1;
+      text-align: center;
+    }}
+    .council-column:hover,
+    .council-column.is-focused {{
+      background: color-mix(in srgb, var(--party-color) 10%, #ffffff);
+    }}
+    .council-column-track {{
+      width: min(42px, 80%);
+      height: 100%;
+      min-height: 110px;
+      display: flex;
+      align-items: end;
+      border-bottom: 1px solid var(--line-strong);
+    }}
+    .council-column-fill {{
+      width: 100%;
+      height: var(--column-height);
+      min-height: 8px;
+      border-radius: 7px 7px 0 0;
+      background: var(--party-color);
+    }}
+    .council-column-label {{
+      max-width: 100%;
+      color: #1e293b;
+      font-size: 11px;
+      font-weight: 850;
+      line-height: 1.1;
+      text-align: center;
+      overflow-wrap: anywhere;
+    }}
+    .council-column-value {{
+      color: #1e293b;
+      font-size: 12px;
+      font-weight: 850;
+      text-align: center;
+    }}
+    .council-histogram-note {{
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }}
+    .council-links {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }}
+    .council-links a {{
+      width: auto;
+      display: inline-flex;
+      min-height: 30px;
+      align-items: center;
+      border: 1px solid #bfdbfe;
+      border-radius: 999px;
+      background: var(--accent-tint);
+      color: var(--accent-dark);
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 800;
+      text-decoration: none;
+    }}
+    .council-links a:hover {{
+      background: #dbeafe;
     }}
     .map-layout {{
       display: grid;
@@ -1888,6 +2320,7 @@ def build_html(
       header, main {{ padding-left: 16px; padding-right: 16px; }}
       .toolbar {{ grid-template-columns: 1fr; }}
       .map-layout {{ grid-template-columns: 1fr; }}
+      .council-dots {{ height: 320px; }}
       table {{ min-width: 0; }}
       .table-card {{
         border: 0;
@@ -2008,6 +2441,9 @@ def build_html(
         min-height: 40px;
         padding: 9px 10px;
       }}
+      .council-dots {{ height: 280px; }}
+      .council-seat {{ width: 58px; }}
+      .council-seat-label {{ width: 58px; font-size: 7px; }}
       .question-row {{ grid-template-columns: 1fr; }}
       .split-form {{ grid-template-columns: 1fr; }}
       .stats {{ grid-template-columns: 1fr; }}
@@ -2051,7 +2487,9 @@ def build_html(
       <nav class="side-nav" id="sideNav" aria-label="Ansichten">
         <button class="side-item active" type="button" data-nav="start">Start</button>
         <button class="side-item" type="button" data-nav="search">Suche</button>
+        <button class="side-item" type="button" data-nav="participation">Mitreden</button>
         <button class="side-item" type="button" data-nav="map">Karte</button>
+        <button class="side-item" type="button" data-nav="council">Gemeinderat</button>
         <button class="side-item" type="button" data-nav="services">Services & Ämter</button>
         <button class="side-item" type="button" data-nav="roadworks">Baustellen</button>
         <button class="side-item" type="button" data-nav="parking">Tiefgaragen</button>
@@ -2108,6 +2546,17 @@ def build_html(
             <section class="detail date-summary-detail" id="dateSummaryWrap" hidden></section>
           </div>
         </section>
+        <section class="tab-panel" id="participationPanel">
+          <div class="participation-banner">
+            <h2>Bürgerfeedback zu angekündigten Stücken</h2>
+            <p>Diese Seite ist ein lokales Meinungsbild. Sie ist nicht amtlich, nicht verbindlich und ersetzt keine Gemeinderatsentscheidung.</p>
+            <p>Rückmeldungen werden in dieser Demo nur in diesem Browser gespeichert und nicht an einen Server gesendet.</p>
+          </div>
+          <div class="participation-layout">
+            <section class="participation-list" id="participationList" aria-label="Stücke zum Mitreden"></section>
+            <section class="participation-detail" id="participationDetail" aria-label="Rückmeldung"></section>
+          </div>
+        </section>
         <section class="tab-panel map-panel" id="mapPanel">
           <div class="map-head">
             <h2>Graz-Karte</h2>
@@ -2139,6 +2588,35 @@ def build_html(
             <div class="map-list" id="roadworksList"></div>
           </div>
           <div class="source-note" id="roadworksSourceNote"></div>
+        </section>
+        <section class="tab-panel map-panel" id="councilPanel">
+          <div class="map-head">
+            <div class="map-head-main">
+              <h2>Gemeinderat</h2>
+              <div class="map-status" id="councilStatus">Sitzverteilung und Stadtregierung laut offiziellen Stadt-Graz-Seiten.</div>
+            </div>
+            <div class="map-actions">
+              <a class="primary-link" href="https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html" target="_blank" rel="noopener noreferrer">Mitglieder öffnen</a>
+              <a class="primary-link" href="https://www.graz.at/cms/ziel/7765844/DE/" target="_blank" rel="noopener noreferrer">Stadtregierung öffnen</a>
+            </div>
+          </div>
+          <div class="council-layout">
+            <div class="council-stage">
+              <div class="council-header">
+                <h3>Gemeinderat</h3>
+                <div class="council-summary" id="councilSummary"></div>
+              </div>
+              <div class="council-dots" id="councilDots" aria-label="Sitzverteilung im Gemeinderat"></div>
+              <div class="council-header">
+                <h3>Stadtregierung</h3>
+                <div class="council-summary" id="senateSummary"></div>
+              </div>
+              <div class="council-senate" id="senateDots" aria-label="Mitglieder der Stadtregierung nach Fraktionen"></div>
+              <div class="council-links" id="councilLinks"></div>
+            </div>
+            <div class="council-side" id="councilLegend"></div>
+          </div>
+          <div class="source-note" id="councilSourceNote"></div>
         </section>
         <section class="tab-panel map-panel" id="parkingPanel">
           <div class="map-head">
@@ -2220,6 +2698,17 @@ def build_html(
     </div>
   </div>
   <div class="global-ai-disclaimer">KI-generierte Inhalte können Fehler enthalten. Bitte immer Quellen prüfen.</div>
+  <div class="civic-modal" id="civicFeedbackModal" role="dialog" aria-modal="true" aria-labelledby="civicFeedbackModalTitle">
+    <div class="civic-modal-card">
+      <h2 id="civicFeedbackModalTitle">Neue Stücke vor der Sitzung</h2>
+      <p id="civicFeedbackModalText">Zu angekündigten Gemeinderatsstücken kann lokal ein Meinungsbild erfasst werden.</p>
+      <p>Die Rückmeldung bleibt in dieser Demo in deinem Browser. Sie ist nicht amtlich und nicht verbindlich.</p>
+      <div class="civic-modal-actions">
+        <button class="secondary-button" id="civicFeedbackLater" type="button">Später</button>
+        <button id="civicFeedbackOpen" type="button">Zur Mitreden-Seite</button>
+      </div>
+    </div>
+  </div>
   <script>
     const records = {data};
     const summary = {summary_data};
@@ -2229,6 +2718,7 @@ def build_html(
     const pharmacies = {pharmacies_data};
     const doctors = {doctors_data};
     const civicServices = {civic_services_data};
+    const civicCouncil = {civic_council_data};
     const mobilitySources = {mobility_data};
     const preloadedLocationCache = {location_cache_data};
     const byId = (id) => document.getElementById(id);
@@ -2247,6 +2737,12 @@ def build_html(
     const searchDetailPanel = byId('searchDetailPanel');
     const searchSummaryPanel = byId('searchSummaryPanel');
     const detailWrap = byId('detailWrap');
+    const participationList = byId('participationList');
+    const participationDetail = byId('participationDetail');
+    const civicFeedbackModal = byId('civicFeedbackModal');
+    const civicFeedbackModalText = byId('civicFeedbackModalText');
+    const civicFeedbackOpen = byId('civicFeedbackOpen');
+    const civicFeedbackLater = byId('civicFeedbackLater');
     const aiQuestion = byId('aiQuestion');
     const aiAsk = byId('aiAsk');
     const aiAnswer = byId('aiAnswer');
@@ -2275,6 +2771,13 @@ def build_html(
     const doctorsProgressBar = byId('doctorsProgressBar');
     const doctorsList = byId('doctorsList');
     const doctorsProfessionFilter = byId('doctorsProfessionFilter');
+    const councilStatus = byId('councilStatus');
+    const councilSummary = byId('councilSummary');
+    const senateSummary = byId('senateSummary');
+    const councilDots = byId('councilDots');
+    const senateDots = byId('senateDots');
+    const councilLegend = byId('councilLegend');
+    const councilLinks = byId('councilLinks');
     const servicesStatus = byId('servicesStatus');
     const servicesSearch = byId('servicesSearch');
     const servicesCategoryFilter = byId('servicesCategoryFilter');
@@ -2328,6 +2831,8 @@ def build_html(
     let currentLocationIndex = buildLocationIndex(records);
     const subscriptionKey = 'grazViewerRoadworkSubscriptions';
     const feedbackKey = 'grazViewerRoadworkFeedback';
+    const civicFeedbackKey = 'grazViewerCivicFeedbackV1';
+    const civicFeedbackPopupKey = 'grazViewerCivicFeedbackPopupDismissedV1';
     const categoryColors = {{
       'Bauen & Stadtplanung': '#7c3aed',
       'Verkehr & Mobilität': '#2563eb',
@@ -2350,6 +2855,7 @@ def build_html(
     let activeTopicRecordIds = null;
     let activeTopicLabel = '';
     let activeSearchSubtab = 'table';
+    let selectedParticipationRecordId = '';
     const searchSubtabScroll = {{ table: 0, details: 0, summary: 0 }};
     let currentParkingGarages = [];
     let currentRoadworks = [];
@@ -2358,6 +2864,7 @@ def build_html(
     let currentPharmacyPlaces = activePharmacies;
     let currentDoctorPlaces = activeDoctors;
     let currentCivicServices = civicServices;
+    let councilRendered = false;
     const pharmacyFallbackPlaces = [
       {{ name: 'Adler Apotheke Graz', address: 'Hauptplatz 4, 8010 Graz', kind: 'Apotheke', profession: 'Apotheke', lat: 47.0707, lon: 15.4388, opening_hours: '', website: 'https://www.apothekerkammer.at/apothekensuche', source: 'lokaler Prüffallback', license: 'nur Standort-Hinweis' }},
       {{ name: 'Apotheke zum schwarzen Bären', address: 'Herrengasse 11, 8010 Graz', kind: 'Apotheke', profession: 'Apotheke', lat: 47.0697, lon: 15.4399, opening_hours: '', website: 'https://www.apothekerkammer.at/apothekensuche', source: 'lokaler Prüffallback', license: 'nur Standort-Hinweis' }},
@@ -2581,7 +3088,6 @@ def build_html(
         record.ergebnisquelle,
         record.digra_einlagezahl,
         record.ki_zusammenfassung,
-        record.ki_einfache_sprache,
         record.ki_warum_interessant,
         summaryPointsText(record)
       ].join(' ').toLocaleLowerCase('de-AT');
@@ -2602,6 +3108,208 @@ def build_html(
 
     function writeLocalJson(key, value) {{
       localStorage.setItem(key, JSON.stringify(value));
+    }}
+
+    function todayIsoDate() {{
+      const date = new Date();
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${{year}}-${{month}}-${{day}}`;
+    }}
+
+    function isFinalCouncilOutcome(record) {{
+      const status = `${{record.status_filter || ''}} ${{record.status || ''}} ${{record.ergebnis || ''}}`;
+      return /angenommen|abgelehnt|zur kenntnis|quelle verfügbar|quelle verfuegbar/i.test(status);
+    }}
+
+    function isCivicFeedbackEligible(record) {{
+      if (!record || !record.record_id || !record.digra_url) return false;
+      if (/archiv|anwesenheit/i.test(record.typ || '')) return false;
+      const date = String(record.datum || '').slice(0, 10);
+      if (!/^\\d{{4}}-\\d{{2}}-\\d{{2}}$/.test(date)) return false;
+      if (date >= todayIsoDate()) return true;
+      return !isFinalCouncilOutcome(record);
+    }}
+
+    function civicFeedbackRecords() {{
+      return records
+        .filter(isCivicFeedbackEligible)
+        .sort((left, right) => String(left.datum || '').localeCompare(String(right.datum || '')) || String(left.titel || '').localeCompare(String(right.titel || ''), 'de-AT'));
+    }}
+
+    function civicFeedbackStore() {{
+      const value = readLocalJson(civicFeedbackKey, {{}});
+      return value && typeof value === 'object' && !Array.isArray(value) ? value : {{}};
+    }}
+
+    function civicFeedbackFor(recordId) {{
+      const store = civicFeedbackStore();
+      const entry = store[recordId];
+      return entry && typeof entry === 'object' ? entry : null;
+    }}
+
+    function writeCivicFeedback(recordId, entry) {{
+      const store = civicFeedbackStore();
+      store[recordId] = entry;
+      writeLocalJson(civicFeedbackKey, store);
+    }}
+
+    function civicFeedbackLabel(value) {{
+      return {{
+        support: 'Dafür',
+        oppose: 'Dagegen',
+        unsure: 'Unsicher'
+      }}[value] || 'Noch keine Rückmeldung';
+    }}
+
+    function participationReasonLabel(value) {{
+      return {{
+        safety: 'Sicherheit',
+        climate: 'Klima und Umwelt',
+        cost: 'Kosten',
+        fairness: 'Fairness',
+        accessibility: 'Barrierefreiheit',
+        traffic: 'Verkehr',
+        housing: 'Wohnen',
+        other: 'Anderer Grund'
+      }}[value] || '';
+    }}
+
+    function participationReasonOptions(selected = '') {{
+      const options = [
+        ['', 'Bitte wählen'],
+        ['safety', 'Sicherheit'],
+        ['climate', 'Klima und Umwelt'],
+        ['cost', 'Kosten'],
+        ['fairness', 'Fairness'],
+        ['accessibility', 'Barrierefreiheit'],
+        ['traffic', 'Verkehr'],
+        ['housing', 'Wohnen'],
+        ['other', 'Anderer Grund']
+      ];
+      return options.map(([value, label]) => `<option value="${{escapeHtml(value)}}"${{value === selected ? ' selected' : ''}}>${{escapeHtml(label)}}</option>`).join('');
+    }}
+
+    function participationRecordMeta(record) {{
+      return [record.datum, record.typ, record.status, record.kategorie].filter(Boolean).join(' · ');
+    }}
+
+    function renderParticipationPage(recordId = selectedParticipationRecordId) {{
+      if (!participationList || !participationDetail) return;
+      const items = civicFeedbackRecords();
+      if (!items.length) {{
+        selectedParticipationRecordId = '';
+        participationList.innerHTML = '<div class="empty">Aktuell sind keine zukünftigen DIGRA-Stücke für ein lokales Meinungsbild erkennbar.</div>';
+        participationDetail.innerHTML = `
+          <h2>Keine offenen Stücke</h2>
+          <div class="participation-local-note"><p>Sobald DIGRA Stücke mit zukünftiger Sitzung enthält, erscheinen sie hier. Bereits sichtbare DIGRA-Ergebnisse können Vorberatung oder vorbereitete Beschlussvermerke sein.</p></div>
+        `;
+        return;
+      }}
+      const selected = items.find((record) => record.record_id === recordId) || items[0];
+      selectedParticipationRecordId = selected.record_id;
+      participationList.innerHTML = items.map((record) => {{
+        const feedback = civicFeedbackFor(record.record_id);
+        return `
+          <button class="participation-card${{record.record_id === selectedParticipationRecordId ? ' active' : ''}}" type="button" data-participation-record-id="${{escapeHtml(record.record_id)}}">
+            <strong>${{escapeHtml(record.titel || 'Unbenanntes Stück')}}</strong>
+            <small>${{escapeHtml(participationRecordMeta(record))}}</small>
+            <small>Deine Rückmeldung: ${{escapeHtml(civicFeedbackLabel(feedback?.stance))}}</small>
+          </button>
+        `;
+      }}).join('');
+      renderParticipationDetail(selected);
+    }}
+
+    function renderParticipationDetail(record) {{
+      const feedback = civicFeedbackFor(record.record_id) || {{}};
+      const stance = feedback.stance || '';
+      participationDetail.innerHTML = `
+        <h2>${{escapeHtml(record.titel || 'Unbenanntes Stück')}}</h2>
+        <div class="detail-grid">
+          ${{detailField('Datum', record.datum)}}
+          ${{detailField('Typ', record.typ)}}
+          ${{detailField('Status', record.status)}}
+          ${{detailLinkField('DIGRA-Link', record.digra_url)}}
+          ${{detailField('Thema', record.kategorie)}}
+          ${{detailField('Einbringer', record.einbringer)}}
+        </div>
+        <div class="participation-local-note">
+          <p>Dieses Meinungsbild ist nicht amtlich und nicht verbindlich. Bereits sichtbare DIGRA-Ergebnisse können Vorberatung oder vorbereitete Beschlussvermerke sein. Die Entscheidung trifft der Gemeinderat. Deine Eingabe bleibt in dieser Demo lokal in diesem Browser.</p>
+        </div>
+        <div class="participation-actions" role="group" aria-label="Meinung">
+          <button class="participation-stance${{stance === 'support' ? ' active' : ''}}" type="button" data-civic-stance="support">Dafür</button>
+          <button class="participation-stance${{stance === 'oppose' ? ' active' : ''}}" type="button" data-civic-stance="oppose">Dagegen</button>
+          <button class="participation-stance${{stance === 'unsure' ? ' active' : ''}}" type="button" data-civic-stance="unsure">Unsicher</button>
+        </div>
+        <div class="participation-form">
+          <label>Warum?
+            <select id="participationReason">${{participationReasonOptions(feedback.reason || '')}}</select>
+          </label>
+          <label>Kurzer Hinweis, nur lokal
+            <textarea id="participationComment" maxlength="600" placeholder="Optionaler kurzer Hinweis">${{escapeHtml(feedback.comment || '')}}</textarea>
+          </label>
+          <button id="participationSave" type="button">Lokal speichern</button>
+        </div>
+        <div class="participation-local-note" id="participationSavedNote">
+          <p>${{feedback.updated_at ? `Gespeichert: ${{escapeHtml(civicFeedbackLabel(feedback.stance))}}${{feedback.reason ? ` · ${{escapeHtml(participationReasonLabel(feedback.reason))}}` : ''}} · ${{escapeHtml(formatDateTime(feedback.updated_at))}}` : 'Noch keine lokale Rückmeldung gespeichert.'}}</p>
+        </div>
+      `;
+    }}
+
+    function saveCurrentParticipationFeedback() {{
+      const record = findRecordById(selectedParticipationRecordId);
+      if (!record) return;
+      const active = participationDetail.querySelector('[data-civic-stance].active');
+      const stance = active?.dataset.civicStance || '';
+      if (!stance) {{
+        const note = byId('participationSavedNote');
+        if (note) note.innerHTML = '<p>Bitte zuerst Dafür, Dagegen oder Unsicher wählen.</p>';
+        return;
+      }}
+      const reason = byId('participationReason')?.value || '';
+      const comment = (byId('participationComment')?.value || '').trim().slice(0, 600);
+      writeCivicFeedback(record.record_id, {{
+        record_id: record.record_id,
+        stance,
+        reason,
+        comment,
+        updated_at: new Date().toISOString()
+      }});
+      renderParticipationPage(record.record_id);
+    }}
+
+    function openParticipationForRecord(recordId = '') {{
+      selectedParticipationRecordId = recordId || selectedParticipationRecordId;
+      closeCivicFeedbackModal(true);
+      activateTab('participation');
+      renderParticipationPage(selectedParticipationRecordId);
+      participationDetail?.scrollIntoView({{ behavior: 'auto', block: 'start' }});
+    }}
+
+    function civicFeedbackDetailCta(record) {{
+      if (!isCivicFeedbackEligible(record)) return '';
+      return `
+        <div class="participation-detail-cta">
+          <p>Dieses Stück liegt vor oder am Sitzungstag in DIGRA. Du kannst dazu lokal ein unverbindliches Meinungsbild speichern.</p>
+          <button type="button" data-open-civic-feedback="${{escapeHtml(record.record_id)}}">Auf der Mitreden-Seite Rückmeldung geben</button>
+        </div>
+      `;
+    }}
+
+    function maybeShowCivicFeedbackModal() {{
+      const items = civicFeedbackRecords();
+      if (!items.length || localStorage.getItem(civicFeedbackPopupKey)) return;
+      if (civicFeedbackModalText) {{
+        civicFeedbackModalText.textContent = `${{items.length}} angekündigte Stücke sind vor der Sitzung für ein lokales Meinungsbild verfügbar.`;
+      }}
+      civicFeedbackModal?.classList.add('is-open');
+    }}
+
+    function closeCivicFeedbackModal(markDismissed = false) {{
+      civicFeedbackModal?.classList.remove('is-open');
+      if (markDismissed) localStorage.setItem(civicFeedbackPopupKey, new Date().toISOString());
     }}
 
     function downloadText(filename, content, type = 'text/plain;charset=utf-8') {{
@@ -2728,7 +3436,9 @@ def build_html(
       const viewTitles = {{
         start: 'Start',
         search: 'Suche',
+        participation: 'Mitreden',
         map: 'Karte',
+        council: 'Gemeinderat',
         roadworks: 'Baustellen',
         parking: 'Tiefgaragen',
         pharmacies: 'Apotheken',
@@ -2750,11 +3460,17 @@ def build_html(
           if (ausgewaehlterEintrag) focusRecordLocations(ausgewaehlterEintrag, false);
         }}, 80);
       }}
+      if (target === 'participation') {{
+        renderParticipationPage();
+      }}
       if (target === 'roadworks') {{
         setTimeout(() => {{
           initRoadworksMap();
           roadworksMap?.invalidateSize();
         }}, 80);
+      }}
+      if (target === 'council') {{
+        renderCouncil();
       }}
       if (target === 'parking') {{
         setTimeout(() => {{
@@ -2884,6 +3600,164 @@ def build_html(
           renderDoctorsMap();
         }});
       }}
+    }}
+
+    function renderCouncil() {{
+      if (councilRendered) return;
+      councilRendered = true;
+      const groups = civicCouncil.groups || [];
+      const senateGroups = civicCouncil.city_senate?.groups || [];
+      const totalSeats = civicCouncil.total_seats || groups.reduce((sum, group) => sum + Number(group.seats || 0), 0);
+      const senateSeats = civicCouncil.city_senate?.total_seats || senateGroups.reduce((sum, group) => sum + Number(group.seats || 0), 0);
+      if (councilSummary) {{
+        councilSummary.textContent = `${{totalSeats}} Mandate · Mehrheit ab ${{civicCouncil.majority_seats || Math.floor(totalSeats / 2) + 1}}`;
+      }}
+      if (senateSummary) senateSummary.textContent = `${{senateSeats}} Mitglieder`;
+      if (councilStatus) councilStatus.textContent = `${{groups.length}} Fraktionen/Gruppen · Stand: ${{escapePlain(civicCouncil.period || 'graz.at')}}`;
+      if (councilDots) councilDots.innerHTML = councilSeatHtml(groups, totalSeats, 'council');
+      if (senateDots) senateDots.innerHTML = councilSeatHtml(senateGroups, senateSeats, 'senate');
+      if (councilLegend) councilLegend.innerHTML = councilHistogramHtml(groups, totalSeats, senateGroups);
+      if (councilLinks) councilLinks.innerHTML = councilLinksHtml(civicCouncil.sources || {{}});
+      renderCouncilSourceNote();
+      bindCouncilHover();
+    }}
+
+    function councilSeatHtml(groups, totalSeats, kind) {{
+      const seats = groups.flatMap((group) =>
+        Array.from({{ length: Number(group.seats || 0) }}, (_unused, index) => ({{
+          group,
+          member: councilMemberObject((group.members || [])[index], group, index),
+        }}))
+      );
+      const positions = councilHemicyclePositions(seats.length, kind);
+      return seats.map((seat, index) => councilDotHtml(seat.group, seat.member, totalSeats, positions[index] || {{ left: 50, top: 50 }})).join('');
+    }}
+
+    function councilMemberObject(member, group, index) {{
+      if (member && typeof member === 'object') {{
+        return {{
+          name: member.name || `${{group.short_name || group.name}} Sitz ${{index + 1}}`,
+          url: member.url || '',
+        }};
+      }}
+      return {{
+        name: member || `${{group.short_name || group.name}} Sitz ${{index + 1}}`,
+        url: '',
+      }};
+    }}
+
+    function councilDotHtml(group, member, totalSeats, position) {{
+      const seats = Number(group.seats || 0);
+      const share = totalSeats ? Math.round((seats / totalSeats) * 1000) / 10 : 0;
+      const shortName = group.short_name || group.name;
+      const tooltip = `${{member.name}} · ${{shortName}} · ${{seats}} ${{seats === 1 ? 'Mandat' : 'Mandate'}} (${{share.toLocaleString('de-AT')}} %)`;
+      const dot = member.url
+        ? `<a class="council-dot" href="${{escapeHtml(member.url)}}" target="_blank" rel="noopener noreferrer" data-tooltip="${{escapeHtml(tooltip)}}" aria-label="${{escapeHtml(tooltip)}}"></a>`
+        : `<button class="council-dot" type="button" data-tooltip="${{escapeHtml(tooltip)}}" aria-label="${{escapeHtml(tooltip)}}"></button>`;
+      return `
+        <span class="council-seat"
+          style="--seat-left: ${{position.left.toFixed(2)}}%; --seat-top: ${{position.top.toFixed(2)}}%; --party-color: ${{escapeHtml(group.color || '#64748b')}}; --party-text: ${{escapeHtml(group.text_color || '#ffffff')}}"
+          data-council-group="${{escapeHtml(shortName)}}">
+          ${{dot}}
+          <span class="council-seat-label" aria-hidden="true">${{escapeHtml(member.name)}}</span>
+        </span>
+      `;
+    }}
+
+    function councilHemicyclePositions(total, kind) {{
+      if (total <= 0) return [];
+      if (kind === 'senate') return Array.from({{ length: total }}, () => ({{ left: 0, top: 0 }}));
+      const rowSizes = total <= 20 ? [total] : [14, 13, 11, Math.max(0, total - 38)].filter(Boolean);
+      const positions = [];
+      rowSizes.forEach((rowSize, rowIndex) => {{
+        const radiusX = 45 - rowIndex * 8;
+        const radiusY = 80 - rowIndex * 14;
+        const baseTop = 91 - rowIndex * 2;
+        for (let index = 0; index < rowSize; index += 1) {{
+          const angle = rowSize === 1 ? 270 : 202 + (136 * index / (rowSize - 1));
+          positions.push({{
+            left: 50 + Math.cos(angle * Math.PI / 180) * radiusX,
+            top: baseTop + Math.sin(angle * Math.PI / 180) * radiusY,
+          }});
+        }}
+      }});
+      return positions.slice(0, total);
+    }}
+
+    function councilHistogramHtml(groups, totalSeats, senateGroups) {{
+      const maxSeats = Math.max(1, ...groups.map((group) => Number(group.seats || 0)));
+      return `
+        <div class="council-histogram">
+          <h3>Mandate nach Fraktion</h3>
+          <div class="council-histogram-grid">
+            ${{groups.map((group) => councilColumnHtml(group, totalSeats, senateGroups, maxSeats)).join('')}}
+          </div>
+          <div class="council-histogram-note">Säulenhöhe relativ zur stärksten Fraktion; Hover zeigt dieselbe Gruppe im Halbkreis.</div>
+        </div>
+      `;
+    }}
+
+    function councilColumnHtml(group, totalSeats, senateGroups, maxSeats) {{
+      const seats = Number(group.seats || 0);
+      const share = totalSeats ? Math.round((seats / totalSeats) * 1000) / 10 : 0;
+      const shortName = group.short_name || group.name;
+      const senateGroup = senateGroups.find((item) => item.short_name === group.short_name);
+      const senateText = senateGroup
+        ? `${{senateGroup.seats}} in der Stadtregierung: ${{(senateGroup.members || []).join(', ')}}`
+        : 'nicht in der Stadtregierung vertreten';
+      return `
+        <div class="council-column"
+          style="--party-color: ${{escapeHtml(group.color || '#64748b')}}; --column-height: ${{Math.max(5, Math.round((seats / maxSeats) * 100))}}%"
+          data-council-card="${{escapeHtml(shortName)}}">
+          <div class="council-column-percent">${{share.toLocaleString('de-AT')}} %</div>
+          <div class="council-column-track" title="${{escapeHtml(`${{group.name}}: ${{seats}} Mandate · ${{share.toLocaleString('de-AT')}} % · ${{senateText}}`)}}">
+            <div class="council-column-fill"></div>
+          </div>
+          <div class="council-column-value">${{seats}} Sitze</div>
+          <div class="council-column-label">${{escapeHtml(shortName)}}</div>
+        </div>
+      `;
+    }}
+
+    function councilLinksHtml(sources) {{
+      return [
+        [sources.members_url, 'GR-Mitglieder'],
+        [sources.seats_url, 'Sitzverteilung'],
+        [sources.city_government_url, 'Stadtregierung'],
+      ].filter(([url]) => url).map(([url, label]) =>
+        `<a href="${{escapeHtml(url)}}" target="_blank" rel="noopener noreferrer">${{escapeHtml(label)}}</a>`
+      ).join('');
+    }}
+
+    function bindCouncilHover() {{
+      const focus = (key) => {{
+        document.querySelectorAll('[data-council-group], [data-council-card]').forEach((element) => {{
+          const elementKey = element.dataset.councilGroup || element.dataset.councilCard || '';
+          element.classList.toggle('is-focused', Boolean(key && elementKey === key));
+          element.classList.toggle('is-dimmed', Boolean(key && element.dataset.councilGroup && elementKey !== key));
+        }});
+      }};
+      document.querySelectorAll('[data-council-group], [data-council-card]').forEach((element) => {{
+        const key = element.dataset.councilGroup || element.dataset.councilCard || '';
+        element.addEventListener('mouseenter', () => focus(key));
+        element.addEventListener('focusin', () => focus(key));
+        element.addEventListener('mouseleave', () => focus(''));
+        element.addEventListener('focusout', () => focus(''));
+      }});
+    }}
+
+    function renderCouncilSourceNote() {{
+      const source = civicCouncil.sources || {{}};
+      byId('councilSourceNote').innerHTML = `
+        Quelle: ${{externalLink(source.members_url || '', 'Gemeinderat: Mitglieder')}} ·
+        ${{externalLink(source.city_government_url || '', 'Stadtregierung')}}.
+        Lizenzhinweis: ${{escapeHtml(source.license || 'öffentliche Webseite, keine OGD-Lizenz gefunden')}}.
+        ${{escapeHtml(source.reuse || 'Für Open Source werden nur kurze faktische Hinweise geführt; aktuelle Details offiziell prüfen.')}}
+      `;
+    }}
+
+    function escapePlain(value) {{
+      return String(value || '').replace(/\\s+/g, ' ').trim();
     }}
 
     function initServicesMap() {{
@@ -3856,7 +4730,6 @@ def build_html(
           record.einbringer ? `Einbringer: ${{record.einbringer}}` : '',
           record.adressat ? `Adressat: ${{record.adressat}}` : '',
           record.ki_zusammenfassung,
-          record.ki_einfache_sprache,
           record.ki_warum_interessant,
           summaryPointsText(record),
         ];
@@ -3875,7 +4748,6 @@ def build_html(
           voteSummary ? `Abstimmung: ${{voteSummary}}` : '',
           timeline ? `Verlauf/Folgebeschlüsse: ${{timeline}}` : '',
           record.ki_zusammenfassung ? `Vorhandene Zusammenfassung: ${{record.ki_zusammenfassung}}` : '',
-          record.ki_einfache_sprache ? `Einfache Sprache: ${{record.ki_einfache_sprache}}` : '',
           record.ki_warum_interessant ? `Warum interessant: ${{record.ki_warum_interessant}}` : '',
           summaryPointsText(record) ? `Kernpunkte/offene Punkte: ${{summaryPointsText(record)}}` : '',
         ];
@@ -3888,15 +4760,15 @@ def build_html(
           title: `${{record.datum || '-'}} · ${{title}}`,
           recordType: record.typ || '',
           businessNumbers: record.geschaeftszahlen || [],
+          recordId: record.record_id || '',
           places: record.orte || [],
           resultText: userFacingResultForAi(record),
-          summaryText: record.ki_zusammenfassung || record.ki_einfache_sprache || '',
+          summaryText: record.ki_zusammenfassung || '',
           detail: compactText(detailParts.join(' · '), 520),
           contextDetail: compactText(contextParts.filter(Boolean).join('\\\\n'), 1400),
           searchText: [
             recordHaystack(record),
             record.ki_zusammenfassung,
-            record.ki_einfache_sprache,
             record.ki_warum_interessant,
             summaryPointsText(record),
             voteSummary,
@@ -4271,17 +5143,32 @@ def build_html(
     }}
 
     function userFacingStatusForAi(record) {{
+      const questionStatus = questionAnswerStatus(record);
+      if (questionStatus) return questionStatus;
       const status = String(record.status || '');
       if (['unklar', 'unbekannt', 'Unklar', 'Unbekannt'].includes(status)) return 'kein gesicherter Ergebnisstatus in den lokalen Daten';
       return status;
     }}
 
     function userFacingResultForAi(record) {{
+      const questionStatus = questionAnswerStatus(record);
+      if (questionStatus) return questionStatus;
       const result = String(record.ergebnis || '');
       if (!result || result === 'Unbekannt' || result.includes('DIGRA-Ergebnis fehlt')) {{
         return 'kein gesichertes Ergebnis in den lokalen Daten';
       }}
       return result;
+    }}
+
+    function questionAnswerStatus(record) {{
+      if (!record || record.typ !== 'Fragestunde') return '';
+      const votes = Array.isArray(record.abstimmungen) ? record.abstimmungen : [];
+      const voteResult = votes.map((vote) => String(vote.ergebnis || '').toLocaleLowerCase('de-AT')).find((value) => value.includes('beantwortet'));
+      if (voteResult) return voteResult.includes('mündlich') ? 'mündlich beantwortet' : 'schriftlich beantwortet';
+      const result = String(record.ergebnis || '').toLocaleLowerCase('de-AT');
+      if (result.includes('mündlich beantwortet')) return 'mündlich beantwortet';
+      if (result.includes('schriftlich beantwortet')) return 'schriftlich beantwortet';
+      return '';
     }}
 
     function renderAiSources(sources, options = {{}}) {{
@@ -4311,8 +5198,11 @@ def build_html(
     }}
 
     function sourceCardHtml(source, index) {{
-      const tag = source.url ? 'a' : 'div';
-      const attrs = source.url ? ` href="${{escapeHtml(source.url)}}" target="_blank" rel="noopener noreferrer"` : '';
+      const recordId = source.recordId || '';
+      const tag = recordId ? 'button' : (source.url ? 'a' : 'div');
+      const attrs = recordId
+        ? ` type="button" data-source-record-id="${{escapeHtml(recordId)}}"`
+        : (source.url ? ` href="${{escapeHtml(source.url)}}" target="_blank" rel="noopener noreferrer"` : '');
       const matches = (source.matchedTokens || []).slice(0, 8).join(', ');
       const title = cleanAnswerTitle(source.titleText || source.title || source.kind || 'Quelle');
       const facts = sourceFacts(source).map((fact) => `<span class="source-kind">${{escapeHtml(fact)}}</span>`).join('');
@@ -4327,7 +5217,7 @@ def build_html(
             </span>
             ${{description ? `<span class="source-meta">${{escapeHtml(description)}}</span>` : ''}}
             ${{matches ? `<span class="source-matches">Gefundene Begriffe: ${{escapeHtml(matches)}}</span>` : ''}}
-            <span class="source-action">${{source.url ? 'Quelle öffnen' : 'Lokale Quelle'}}</span>
+            <span class="source-action">${{recordId ? 'Eintragsdetails öffnen' : (source.url ? 'Quelle öffnen' : 'Lokale Quelle')}}</span>
           </span>
         </${{tag}}>
       `;
@@ -4629,9 +5519,12 @@ def build_html(
       const facts = answerEvidenceFacts(source).map((fact) => `<span class="answer-fact">${{escapeHtml(fact)}}</span>`).join('');
       const href = source.url ? ` href="${{escapeHtml(source.url)}}" target="_blank" rel="noopener noreferrer"` : '';
       const tag = source.url ? 'a' : 'span';
+      const titleHtml = source.recordId
+        ? `<button class="answer-title-link" type="button" data-source-record-id="${{escapeHtml(source.recordId)}}">${{escapeHtml(title)}}</button>`
+        : escapeHtml(title);
       return `
         <li class="answer-item">
-          <div class="answer-item-title"><${{tag}}${{href}} class="answer-ref">${{escapeHtml(ref)}}</${{tag}}> ${{escapeHtml(title)}}</div>
+          <div class="answer-item-title"><${{tag}}${{href}} class="answer-ref">${{escapeHtml(ref)}}</${{tag}}> ${{titleHtml}}</div>
           ${{facts ? `<div class="answer-item-facts">${{facts}}</div>` : ''}}
           <div class="answer-item-meta">${{escapeHtml([role, detail].filter(Boolean).join(' '))}}</div>
         </li>
@@ -5162,15 +6055,19 @@ def build_html(
     }}
 
     function tableStatusHtml(record) {{
-      const status = `<span class="badge">${{escapeHtml(record.status || '')}}</span>`;
+      const status = `<span class="badge">${{tableStatusLabelHtml(record.status || '')}}</span>`;
       const link = record.digra_url
         ? digraLink(record.digra_url, record.ergebnisquelle || 'Quelle')
         : (record.source_url ? externalLink(record.source_url, 'Quelle') : '');
       return link ? `${{status}}<br><span class="source-link">${{link}}</span>` : status;
     }}
 
+    function tableStatusLabelHtml(value) {{
+      return escapeHtml(value).replace(/\\s+\\(([^)]+)\\)$/u, '<br>($1)');
+    }}
+
     function tableMobileSummaryHtml(record) {{
-      const summary = record.ki_zusammenfassung || record.ki_einfache_sprache || '';
+      const summary = record.ki_zusammenfassung || '';
       if (summary) return escapeHtml(compactText(summary, 360));
       const result = String(record.ergebnis || '').trim();
       return result ? escapeHtml(compactText(result, 260)) : '-';
@@ -5198,21 +6095,10 @@ def build_html(
         blocks.push(`
           <div class="summary-block">
             <button class="summary-toggle" type="button" data-summary-kind="summary" aria-expanded="true">
-              <span class="summary-toggle-label">KI-Zusammenfassung</span>
+              <span class="summary-toggle-label">Zusammenfassung</span>
               <span class="summary-toggle-sub">Inhalt, Einordnung und Ergebnisstand kompakt zusammengefasst.</span>
             </button>
             <div class="summary-text">${{summaryTextHtml(record, 'summary')}}</div>
-          </div>
-        `);
-      }}
-      if (record.ki_einfache_sprache) {{
-        blocks.push(`
-          <div class="summary-block easy">
-            <button class="summary-toggle" type="button" data-summary-kind="easy" aria-expanded="true">
-              <span class="summary-toggle-label">Einfache Sprache</span>
-              <span class="summary-toggle-sub">Gleicher Inhalt einfacher formuliert.</span>
-            </button>
-            <div class="summary-text">${{summaryTextHtml(record, 'easy')}}</div>
           </div>
         `);
       }}
@@ -5251,7 +6137,6 @@ def build_html(
     }}
 
     function summaryBaseText(record, kind) {{
-      if (kind === 'easy') return record?.ki_einfache_sprache || '';
       return record?.ki_zusammenfassung || '';
     }}
 
@@ -5566,6 +6451,7 @@ def build_html(
           ${{detailField('Quelldatei', record.quell_datei)}}
         </div>
         ${{summaryBlocks(record)}}
+        ${{civicFeedbackDetailCta(record)}}
       `;
     }}
 
@@ -5792,7 +6678,7 @@ def build_html(
           <td data-label="Typ"><span class="badge">${{escapeHtml(record.typ || '')}}</span></td>
           <td data-label="Stk.">${{escapeHtml(record.stueck_nr)}}</td>
           <td data-label="Status" class="status-col">${{tableStatusHtml(record)}}</td>
-          <td data-label="Geschäftszahl">${{escapeHtml((record.geschaeftszahlen || []).join(', '))}}</td>
+          <td data-label="Geschäftszahl" class="business-col">${{escapeHtml((record.geschaeftszahlen || []).join(', '))}}</td>
           <td data-label="Titel" class="title">${{escapeHtml(record.titel)}}<br><span class="badge">${{escapeHtml(record.kategorie || '')}}</span></td>
           <td data-label="Beträge" class="amount amount-col">${{escapeHtml((record.betraege || []).join(', '))}}</td>
           <td data-label="Orte" class="places-col">${{locationLinks(record.orte)}}</td>
@@ -5893,6 +6779,12 @@ def build_html(
       scrollToRecordDetail();
     }});
     detailWrap.addEventListener('click', (event) => {{
+      const civicButton = event.target.closest('[data-open-civic-feedback]');
+      if (civicButton) {{
+        event.preventDefault();
+        openParticipationForRecord(civicButton.dataset.openCivicFeedback || '');
+        return;
+      }}
       const summaryToggle = event.target.closest('[data-summary-kind]');
       if (summaryToggle) {{
         event.stopPropagation();
@@ -5906,6 +6798,29 @@ def build_html(
       const locationButton = event.target.closest('[data-location]');
       if (!locationButton) return;
       focusLocation(locationButton.dataset.location || '');
+    }});
+    participationList.addEventListener('click', (event) => {{
+      const item = event.target.closest('[data-participation-record-id]');
+      if (!item) return;
+      selectedParticipationRecordId = item.dataset.participationRecordId || '';
+      renderParticipationPage(selectedParticipationRecordId);
+    }});
+    participationDetail.addEventListener('click', (event) => {{
+      const stanceButton = event.target.closest('[data-civic-stance]');
+      if (stanceButton) {{
+        participationDetail.querySelectorAll('[data-civic-stance]').forEach((item) => {{
+          item.classList.toggle('active', item === stanceButton);
+        }});
+        return;
+      }}
+      if (event.target.closest('#participationSave')) {{
+        saveCurrentParticipationFeedback();
+      }}
+    }});
+    civicFeedbackOpen.addEventListener('click', () => openParticipationForRecord());
+    civicFeedbackLater.addEventListener('click', () => closeCivicFeedbackModal(true));
+    civicFeedbackModal.addEventListener('click', (event) => {{
+      if (event.target === civicFeedbackModal) closeCivicFeedbackModal(true);
     }});
     dateSummaryWrap.addEventListener('click', (event) => {{
       const filterButton = event.target.closest('[data-summary-filter]');
@@ -6010,6 +6925,18 @@ def build_html(
       if (!recordButton) return;
       selectRecord(findRecordById(recordButton.dataset.popupRecordId));
     }});
+    function openSourceRecordDetails(event) {{
+      const sourceButton = event.target.closest('[data-source-record-id]');
+      if (!sourceButton) return false;
+      const record = findRecordById(sourceButton.dataset.sourceRecordId);
+      if (!record) return false;
+      selectRecord(record);
+      activateSearchSubtab('details', false);
+      detailWrap.scrollIntoView({{ behavior: 'auto', block: 'start' }});
+      return true;
+    }}
+    aiSources.addEventListener('click', openSourceRecordDetails);
+    aiAnswer.addEventListener('click', openSourceRecordDetails);
     if (exportCsvButton) exportCsvButton.addEventListener('click', exportCsv);
     if (exportJsonButton) exportJsonButton.addEventListener('click', exportJson);
     if (exportRoadworksJsonButton) exportRoadworksJsonButton.addEventListener('click', exportPublicJsonFeed);
@@ -6027,7 +6954,10 @@ def build_html(
       }});
     }}
     document.addEventListener('keydown', (event) => {{
-      if (event.key === 'Escape') setMobileNavOpen(false);
+      if (event.key === 'Escape') {{
+        setMobileNavOpen(false);
+        closeCivicFeedbackModal(true);
+      }}
     }});
     document.addEventListener('click', (event) => {{
       if (!sidebar || !sidebar.classList.contains('nav-open')) return;
@@ -6042,6 +6972,8 @@ def build_html(
     }});
     initMap();
     render();
+    renderParticipationPage();
+    maybeShowCivicFeedbackModal();
   </script>
 </body>
 </html>
@@ -6054,6 +6986,7 @@ def viewer_record(record: dict) -> dict:
     result_text = normalized_viewer_result_text(record, status)
     locations = inferred_viewer_locations(record, result_text)
     record_type = viewer_record_type(record)
+    digra_url = canonical_digra_url(str(record.get("digra_url", "")))
     return {
         "record_id": record.get("record_id", ""),
         "datum": record.get("meeting_date", ""),
@@ -6068,8 +7001,8 @@ def viewer_record(record: dict) -> dict:
         "einbringer": record.get("submitter", ""),
         "adressat": question_recipient(record),
         "ergebnis": result_text,
-        "ergebnisquelle": german_result_source(str(record.get("result_source", ""))),
-        "digra_url": canonical_digra_url(str(record.get("digra_url", ""))),
+        "ergebnisquelle": german_result_source(str(record.get("result_source", "")), digra_url),
+        "digra_url": digra_url,
         "digra_einlagezahl": record.get("digra_business_number", ""),
         "digra_trefferwert": format_score(record.get("digra_match_score", 0)),
         "source_url": record.get("source_url", ""),
@@ -6079,7 +7012,6 @@ def viewer_record(record: dict) -> dict:
         "orte": locations,
         "abstimmungen": viewer_votes(record.get("votes", [])),
         "ki_zusammenfassung": viewer_ai_summary(record, result_text),
-        "ki_einfache_sprache": viewer_ai_easy_language(record, result_text),
         "ki_warum_interessant": clean_viewer_text(record.get("ai_why_interesting", "")),
         "ki_kernpunkte": viewer_ai_key_points(record.get("ai_key_points", [])),
         "ki_offene_punkte": clean_viewer_text_list(record.get("ai_open_points", [])),
@@ -6095,15 +7027,6 @@ def viewer_ai_summary(record: dict, result_text: str) -> str:
     if not question_summary_is_bad(record, value):
         return normalize_summary_vote_consistency(value)
     return normalize_summary_vote_consistency(fallback_question_summary(record, result_text))
-
-
-def viewer_ai_easy_language(record: dict, result_text: str) -> str:
-    value = str(record.get("ai_easy_language", "") or "").strip()
-    if not value and viewer_record_type(record) in {"question_hour", "written_question"}:
-        return fallback_question_easy_language(record, result_text)
-    if not question_summary_is_bad(record, value):
-        return normalize_summary_vote_consistency(value)
-    return normalize_summary_vote_consistency(fallback_question_easy_language(record, result_text))
 
 
 def normalize_summary_vote_consistency(value: str) -> str:
@@ -6205,29 +7128,6 @@ def fallback_question_summary(record: dict, result_text: str) -> str:
     numbers = record.get("business_numbers", [])
     if isinstance(numbers, list) and numbers:
         parts.append(f"Geschäftszahl: {', '.join(str(number) for number in numbers[:2])}.")
-    return " ".join(parts)
-
-
-def fallback_question_easy_language(record: dict, result_text: str) -> str:
-    title = question_summary_title(record)
-    submitter = str(record.get("submitter", "") or "").strip()
-    if submitter:
-        parts = [f"{submitter} fragt nach {title}."]
-    else:
-        parts = [f"Es geht um {title}."]
-    answer = question_answer_text(record)
-    if answer:
-        parts.append(f"Die erfasste Antwort sagt kurz: {short_text(answer)}")
-    elif meaningful_viewer_result(result_text):
-        if result_text == "Verfahren: zugewiesen":
-            parts.append("In den lokalen Daten steht nur: Die Frage wurde zugewiesen. Eine inhaltliche Antwort ist nicht erfasst.")
-        else:
-            parts.append(f"Stand: {result_text}.")
-    else:
-        parts.append("In den lokalen Daten steht keine Antwort.")
-    date = str(record.get("meeting_date", "") or "").strip()
-    if date:
-        parts.append(f"Sitzung: {date}.")
     return " ".join(parts)
 
 
@@ -6343,9 +7243,10 @@ def viewer_record_type(record: dict) -> str:
 
 def viewer_display_title(record: dict) -> str:
     raw_title = clean_display_title(str(record.get("title", "")))
-    extracted_title = structured_title_from_record(record)
+    title_is_role_only = role_only_display_title(str(record.get("title", "")))
+    extracted_title = structured_title_from_record(record, allow_snippet=title_is_role_only)
     url_title = archive_asset_title_from_url(str(record.get("source_url", "")), raw_title)
-    if extracted_title and (viewer_record_type(record) in {"archive_source", "attendance_list"} or generic_display_title(raw_title) or role_only_display_title(str(record.get("title", "")))):
+    if extracted_title and (viewer_record_type(record) in {"archive_source", "attendance_list"} or generic_display_title(raw_title) or title_is_role_only):
         return extracted_title
     if url_title and generic_display_title(raw_title):
         return url_title
@@ -6354,10 +7255,10 @@ def viewer_display_title(record: dict) -> str:
     return raw_title or extracted_title or url_title or "Ohne Titel"
 
 
-def structured_title_from_record(record: dict) -> str:
+def structured_title_from_record(record: dict, allow_snippet: bool = False) -> str:
     for text in title_candidate_texts(record):
         match = re.search(r"(?im)^\s*(?:Thema|Betreff|Betr\.?)\s*:?\s*(?P<title>.+?)\s*$", text)
-        title = clean_structured_title(match.group("title")) if match else clean_snippet_title(text)
+        title = clean_structured_title(match.group("title")) if match else (clean_snippet_title(text) if allow_snippet else "")
         if title:
             return title
     return ""
@@ -6390,6 +7291,9 @@ def clean_snippet_title(value: str) -> str:
         maxsplit=1,
         flags=re.IGNORECASE,
     )[0].strip(" ,;:-")
+    sentence_match = re.match(r"^(.{12,180}?[.!?])\s+(?:Der|Die|Das|Dieser|Diese|Dieses|Im|In|Es)\b", title)
+    if sentence_match:
+        title = sentence_match.group(1).strip(" ,;:-")
     if len(title) > 220:
         title = title[:220].rsplit(" ", 1)[0].strip(" ,;:-")
     if len(title.split()) < 2:
@@ -6405,14 +7309,31 @@ def generic_display_title(value: str) -> bool:
         "antrag",
         "anträge",
         "antraege",
+        "selbständiger antrag",
+        "selbstaendiger antrag",
+        "selbständiger antrag (§ 17 go-gr)",
+        "selbstaendiger antrag (§ 17 go-gr)",
+        "schriftlicher antrag",
         "schriftliche anträge",
         "schriftliche antraege",
+        "schriftliche anfrage",
         "tagesordnung",
+        "tagesordnungspunkt",
         "dringliche",
+        "dringlicher antrag",
+        "dringlichkeitsantrag",
+        "dringlichkeitsantrag (§ 18 go-gr)",
         "dringlichkeitsanträge",
         "dringlichkeitsantraege",
         "dringlichkeitsanträge mit abstimmungsergebnissen",
         "dringlichkeitsantraege mit abstimmungsergebnissen",
+        "frage für die fragestunde",
+        "frage fuer die fragestunde",
+        "frage für die fragestunde (§ 16a go-gr)",
+        "frage fuer die fragestunde (§ 16a go-gr)",
+        "mitteilung",
+        "mitteilung an den gemeinderat",
+        "mitteilung an den gemeinderat (§ 15 go-gr)",
         "antwort",
         "schriftliche antwort",
         "archivdokument",
@@ -6621,6 +7542,10 @@ def plausible_question_recipient(value: str) -> bool:
 def normalized_viewer_status(record: dict) -> str:
     record_type = str(record.get("record_type", ""))
     status = str(record.get("status", ""))
+    if record_type == "question_hour":
+        answer_status = normalized_question_hour_answer_status(record)
+        if answer_status:
+            return answer_status
     if record_type in {"written_question", "written_motion", "amendment_motion", "additional_motion"} and status in {"", "unknown"}:
         return "assigned"
     return status
@@ -6628,9 +7553,32 @@ def normalized_viewer_status(record: dict) -> str:
 
 def normalized_viewer_result_text(record: dict, status: str) -> str:
     result_text = str(record.get("result_text", "") or "")
+    if status == "answered_oral":
+        return "mündlich beantwortet"
+    if status == "answered_written":
+        return "schriftlich beantwortet"
     if status == "assigned" and result_text in {"", "Unbekannt", "DIGRA-Ergebnis fehlt"}:
         return "Verfahren: zugewiesen"
     return result_text
+
+
+def normalized_question_hour_answer_status(record: dict) -> str:
+    votes = record.get("votes", [])
+    if isinstance(votes, list):
+        for vote in votes:
+            if not isinstance(vote, dict):
+                continue
+            text = str(vote.get("outcome_text", "") or vote.get("raw_text", "") or vote.get("outcome", "")).casefold()
+            if "mündlich beantwortet" in text or "muendlich beantwortet" in text:
+                return "answered_oral"
+            if "schriftlich beantwortet" in text:
+                return "answered_written"
+    combined = f"{record.get('result_text', '')} {record.get('raw_result_text', '')}".casefold()
+    if "mündlich beantwortet" in combined or "muendlich beantwortet" in combined:
+        return "answered_oral"
+    if "schriftlich beantwortet" in combined:
+        return "answered_written"
+    return ""
 
 
 def classify_category(record: dict) -> str:
@@ -6692,7 +7640,7 @@ def viewer_topic(topic: dict) -> dict:
                 "record_id": record.get("record_id", ""),
                 "business_numbers": record.get("business_numbers", []),
                 "business_number": " ".join(str(value) for value in record.get("business_numbers", [])),
-                "result_source": german_result_source(str(record.get("result_source", ""))),
+                "result_source": german_result_source(str(record.get("result_source", "")), canonical_digra_url(str(record.get("digra_url", "")))),
                 "result_text": record.get("result_text", ""),
                 "status": german_status(str(record.get("status", ""))),
             }
@@ -6798,6 +7746,8 @@ def german_status(value: str) -> str:
         "rejected_majority": "mehrheitlich abgelehnt",
         "rejected": "abgelehnt",
         "source_available": "Quelle verfügbar",
+        "answered_oral": "mündlich beantwortet",
+        "answered_written": "schriftlich beantwortet",
         "assigned": "zugewiesen",
         "postponed": "vertagt",
         "unknown": "unklar",
@@ -6813,10 +7763,14 @@ def german_status_filter(value: str) -> str:
         return "Zur Kenntnis genommen"
     if value == "source_available":
         return "Quelle verfügbar"
+    if value in {"answered_oral", "answered_written"}:
+        return "Beantwortet"
     return german_status(value).capitalize()
 
 
-def german_result_source(value: str) -> str:
+def german_result_source(value: str, digra_url: str = "") -> str:
+    if value == "digra_fehlt" and digra_url:
+        return "DIGRA"
     return {
         "archiv": "Stadt-Graz-Protokoll",
         "digra": "DIGRA",
@@ -6826,6 +7780,8 @@ def german_result_source(value: str) -> str:
 
 
 def german_source_file(value: str) -> str:
+    if str(value or "").casefold().endswith((".docx", ".doc")):
+        return ""
     match = re.search(r"(?P<date>\d{4}-\d{2}-\d{2})", value)
     if match:
         return f"Protokoll {match.group('date')}.docx"
