@@ -225,15 +225,16 @@ Der Goldstandard enthält synthetische, bereinigte Fragen mit erwarteten `record
 ## Online-Betrieb
 
 Der wartungsarme Online-Standard ist GitHub Pages mit täglichem Neuaufbau über `.github/workflows/pages.yml`.
-Der Workflow lädt die letzten DIGRA-Sitzungen aus der öffentlichen Webseite, erzeugt lokale Zusammenfassungen, baut Themen und veröffentlicht nur die statische `public/index.html`.
-Temporäre JSONL-, Summary- und SQLite-Dateien bleiben im GitHub-Runner und werden nicht als Website-Artefakt veröffentlicht.
+Der Workflow lädt die letzten DIGRA-Sitzungen aus der öffentlichen Webseite, erzeugt lokale Zusammenfassungen, baut Themen und veröffentlicht nur die statische `index.html` in den Branch `gh-pages`.
+Temporäre JSONL-, Summary- und SQLite-Dateien bleiben im GitHub-Runner und werden nicht in den Website-Branch kopiert.
 
 Einmalig nötig:
 
-1. In GitHub unter `Settings -> Pages` als Quelle `GitHub Actions` auswählen.
-2. Änderungen nach `master` pushen.
-3. Den Workflow `publish public viewer` einmal manuell starten oder den täglichen Lauf abwarten.
-4. Die veröffentlichte URL im Deploy-Schritt des Workflows prüfen.
+1. In GitHub unter `Settings -> Pages` als Quelle `Deploy from a branch` auswählen.
+2. Branch `gh-pages` und Ordner `/ (root)` auswählen.
+3. Änderungen nach `master` pushen.
+4. Den Workflow `publish public viewer` einmal manuell starten oder den täglichen Lauf abwarten.
+5. Die veröffentlichte URL in den GitHub-Pages-Einstellungen prüfen.
 
 Der Betrieb braucht keine Cloud-KI, keine API-Schlüssel und keinen dauerhaft laufenden Server.
 Manuell eingegriffen werden muss nur, wenn `digra.graz.at` nicht erreichbar ist oder die DIGRA-HTML-Struktur so geändert wird, dass der öffentliche Importer angepasst werden muss.

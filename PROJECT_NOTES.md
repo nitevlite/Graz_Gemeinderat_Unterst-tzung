@@ -91,7 +91,7 @@ Aktuelle Ergebnisbehandlung:
 - Bei KI-Zusammenfassungen von Anträgen/Anfragen blendet der Viewer eine Einordnung ein, damit Forderungen einzelner Gemeinderatsmitglieder/Klubs nicht als Aussage der Gemeinde missverstanden werden.
 - Der Viewer hat zusätzliche Reiter `Baustellen`, `Tiefgaragen`, `Apotheken`, `Ärzte` und `Service & Ämter`. Baustellen werden aus der öffentlichen Stadt-Graz-Baustellenseite lokal in `out\baustellen_graz.html` gecacht und in der Karte angezeigt; der Cache bleibt aus Git draußen. Tiefgaragen nutzen bevorzugt den OGD-Datensatz `Parkgaragen Graz` mit `CC BY 4.0`; für die lokale Anzeige gibt es Koordinaten-Fallbacks, damit Punkte auch ohne Browser-Geocoding sichtbar sind. Live-Verfügbarkeit bleibt `unbekannt`. `Service & Ämter` nutzt eine kleine kuratierte Liste mit Quellenlinks und klarer Lizenznotiz; aktuelle Öffnungszeiten, Termine und Detailzuständigkeiten werden nur verlinkt.
 - Der Export-Reiter erzeugt öffentliche Baustellen-/Veranstaltungsdaten als JSON, CSV, RSS und ICS. Zusätzlich gibt es browser-lokale Abos nach Straße, Bezirk oder Zeitraum und einen lokalen Feedbackexport; beides bleibt statisches `localStorage`-Arbeitsmaterial ohne personenbezogene Veröffentlichung.
-- Die öffentliche Viewer-Version kann über GitHub Pages bereitgestellt werden. `.github/workflows/pages.yml` baut täglich aus DIGRA eine statische `public/index.html`; Arbeitsdateien wie JSONL und SQLite bleiben nur im GitHub-Runner.
+- Die öffentliche Viewer-Version kann über GitHub Pages bereitgestellt werden. `.github/workflows/pages.yml` baut täglich aus DIGRA eine statische `index.html` und publiziert sie in den Branch `gh-pages`; Arbeitsdateien wie JSONL und SQLite bleiben nur im GitHub-Runner.
 
 ## DIGRA-Abgleich
 

@@ -276,12 +276,13 @@ def suggest_question_summary_local(
         facts.append(f"Adressiert ist die Frage an {recipient}.")
     answer_summary = summarize_answer_text(answer)
     followup_answer_summary = summarize_answer_text(followup_answer)
+    concise_result = concise_question_result(record, result)
     if answer_summary:
         facts.append(f"Erfasste Antwort: {answer_summary}")
     elif followup_answer_summary:
         facts.append(f"Erfasste Antwort zur Nachfrage: {followup_answer_summary}")
     elif has_meaningful_result(result):
-        facts.append(f"Der dokumentierte Stand lautet: {result}.")
+        facts.append(f"Der dokumentierte Stand lautet: {concise_result}.")
     else:
         facts.append("Eine Antwort ist in der lokalen Datenbasis nicht erfasst.")
     if locations:
@@ -297,7 +298,7 @@ def suggest_question_summary_local(
     elif followup_answer_summary:
         easy.append(f"Zur Nachfrage ist kurz erfasst: {followup_answer_summary}")
     elif has_meaningful_result(result):
-        easy.append(f"Stand: {result}.")
+        easy.append(f"Stand: {concise_result}.")
     else:
         easy.append("In den lokalen Daten steht keine Antwort.")
     if locations:
@@ -311,6 +312,26 @@ def suggest_question_summary_local(
         "easy_language": " ".join(easy),
         **extras,
     }
+
+
+def concise_question_result(record: dict, result: str) -> str:
+    votes = record.get("votes", [])
+    if isinstance(votes, list) and votes:
+        for vote in votes:
+            if not isinstance(vote, dict):
+                continue
+            outcome_text = clean_text(str(vote.get("outcome_text", "")))
+            if outcome_text:
+                return outcome_text
+    text = clean_text(result)
+    match = re.search(
+        r"(?:^|: )((?:mündlich|muendlich|schriftlich)?\s*beantwortet|zur Kenntnis gebracht|zur Kenntnis genommen)\.?$",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        return clean_text(match.group(1))
+    return text
 
 
 def local_record_intro(record: dict) -> str:
@@ -490,6 +511,7 @@ def clean_text(value: str) -> str:
 def clean_summary_source_text(value: str) -> str:
     text = clean_text(value)
     text = remove_direct_quote_blocks(text)
+    text = strip_leading_digra_salutation(text)
     text = re.sub(r"\bOriginaltext\s+des\s+(?:Antrages|Antrags|der Anfrage)\s*:?", "", text, flags=re.IGNORECASE).strip()
     text = re.sub(r"\bEs wird folgender Antrag gestellt\s*:\s*", "Es wird beantragt: ", text, flags=re.IGNORECASE)
     text = re.sub(r"\bDer Gemeinderat wolle\s+gemäß\s+§\s*45\s+Abs\.\s*[^:]{0,260}\bbeschließen\s*:?", "Der Gemeinderat soll beschließen:", text, flags=re.IGNORECASE)
@@ -502,6 +524,60 @@ def clean_summary_source_text(value: str) -> str:
     text = re.sub(r"\bdeinerseits\b", "von zuständiger Seite", text, flags=re.IGNORECASE)
     text = re.sub(r"(^|[.!?]\s+)im Zuge\b", lambda match: f"{match.group(1)}Im Zuge", text)
     return clean_text(text)
+
+
+def strip_leading_digra_salutation(value: str) -> str:
+    text = clean_text(value)
+    text = re.sub(r"(?is)\bsehr geehrte damen und herren,\s*werte gäste,\s*", "", text).strip()
+    text = re.sub(r"(?is)\bsehr geehrte damen und herren(?:\s+der stadtregierung)?\s*[!,:;.-]?\s*", "", text).strip()
+    text = re.sub(
+        r"(?is)\bmeine geschätzten damen und herren,\s*ich darf sie auch wieder bitten,\s*"
+        r"den geräuschpegel im saal[^.?!]{0,220}[.?!]\s*",
+        "",
+        text,
+    ).strip()
+    text = re.sub(
+        r"(?is)\b(?:sehr geehrte?r?s?|werte?r?s?|liebe?r?s?|geschätzte?r?s?|geschaetzte?r?s?|meine geschätzten|meine geschaetzten)"
+        r"\s+(?:damen und herren|kolleginnen und kollegen|kolleginnen|kollegen|gäste|gaeste)"
+        r"(?:\s+[^.!?]{0,100})?[.!?]\s*",
+        "",
+        text,
+    ).strip()
+    text = re.sub(
+        r"(?is)\b(?:sehr geehrte?r?s?|werte?r?s?|liebe?r?s?|geschätzte?r?s?|geschaetzte?r?s?)"
+        r"\s+(?:frau|herr)?\s*"
+        r"(?:bürgermeisterin|buergermeisterin|bürgermeister|buergermeister|vizebürgermeisterin|vizebuergermeisterin|"
+        r"vizebürgermeister|vizebuergermeister|stadtrat|stadträtin|stadtraetin|gemeinderat|gemeinderätin|"
+        r"gemeinderaetin|bürger:innen|buerger:innen)\b"
+        r"\s*[!,:;.-]?\s*",
+        "",
+        text,
+    ).strip()
+    text = re.sub(
+        r"(?is)^(?:sehr geehrte?r?s?|werte?r?s?|liebe?r?s?|geschätzte?r?s?|geschaetzte?r?s?)"
+        r"\s+(?:frau|herr|damen und herren)?\s*"
+        r"(?:bürgermeisterin|buergermeisterin|bürgermeister|buergermeister|vizebürgermeisterin|vizebuergermeisterin|"
+        r"vizebürgermeister|vizebuergermeister|stadtrat|stadträtin|stadtraetin|gemeinderat|gemeinderätin|"
+        r"gemeinderaetin|kolleginnen und kollegen|"
+        r"kolleginnen|kollegen|bürger:innen|buerger:innen)?"
+        r"(?:\s+[A-ZÄÖÜ][^.!?,;:]{0,60})?"
+        r"\s*[!,:;.-]\s*",
+        "",
+        text,
+        count=1,
+    ).strip()
+    text = re.sub(
+        r"(?is)^(?:sehr geehrte?r?s?|werte?r?s?|liebe?r?s?|geschätzte?r?s?|geschaetzte?r?s?)"
+        r"\s+(?:frau|herr)?\s*"
+        r"(?:bürgermeisterin|buergermeisterin|bürgermeister|buergermeister|vizebürgermeisterin|vizebuergermeisterin|"
+        r"vizebürgermeister|vizebuergermeister|stadtrat|stadträtin|stadtraetin|gemeinderat|gemeinderätin|"
+        r"gemeinderaetin|bürger:innen|buerger:innen)?"
+        r"\s+(?=(?:seit|die|der|das|im|in|auf|nach|bereits|schon|wie|zur|zum|haben)\b)",
+        "",
+        text,
+        count=1,
+    ).strip()
+    return text or clean_text(value)
 
 
 def remove_direct_quote_blocks(value: str) -> str:

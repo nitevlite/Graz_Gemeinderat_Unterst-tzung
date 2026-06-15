@@ -165,6 +165,33 @@ def test_local_question_summary_neutralizes_deictic_answer_text():
     assert "von zuständiger Seite" in enriched[0]["ai_summary"]
 
 
+def test_local_question_summary_uses_concise_answered_status():
+    records = [
+        {
+            "meeting_date": "2026-05-21",
+            "title": "Frage für die Fragestunde (§ 16a GO-GR)",
+            "record_type": "question_hour",
+            "submitter": "GR Beispiel (ÖVP)",
+            "result_text": "Gemeinderat am 21.05.2026: mündlich beantwortet",
+            "votes": [
+                {
+                    "organ": "Gemeinderat",
+                    "date": "21.05.2026",
+                    "outcome": "source_available",
+                    "outcome_text": "mündlich beantwortet",
+                }
+            ],
+        }
+    ]
+
+    enriched = annotate_record_summaries(records, provider="local")
+
+    assert "Der dokumentierte Stand lautet: mündlich beantwortet." in enriched[0]["ai_summary"]
+    assert "Stand: mündlich beantwortet." in enriched[0]["ai_easy_language"]
+    assert "Gemeinderat am 21.05.2026: mündlich beantwortet" not in enriched[0]["ai_summary"]
+    assert "Gemeinderat am 21.05.2026: mündlich beantwortet" not in enriched[0]["ai_easy_language"]
+
+
 def test_local_summary_provider_fills_missing_without_http_client():
     client = FakeHttpClient()
     records = [
@@ -210,6 +237,30 @@ def test_local_summary_avoids_direct_quote_blocks():
     assert "“" not in enriched[0]["ai_summary"]
     assert "künstlerischen Spannweite" not in enriched[0]["ai_summary"]
     assert "erinnert an das Thema Leben und Wirken" in enriched[0]["ai_summary"]
+
+
+def test_local_summary_removes_speaker_salutations_from_source_text():
+    records = [
+        {
+            "meeting_date": "2025-07-03",
+            "title": "Budgetsanierungsmaßnahmengesetz 2025",
+            "record_type": "communication",
+            "submitter": "GR Kurt Luttenberger",
+            "result_text": "Antrag: einstimmig angenommen",
+            "source_snippet": (
+                "Budgetsanierungsmaßnahmengesetz 2025 GR Luttenberger: Sehr geehrte Damen und Herren, "
+                "werte Gäste, ich habe das Glück, dass ich ein akkordiertes Stück berichten kann. "
+                "Es geht um das zweite Budgetsanierungsmaßnahmengesetz 2025."
+            ),
+        }
+    ]
+
+    enriched = annotate_record_summaries(records, provider="local")
+
+    assert "Sehr geehrte" not in enriched[0]["ai_summary"]
+    assert "Sehr geehrte" not in enriched[0]["ai_easy_language"]
+    assert "werte Gäste" not in enriched[0]["ai_summary"]
+    assert "zweite Budgetsanierungsmaßnahmengesetz" in enriched[0]["ai_summary"]
 
 
 def test_local_summary_repairs_motion_formula_and_abbreviation_cutoff():

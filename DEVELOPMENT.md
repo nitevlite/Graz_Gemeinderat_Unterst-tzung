@@ -139,9 +139,9 @@ DIGRA-URLs werden als externe Links mit `target="_blank"` gerendert.
 - täglich um 03:17 UTC
 - bei Änderungen an Workflow, `graz_protocols/**` oder `requirements.txt` auf `master`
 
-Der Build schreibt Arbeitsdaten nur in `public_work/` im GitHub-Runner und veröffentlicht danach ausschließlich `public/` als GitHub-Pages-Artefakt.
+Der Build schreibt Arbeitsdaten nur in `public_work/` im GitHub-Runner und veröffentlicht danach ausschließlich `index.html` und `.nojekyll` in den Branch `gh-pages`.
 Die erzeugte Seite ist eine statische HTML-Datei; es gibt keinen produktiven Python-Server und keine laufenden Kosten.
-Vor dem ersten produktiven Lauf muss im Repository unter `Settings -> Pages` die Quelle `GitHub Actions` gesetzt sein.
+Vor dem ersten produktiven Lauf muss im Repository unter `Settings -> Pages` die Quelle `Deploy from a branch`, Branch `gh-pages`, Ordner `/ (root)` gesetzt sein.
 Der Viewer setzt `noindex,nofollow,noarchive`. Das reduziert Suchmaschinen-Auffindbarkeit, ist aber kein Zugriffsschutz.
 
 ## Statisches Amts-MVP

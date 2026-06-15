@@ -92,6 +92,6 @@ KI bleibt optional. Der Standardbetrieb darf keine kostenpflichtige Cloud-KI, ex
 
 ## Öffentliche Website
 
-Für GitHub Pages darf nur der statisch erzeugte Viewer als Website-Artefakt veröffentlicht werden.
-Build-Zwischendaten wie JSONL, Summary-JSON, SQLite-Datenbanken, DIGRA-Caches, lokale Archivassets oder heruntergeladene Quelldokumente dürfen nicht in `public/` kopiert und nicht committed werden.
-Der Pages-Workflow nutzt `public_work/` nur als temporären Runner-Arbeitsordner und veröffentlicht ausschließlich `public/`.
+Für GitHub Pages darf nur der statisch erzeugte Viewer veröffentlicht werden.
+Build-Zwischendaten wie JSONL, Summary-JSON, SQLite-Datenbanken, DIGRA-Caches, lokale Archivassets oder heruntergeladene Quelldokumente dürfen nicht in `public/` oder den Branch `gh-pages` kopiert werden.
+Der Pages-Workflow nutzt `public_work/` nur als temporären Runner-Arbeitsordner und veröffentlicht ausschließlich `index.html` und `.nojekyll` nach `gh-pages`.
