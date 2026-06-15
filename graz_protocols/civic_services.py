@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from html.parser import HTMLParser
+import re
+from urllib.parse import urljoin
+from urllib.request import Request, urlopen
 
 
 GRAZ_OFFICES_URL = "https://www.graz.at/cms/beitrag/10019383/7743948/Aemter_und_Politik.html"
+GRAZ_COUNCIL_MEMBERS_URL = "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html"
+GRAZ_COUNCIL_SEATS_URL = "https://www.graz.at/cms/ziel/7769043/DE/"
+GRAZ_CITY_GOVERNMENT_URL = "https://www.graz.at/cms/ziel/7765844/DE/"
 GRAZ_PHONEBOOK_URL = "https://www.graz.at/cms/ziel/7536192/"
 GRAZ_APPOINTMENTS_URL = "https://www.graz.at/termine"
 GRAZ_CONTACT_FORM_URL = "https://www.graz.at/cms/beitrag/10303721/8425359/"
@@ -13,6 +20,7 @@ GRAZ_WEBSITE_REUSE = (
     "Im Open-Source-Projekt werden nur kurze, faktische Servicehinweise und Links geführt. "
     "Aktuelle Öffnungszeiten, Zuständigkeiten und Formulare bleiben auf den offiziellen Seiten."
 )
+GRAZ_HTTP_TIMEOUT_SECONDS = 8
 
 
 @dataclass(frozen=True)
@@ -34,9 +42,241 @@ class CivicService:
     reuse: str = GRAZ_WEBSITE_REUSE
 
 
+@dataclass(frozen=True)
+class CouncilGroup:
+    name: str
+    short_name: str
+    seats: int
+    color: str
+    text_color: str
+    members: list[dict[str, str]]
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class CitySenateGroup:
+    name: str
+    short_name: str
+    seats: int
+    color: str
+    text_color: str
+    members: list[dict[str, str]]
+
+
 def load_civic_services() -> tuple[list[dict], dict]:
     services = [asdict(service) for service in CIVIC_SERVICES]
     return services, civic_service_summary(records=len(services))
+
+
+def load_civic_council(fetch_live: bool = False) -> dict:
+    live_groups = load_live_council_groups() if fetch_live else []
+    live_senate_groups = load_live_city_senate_groups() if fetch_live else []
+    council_groups = live_groups
+    if not live_groups:
+        council_groups = [asdict(group) for group in COUNCIL_GROUPS]
+    senate_groups = live_senate_groups
+    if not live_senate_groups:
+        senate_groups = [asdict(group) for group in CITY_SENATE_GROUPS]
+    return {
+        "title": "Grazer Gemeinderat",
+        "period": "aktuelle Zusammensetzung laut graz.at" if live_groups else "lokaler Fallback nach graz.at",
+        "total_seats": sum(group["seats"] for group in council_groups),
+        "majority_seats": (sum(group["seats"] for group in council_groups) // 2) + 1,
+        "groups": council_groups,
+        "city_senate": {
+            "title": "Stadtregierung",
+            "total_seats": sum(group["seats"] for group in senate_groups),
+            "groups": senate_groups,
+        },
+        "sources": {
+            "members_url": GRAZ_COUNCIL_MEMBERS_URL,
+            "seats_url": GRAZ_COUNCIL_SEATS_URL,
+            "city_government_url": GRAZ_CITY_GOVERNMENT_URL,
+            "attribution": "Stadt Graz",
+            "license": GRAZ_WEBSITE_LICENSE,
+            "reuse": GRAZ_WEBSITE_REUSE,
+        },
+    }
+
+
+def load_live_council_groups() -> list[dict]:
+    try:
+        request = Request(GRAZ_COUNCIL_MEMBERS_URL, headers={"User-Agent": "graz-protocols-viewer/1.0"})
+        with urlopen(request, timeout=GRAZ_HTTP_TIMEOUT_SECONDS) as response:
+            html_text = response.read().decode("utf-8", errors="replace")
+    except OSError:
+        return []
+    return parse_council_member_links(html_text, GRAZ_COUNCIL_MEMBERS_URL)
+
+
+def load_live_city_senate_groups() -> list[dict]:
+    try:
+        request = Request(GRAZ_CITY_GOVERNMENT_URL, headers={"User-Agent": "graz-protocols-viewer/1.0"})
+        with urlopen(request, timeout=GRAZ_HTTP_TIMEOUT_SECONDS) as response:
+            html_text = response.read().decode("utf-8", errors="replace")
+    except OSError:
+        return []
+    return parse_city_senate_member_links(html_text, GRAZ_CITY_GOVERNMENT_URL)
+
+
+def parse_council_member_links(html_text: str, base_url: str = GRAZ_COUNCIL_MEMBERS_URL) -> list[dict]:
+    parser = CouncilMemberLinkParser(base_url)
+    parser.feed(html_text)
+    grouped: dict[str, list[dict[str, str]]] = {}
+    for link in parser.links:
+        party = council_party_from_label(link["label"])
+        name = council_member_name_from_label(link["label"])
+        if not party or not name:
+            continue
+        grouped.setdefault(party, [])
+        if all(existing["name"] != name for existing in grouped[party]):
+            grouped[party].append({"name": name, "url": link["url"]})
+    groups: list[dict] = []
+    for party, members in grouped.items():
+        meta = COUNCIL_GROUP_META.get(party, fallback_council_group_meta(party))
+        groups.append(
+            {
+                "name": meta["name"],
+                "short_name": meta["short_name"],
+                "seats": len(members),
+                "color": meta["color"],
+                "text_color": meta["text_color"],
+                "members": members,
+                "note": meta.get("note", ""),
+            }
+        )
+    return sorted(groups, key=lambda group: (-group["seats"], COUNCIL_GROUP_ORDER.get(group["short_name"], 99), group["short_name"]))
+
+
+def parse_city_senate_member_links(html_text: str, base_url: str = GRAZ_CITY_GOVERNMENT_URL) -> list[dict]:
+    parser = CouncilMemberLinkParser(base_url)
+    parser.feed(html_text)
+    grouped: dict[str, list[dict[str, str]]] = {}
+    for link in parser.links:
+        label = link["label"]
+        if not city_senate_label_has_role(label):
+            continue
+        party = council_party_from_label(label)
+        name = city_senate_member_name_from_label(label)
+        if not party or not name:
+            continue
+        grouped.setdefault(party, [])
+        if all(existing["name"] != name for existing in grouped[party]):
+            grouped[party].append({"name": name, "url": link["url"]})
+    groups: list[dict] = []
+    for party, members in grouped.items():
+        meta = COUNCIL_GROUP_META.get(party, fallback_council_group_meta(party))
+        groups.append(
+            {
+                "name": meta["name"],
+                "short_name": meta["short_name"],
+                "seats": len(members),
+                "color": meta["color"],
+                "text_color": meta["text_color"],
+                "members": members,
+            }
+        )
+    return sorted(groups, key=lambda group: (CITY_SENATE_GROUP_ORDER.get(group["short_name"], 99), group["short_name"]))
+
+
+class CouncilMemberLinkParser(HTMLParser):
+    def __init__(self, base_url: str) -> None:
+        super().__init__()
+        self.base_url = base_url
+        self.links: list[dict[str, str]] = []
+        self._href = ""
+        self._parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() != "a":
+            return
+        href = dict(attrs).get("href") or ""
+        if not href:
+            return
+        self._href = urljoin(self.base_url, href)
+        self._parts = []
+
+    def handle_data(self, data: str) -> None:
+        if self._href:
+            self._parts.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() != "a" or not self._href:
+            return
+        label = re.sub(r"\s+", " ", "".join(self._parts)).strip()
+        if label and "(" in label and ")" in label:
+            self.links.append({"label": label, "url": self._href})
+        self._href = ""
+        self._parts = []
+
+
+def council_party_from_label(label: str) -> str:
+    full_text = label.casefold()
+    party_text = " ".join(re.findall(r"\(([^)]*)\)", label)).casefold()
+    if "kpö" in party_text or "kpoe" in party_text:
+        return "KPÖ"
+    if "övp" in party_text or "oevp" in party_text:
+        return "ÖVP"
+    if "grüne" in party_text or "gruene" in party_text:
+        return "Grüne"
+    if "spö" in party_text or "spoe" in party_text:
+        return "SPÖ"
+    if "freier gemeinderatsklub" in party_text or "freier gemeinderatsklub" in full_text or "freie" in party_text:
+        return "KFG"
+    if "neos" in party_text:
+        return "NEOS"
+    if "fpö" in party_text or "fpoe" in party_text:
+        return "FPÖ"
+    if "ohne klub" in party_text:
+        return "ohne Klub"
+    return ""
+
+
+def council_member_name_from_label(label: str) -> str:
+    name = re.sub(r"\([^)]*\)", "", label)
+    name = re.sub(r"\s+", " ", name).strip(" ,")
+    if "," in name:
+        last, first = [part.strip(" ,") for part in name.split(",", 1)]
+        name = f"{strip_council_name_titles(first)} {last}".strip()
+    else:
+        name = strip_council_name_titles(name)
+    return re.sub(r"\s+", " ", name).strip()
+
+
+def city_senate_label_has_role(label: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(?:bürgermeisterin|bürgermeisterin-stellvertreterin|vizebürgermeisterin|stadtrat|stadträtin|str|strin)\b",
+            label,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def city_senate_member_name_from_label(label: str) -> str:
+    name = re.sub(r"\([^)]*\)", "", label)
+    name = re.sub(r"\b(?:Bürgermeisterin-Stellvertreterin|Vizebürgermeisterin|Bürgermeisterin|Stadträtin|Stadtrat|StRin|StR)\b\.?", "", name)
+    name = re.sub(r"\b(?:Freier Gemeinderatsklub|Gemeinderatsklub)\b", "", name)
+    name = re.sub(r"\s+", " ", name).strip(" ,")
+    return council_member_name_from_label(name)
+
+
+def strip_council_name_titles(value: str) -> str:
+    title_pattern = (
+        r"\b(?:DI\.?\s*in|Dipl\.-Museol\.?\s*in|Dipl\.-Wirtschaftsing\.?\s*in|Dipl\.-Ing\.?\s*in|"
+        r"Dipl\.-Ing\.?|Univ\.-Prof\.?\s*in|Mag\.?\s*a|Mag\.?|Dr\.?\s*in|Dr\.?|MBA|MA|MPH|BSc|BA|FH|med\.?|in)\b"
+    )
+    cleaned = re.sub(title_pattern, "", value)
+    cleaned = re.sub(r"\s*\.\s*", " ", cleaned)
+    return re.sub(r"\s+", " ", cleaned).strip(" ,")
+
+
+def fallback_council_group_meta(party: str) -> dict[str, str]:
+    return {"name": party, "short_name": party, "color": "#64748b", "text_color": "#ffffff"}
+
+
+def council_member(name: str, url: str = "") -> dict[str, str]:
+    return {"name": name, "url": url}
 
 
 def civic_service_summary(records: int | None = None) -> dict:
@@ -51,6 +291,150 @@ def civic_service_summary(records: int | None = None) -> dict:
         "records": records if records is not None else len(CIVIC_SERVICES),
         "reuse": GRAZ_WEBSITE_REUSE,
     }
+
+
+COUNCIL_GROUP_META = {
+    "KPÖ": {"name": "KPÖ", "short_name": "KPÖ", "color": "#b91c1c", "text_color": "#ffffff", "note": "größter Klub"},
+    "ÖVP": {"name": "ÖVP", "short_name": "ÖVP", "color": "#111827", "text_color": "#ffffff"},
+    "Grüne": {"name": "GRÜNE", "short_name": "Grüne", "color": "#16a34a", "text_color": "#ffffff"},
+    "SPÖ": {"name": "SPÖ", "short_name": "SPÖ", "color": "#dc2626", "text_color": "#ffffff"},
+    "KFG": {
+        "name": "(Korruptions-)Freier Gemeinderatsklub",
+        "short_name": "KFG",
+        "color": "#f59e0b",
+        "text_color": "#111827",
+    },
+    "NEOS": {"name": "NEOS", "short_name": "NEOS", "color": "#db2777", "text_color": "#ffffff"},
+    "FPÖ": {"name": "FPÖ", "short_name": "FPÖ", "color": "#2563eb", "text_color": "#ffffff"},
+    "ohne Klub": {"name": "ohne Klubzugehörigkeit", "short_name": "ohne Klub", "color": "#64748b", "text_color": "#ffffff"},
+}
+
+
+COUNCIL_GROUP_ORDER = {
+    "KPÖ": 1,
+    "ÖVP": 2,
+    "Grüne": 3,
+    "SPÖ": 4,
+    "KFG": 5,
+    "NEOS": 6,
+    "FPÖ": 7,
+    "ohne Klub": 8,
+}
+
+
+CITY_SENATE_GROUP_ORDER = {
+    "KPÖ": 1,
+    "ÖVP": 2,
+    "Grüne": 3,
+    "KFG": 4,
+    "SPÖ": 5,
+    "NEOS": 6,
+    "FPÖ": 7,
+    "ohne Klub": 8,
+}
+
+
+COUNCIL_GROUPS = [
+    CouncilGroup(
+        "KPÖ",
+        "KPÖ",
+        15,
+        "#b91c1c",
+        "#ffffff",
+        [
+            council_member("Thomas Alic"),
+            council_member("Christine Braunersreuther"),
+            council_member("Metin Deveci"),
+            council_member("Christopher Fröch"),
+            council_member("Daniela Gamsjäger-Katzensteiner"),
+            council_member("Elke Heinrichs"),
+            council_member("Miriam Herlicska"),
+            council_member("Amrei Läßer"),
+            council_member("Kurt Luttenberger"),
+            council_member("Sahar Mohsenzada"),
+            council_member("Mina Naghibi"),
+            council_member("Nenad Savić"),
+            council_member("Christian Sikora"),
+            council_member("Ulrike Taberhofer"),
+            council_member("Philipp Ulrich"),
+        ],
+        "größter Klub",
+    ),
+    CouncilGroup(
+        "ÖVP",
+        "ÖVP",
+        13,
+        "#111827",
+        "#ffffff",
+        [
+            council_member("Eva Derler"),
+            council_member("Barbara Gartner-Hofbauer"),
+            council_member("Anna Hopper", "https://www.graz.at/cms/beitrag/10379867/7768635/Gemeinderaetin_Anna_Hopper_OeVP.html"),
+            council_member("Markus Huber"),
+            council_member("Daisy Kopera"),
+            council_member("Marion Kreiner"),
+            council_member("Cornelia Leban-Ibrakovic"),
+            council_member("Peter Piffl-Percevic"),
+            council_member("Sabine Pogner"),
+            council_member("Elisabeth Potzinger"),
+            council_member("Gerhard Spath"),
+            council_member("Stefan Stücklschweiger"),
+            council_member("Georg Topf"),
+        ],
+    ),
+    CouncilGroup(
+        "GRÜNE",
+        "Grüne",
+        9,
+        "#16a34a",
+        "#ffffff",
+        [
+            council_member("Tristan Ammerer"),
+            council_member("Zeynep Aygan-Romaner"),
+            council_member("Karl Dreisiebner"),
+            council_member("Gerhard Hackenberger"),
+            council_member("Christian Kozina-Voit"),
+            council_member("Anna-Sophie Slama"),
+            council_member("Hannah Vogel"),
+            council_member("Alexandra Würz-Stalder"),
+            council_member("Manuela Wutte"),
+        ],
+    ),
+    CouncilGroup(
+        "SPÖ",
+        "SPÖ",
+        4,
+        "#dc2626",
+        "#ffffff",
+        [council_member("Arsim Gjergji"), council_member("Manuel Lenartitsch"), council_member("Anna Robosch"), council_member("Daniela Schlüsselberger")],
+    ),
+    CouncilGroup(
+        "(Korruptions-)Freier Gemeinderatsklub",
+        "KFG",
+        3,
+        "#f59e0b",
+        "#111827",
+        [council_member("Alexis Pascuttini"), council_member("Astrid Schleicher"), council_member("Michael Winter")],
+    ),
+    CouncilGroup("NEOS", "NEOS", 1, "#db2777", "#ffffff", [council_member("Philipp Pointner")]),
+    CouncilGroup("FPÖ", "FPÖ", 1, "#2563eb", "#ffffff", [council_member("Günter Wagner")]),
+    CouncilGroup("ohne Klubzugehörigkeit", "ohne Klub", 2, "#64748b", "#ffffff", [council_member("Mario Eustacchio"), council_member("Sabine Reininghaus")]),
+]
+
+
+CITY_SENATE_GROUPS = [
+    CitySenateGroup("KPÖ", "KPÖ", 3, "#b91c1c", "#ffffff", [council_member("Elke Kahr"), council_member("Manfred Eber"), council_member("Robert Krotzer")]),
+    CitySenateGroup("ÖVP", "ÖVP", 2, "#111827", "#ffffff", [council_member("Kurt Hohensinner"), council_member("Claudia Unger")]),
+    CitySenateGroup("GRÜNE", "Grüne", 1, "#16a34a", "#ffffff", [council_member("Judith Schwentner")]),
+    CitySenateGroup(
+        "(Korruptions-)Freier Gemeinderatsklub",
+        "KFG",
+        1,
+        "#f59e0b",
+        "#111827",
+        [council_member("Claudia Schönbacher")],
+    ),
+]
 
 
 CIVIC_SERVICES = [
