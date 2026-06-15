@@ -825,6 +825,43 @@ def test_viewer_filters_budget_deckungsring_and_keeps_weinzoedl_location():
     assert "Deckungsring" not in record["orte"]
 
 
+def test_viewer_suppresses_broad_document_location_context_from_normal_places():
+    broad_source = (
+        "Das Stadtentwicklungskonzept behandelt mehrere Änderungspunkte. "
+        "In zwei Fällen geht es um die Mitterstraße und die Paulustorgasse. "
+        "Weitere Abschnitte nennen Bergstraße, Köstenbaumgasse, Brückengasse, "
+        "Brucknerstraße, Petersgasse und Sandgasse. "
+    ) * 12
+    record = viewer_record(
+        {
+            "meeting_date": "2025-10-16",
+            "record_type": "agenda_item",
+            "status": "accepted_unanimous",
+            "title": "4.08 B Stadtentwicklungskonzept der Landeshauptstadt Graz - 8. Änderung Teil B",
+            "source_snippet": broad_source,
+            "ai_easy_language": "Genannte Orte: Mitterstraße, Paulustorgasse, Bergstraße.",
+            "locations": [
+                "Mitterstraße",
+                "Paulustorgasse",
+                "Bergstraße",
+                "Köstenbaumgasse",
+                "Brückengasse",
+                "Brucknerstraße",
+                "Petersgasse",
+                "Sandgasse",
+            ],
+            "location_details": [
+                {"value": "Mitterstraße", "context": "Mitterstraße"},
+                {"value": "Paulustorgasse", "context": "Paulustorgasse"},
+                {"value": "Bergstraße", "context": "Bergstraße"},
+                {"value": "Köstenbaumgasse", "context": "Köstenbaumgasse"},
+            ],
+        }
+    )
+
+    assert record["orte"] == []
+
+
 def test_viewer_renders_ai_record_summaries_as_expandable_details():
     html = build_html(
         [

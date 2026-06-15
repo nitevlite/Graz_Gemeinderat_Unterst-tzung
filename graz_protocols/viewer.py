@@ -7406,18 +7406,10 @@ def inferred_viewer_locations(record: dict, result_text: str = "") -> list[str]:
         for value in record.get("locations", [])
         if str(value).strip() and public_viewer_location(str(value))
     ]
-    text = " ".join(
-        str(value or "")
-        for value in [
-            record.get("title", ""),
-            result_text,
-            record.get("result_text", ""),
-            record.get("ai_summary", ""),
-            record.get("ai_easy_language", ""),
-            record.get("ai_why_interesting", ""),
-            record.get("section", ""),
-        ]
-    )
+    if broad_location_context(record, existing):
+        direct_text = direct_location_text(record, result_text)
+        existing = [value for value in existing if location_value_in_text(value, direct_text)]
+    text = direct_location_text(record, result_text)
     inferred = [
         str(detail.get("value", "")).strip()
         for detail in extract_location_details(text)
@@ -7432,6 +7424,43 @@ def inferred_viewer_locations(record: dict, result_text: str = "") -> list[str]:
         ):
             inferred.append(label)
     return unique_location_values([*existing, *inferred])
+
+
+def direct_location_text(record: dict, result_text: str = "") -> str:
+    return " ".join(
+        str(value or "")
+        for value in [
+            record.get("title", ""),
+            result_text,
+            record.get("result_text", ""),
+            record.get("section", ""),
+        ]
+    )
+
+
+def broad_location_context(record: dict, existing_locations: list[str]) -> bool:
+    details = record.get("location_details", [])
+    detail_count = sum(
+        1
+        for detail in details
+        if isinstance(detail, dict) and public_viewer_location(str(detail.get("value", "")))
+    ) if isinstance(details, list) else 0
+    text = " ".join(
+        str(value or "")
+        for value in [
+            record.get("source_snippet", ""),
+            record.get("ai_summary", ""),
+            record.get("ai_easy_language", ""),
+            record.get("ai_why_interesting", ""),
+        ]
+    )
+    return len(existing_locations) >= 4 and (detail_count >= 4 or len(text) >= 1800)
+
+
+def location_value_in_text(location: str, text: str) -> bool:
+    normalized_location = normalize_location_match_text(location)
+    normalized_text = normalize_location_match_text(text)
+    return bool(re.search(rf"(?<!\w){re.escape(normalized_location)}(?!\w)", normalized_text))
 
 
 def public_viewer_location(value: str) -> bool:
