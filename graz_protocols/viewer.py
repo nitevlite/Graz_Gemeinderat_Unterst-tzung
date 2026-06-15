@@ -692,9 +692,9 @@ def build_html(
       display: none;
     }}
     .title {{ min-width: 190px; max-width: 300px; font-weight: 600; }}
-    .business-col {{ width: 104px; min-width: 96px; max-width: 124px; overflow-wrap: anywhere; word-break: break-word; }}
-    .amount-col {{ width: 145px; min-width: 130px; max-width: 210px; overflow-wrap: anywhere; word-break: break-word; }}
-    .places-col {{ min-width: 220px; max-width: 340px; }}
+    .business-col {{ width: 124px; min-width: 112px; max-width: 150px; overflow-wrap: anywhere; word-break: break-word; }}
+    .amount-col,
+    .places-col {{ width: 180px; min-width: 165px; max-width: 250px; overflow-wrap: anywhere; word-break: break-word; }}
     .status-col {{ width: 96px; min-width: 88px; max-width: 112px; overflow-wrap: anywhere; }}
     .status-col .source-link {{
       display: inline-block;
@@ -1649,11 +1649,16 @@ def build_html(
       position: relative;
       width: 24px;
       height: 24px;
+      min-width: 24px;
+      padding: 0;
+      box-sizing: border-box;
       border: 2px solid rgba(15, 23, 42, 0.22);
       border-radius: 999px;
+      appearance: none;
       background: var(--party-color);
       color: var(--party-text);
-      cursor: help;
+      cursor: pointer;
+      line-height: 1;
       outline: none;
       text-decoration: none;
       transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
@@ -1715,7 +1720,14 @@ def build_html(
       position: static;
       left: auto;
       top: auto;
+      width: 84px;
       transform: none;
+    }}
+    .council-senate .council-dot {{
+      width: 24px;
+      min-width: 24px;
+      height: 42px;
+      border-radius: 999px;
     }}
     .council-side {{
       display: grid;
@@ -3128,8 +3140,7 @@ def build_html(
       if (/archiv|anwesenheit/i.test(record.typ || '')) return false;
       const date = String(record.datum || '').slice(0, 10);
       if (!/^\\d{{4}}-\\d{{2}}-\\d{{2}}$/.test(date)) return false;
-      if (date >= todayIsoDate()) return true;
-      return !isFinalCouncilOutcome(record);
+      return date >= todayIsoDate();
     }}
 
     function civicFeedbackRecords() {{
@@ -6063,7 +6074,10 @@ def build_html(
     }}
 
     function tableStatusLabelHtml(value) {{
-      return escapeHtml(value).replace(/\\s+\\(([^)]+)\\)$/u, '<br>($1)');
+      return escapeHtml(value)
+        .replace(/\\s+\\(([^)]+)\\)$/u, '<br>($1)')
+        .replace(/^zur\\s+Kenntnis\\s+genommen$/iu, 'zur Kenntnis<br>genommen')
+        .replace(/^mehrheitlich\\s+abgelehnt$/iu, 'mehrheitlich<br>abgelehnt');
     }}
 
     function tableMobileSummaryHtml(record) {{

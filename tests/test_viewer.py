@@ -664,9 +664,36 @@ def test_civic_feedback_keeps_future_records_with_existing_digra_results():
         {"records_by_status": {"accepted_unanimous": 1}},
     )
 
-    assert "if (date >= todayIsoDate()) return true" in html
+    assert "return date >= todayIsoDate();" in html
     assert "Bereits sichtbare DIGRA-Ergebnisse können Vorberatung" in html
     assert "Zukünftiges Stück mit Vorberatung" in html
+
+
+def test_civic_feedback_does_not_keep_past_nonfinal_records():
+    html = build_html(
+        [
+            {
+                "agenda_item_no": 8,
+                "amounts": [],
+                "business_numbers": ["A 10/2024"],
+                "digra_url": "https://digra.graz.at/document?ref=33333333-3333-4333-8333-333333333333",
+                "meeting_date": "2024-01-15",
+                "parser_confidence": 1.0,
+                "record_id": "past-open-record",
+                "record_type": "agenda_item",
+                "result_source": "digra_missing",
+                "result_text": "",
+                "section": "Tagesordnung",
+                "source_file": "digra",
+                "status": "unknown",
+                "title": "Altes Stück ohne finales Ergebnis",
+            }
+        ],
+        {"records_by_status": {"unknown": 1}},
+    )
+
+    assert "return !isFinalCouncilOutcome(record)" not in html
+    assert "return date >= todayIsoDate();" in html
 
 
 def test_viewer_assigns_unclear_written_submissions():
