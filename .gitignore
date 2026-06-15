@@ -22,6 +22,13 @@ tmp/
 *.sqlite3
 *.db
 *.jsonl
+graz-baustellen-feed.json
+graz-baustellen-feed.csv
+graz-baustellen.ics
+graz-baustellen-feed.rss
+graz-baustellen-abos.json
+graz-baustellen-feedback.json
+graz-baustellen-auditlog.json
 
 # Python and tooling.
 .venv/

@@ -45,6 +45,20 @@ def test_street_name_list_filters_non_street_locations():
     assert [location["type"] for location in records[0].location_details] == ["street"]
 
 
+def test_location_extraction_skips_land_register_and_parcel_shortcuts():
+    paragraphs = [
+        "Protokoll über die ordentliche öffentliche Sitzung des Gemeinderates am 14.11.2024",
+        "Tagesordnung",
+        "Stk. 9) A8-000001/2024 Sanierung Beispielgasse, KG St. Peter, EZ 1353, Gdst. Nr. 123/4",
+        "Der Antrag wurde einstimmig angenommen.",
+    ]
+
+    records = parse_protocol(paragraphs, "2024-11-14_Protokoll.docx")
+
+    assert records[0].locations == ["Beispielgasse"]
+    assert [location["type"] for location in records[0].location_details] == ["street"]
+
+
 def test_extracts_all_streets_from_hyphenated_planning_title():
     paragraphs = [
         "Protokoll über die ordentliche öffentliche Sitzung des Gemeinderates am 22.01.2026",
@@ -226,6 +240,73 @@ def test_extracts_written_question_heading_without_stk_number():
     assert records[0].result_text == "Verfahren: zugewiesen"
     assert records[0].raw_result_text == "Der geschäftsordnungsmäßigen Behandlung zugewiesen."
     assert records[0].submitter == "Berichterstatter: KlObm Beispiel, KFG"
+
+
+def test_written_question_without_result_is_assigned():
+    paragraphs = [
+        ParserParagraph("Protokoll über die öffentliche Sitzung des Gemeinderates am 14.11.2024", "Normal", 1),
+        ParserParagraph("Anfragen (schriftlich)", "Heading1", 2),
+        ParserParagraph("Kontrolle von Baustellenumleitungen", "Heading2", 3),
+        ParserParagraph("Originaltext der Anfrage:", "Normal", 4),
+        ParserParagraph("Welche Kontrollen sind geplant?", "Normal", 5),
+    ]
+
+    records = parse_protocol(paragraphs, "2024-11-14_Protokoll.docx")
+
+    assert len(records) == 1
+    assert records[0].record_type == "written_question"
+    assert records[0].status == "assigned"
+    assert records[0].result_text == "Verfahren: zugewiesen"
+
+
+def test_extracts_question_hour_as_own_record_type():
+    paragraphs = [
+        ParserParagraph("Protokoll über die öffentliche Sitzung des Gemeinderates am 14.11.2024", "Normal", 1),
+        ParserParagraph("Fragestunde", "Heading1", 2),
+        ParserParagraph("Verkehrssituation Andreas-Hofer-Platz", "Heading2", 3),
+        ParserParagraph("GR Beispiel fragt, wie die Umleitung geplant ist.", "Normal", 4),
+        ParserParagraph("Stadtrat Muster antwortet, dass eine Prüfung läuft.", "Normal", 5),
+        ParserParagraph("Zusatzfrage: Wird die Neutorgasse berücksichtigt?", "Normal", 6),
+        ParserParagraph("Antwort: Das wird mitgeprüft.", "Normal", 7),
+    ]
+
+    records = parse_protocol(paragraphs, "2024-11-14_Protokoll.docx")
+
+    assert len(records) == 1
+    assert records[0].record_type == "question_hour"
+    assert records[0].section == "Fragestunde"
+    assert records[0].title == "Verkehrssituation Andreas-Hofer-Platz"
+    assert "Zusatzfrage" in records[0].source_snippet
+
+
+def test_extracts_communication_as_noted_record():
+    paragraphs = [
+        ParserParagraph("Protokoll über die öffentliche Sitzung des Gemeinderates am 14.11.2024", "Normal", 1),
+        ParserParagraph("Mitteilungen", "Heading1", 2),
+        ParserParagraph("Stk. 1) Bericht des Bürgermeisters über aktuelle Angelegenheiten", "Heading2", 3),
+        ParserParagraph("Der Bürgermeister berichtet über den Stand der Arbeiten.", "Normal", 4),
+    ]
+
+    records = parse_protocol(paragraphs, "2024-11-14_Protokoll.docx")
+
+    assert len(records) == 1
+    assert records[0].record_type == "communication"
+    assert records[0].section == "Mitteilungen"
+    assert records[0].status == "noted"
+    assert records[0].result_text == "zur Kenntnis genommen"
+
+
+def test_recognizes_zur_kenntnis_gebracht_as_noted_status():
+    paragraphs = [
+        ParserParagraph("Protokoll über die öffentliche Sitzung des Gemeinderates am 14.11.2024", "Normal", 1),
+        ParserParagraph("Mitteilungen", "Heading1", 2),
+        ParserParagraph("Stk. 1) Leistungsbericht Haus Graz 2025", "Heading2", 3),
+        ParserParagraph("Der Leistungsbericht wurde dem Gemeinderat zur Kenntnis gebracht.", "Normal", 4),
+    ]
+
+    records = parse_protocol(paragraphs, "2024-11-14_Protokoll.docx")
+
+    assert records[0].status == "noted"
 
 
 def test_extracts_submitter_from_written_motion_reporter():

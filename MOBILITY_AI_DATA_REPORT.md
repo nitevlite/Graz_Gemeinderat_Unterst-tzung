@@ -31,12 +31,12 @@ Funktion:
   - Tiefgaragen
   - optional zusätzliche Verkehrs-/Stadtdaten
 
-Technisch am besten lokal über Ollama:
+Technisch ist der Start-Tab jetzt zuerst eine kostenlose lokale Quellenantwort:
 
-- Modell: `qwen2.5:7b-instruct`
-- API: `http://localhost:11434/api/chat`
 - Kein OpenAI-Key nötig.
-- Kontext muss stark begrenzt werden: erst normale Suche/Filter lokal ausführen, dann nur die besten Treffer an die KI geben.
+- Kein Ollama-Modell für die Standardantwort nötig.
+- Die App durchsucht die lokalen Quellen, rankt die besten Treffer und gliedert die Antwort nach Beschluss, Antrag, Frage, Mitteilung und offenem Stand.
+- Kontext bleibt stark begrenzt: erst normale Suche/Filter lokal ausführen, dann nur die besten Treffer anzeigen und zitieren.
 
 Wichtig: Die KI darf nie ungeprüft als Quelle gelten. Antwort sollte Quellenblöcke nennen: Eintrag, Datum, DIGRA/Stadt-Graz-Link, Baustelle oder OGD-Datensatz.
 
@@ -256,6 +256,9 @@ Aktuell belastbar:
 
 - OGD liefert Standortdaten, aber keine Live-Verfügbarkeit.
 - Die App zeigt deshalb korrekt `Verfügbarkeit: unbekannt`.
+- Ergänzt: Für einzelne Garagen wird nur ein externer Prüflink zu `parken.at` angezeigt.
+- Keine Verfügbarkeit, Preise oder Standortdaten von `parken.at` übernehmen oder cachen, weil die Nutzungsbedingungen eine Weiterverwendung ohne Zustimmung einschränken.
+- Dieser Hinweis ist keine OGD-Live-API, wird als externe Quelle verlinkt und darf nicht als belastbarer städtischer Echtzeitdatensatz behandelt werden.
 
 Noch zu prüfen:
 
@@ -265,7 +268,7 @@ Noch zu prüfen:
 
 Empfehlung:
 
-- Keine Live-Verfügbarkeit scrapen, solange AGB/API-Lizenz nicht eindeutig ist.
+- Keine Live-Verfügbarkeit scrapen, solange AGB/API-Lizenz nicht eindeutig ist. `Parken.at` nur verlinken.
 - Für MVP: `unbekannt` behalten.
 - Später: Adapter pro Anbieter nur mit klar erlaubter API.
 
@@ -294,6 +297,9 @@ Verwendung:
 
 - Erste Wahl, wenn Datensatz offen mit Lizenz angegeben ist.
 - Meist gut für Open Source, wenn CC BY 4.0 oder vergleichbar.
+- `https://data.graz.gv.at/graz/verkehr/` ist der lokale Katalogeinstieg für Grazer Verkehrsdaten.
+- `Graz Linien - Fahrplandaten und Haltestellen` ist als Kandidat für ÖV-Haltestellen, Linien und Fahrpläne dokumentiert:
+  `https://data.europa.eu/data/datasets/7317b9ca-1349-4660-a2db-54e67160d469?locale=de`
 
 Prüfen pro Datensatz:
 
@@ -302,6 +308,12 @@ Prüfen pro Datensatz:
 - Download/API-URL
 - Attribution
 - Personenbezug oder Sicherheitsrisiken
+
+Umsetzung im Code:
+
+- `mobility_source_summary()["traffic_data_audit"]` enthält jetzt die auditierte Quellenliste.
+- Importiert werden weiterhin nur Quellen mit klarer lokaler Download-/Lizenzlage.
+- ÖV-Daten bleiben ein späterer Import-Ticketkandidat, weil Download-URL und Lizenz vor einem Commit-fähigen Import nochmals am konkreten Datensatz geprüft werden müssen.
 
 #### Mobilitydata Austria
 
@@ -319,6 +331,38 @@ Bewertung:
 - Sehr relevant für Baustellen-/Sperrenbewertung.
 - Lizenz und technische API müssen pro Datensatz geprüft werden.
 - Gute Kandidaten für eine spätere Import-Schicht.
+
+Audit 2026-06-09:
+
+- `Radzählstellenbericht`
+  - Quelle: `https://mobilitaetsdaten.gv.at/en/daten/radz%C3%A4hlstellenbericht`
+  - Inhalt: bundesweite Fahrradzähldaten, Stadt Graz als Dateneigentümer gelistet.
+  - Lizenzmodell laut Mobilitydata: `No licence - No contract`.
+  - Entscheidung: nur verlinken/manuell auswerten, nicht als offenen Rohdatensatz importieren.
+
+- `Graphenintegrations-Plattform Österreich (GIP.at)`
+  - Quelle: `https://mobilitaetsdaten.gv.at/en/daten/graphenintegrations-plattform-%C3%B6sterreich-gipat`
+  - Inhalt: Netz-/Zugänglichkeitsdaten, laufend aktualisiert.
+  - Lizenzmodell laut Mobilitydata: `No licence - No contract`; Data-Access-Link führt weiter zu data.gv.at und muss vor Import separat geprüft werden.
+  - Entscheidung: sehr relevant für Routing/Referenzierung, aber kein Import ohne geklärte Nutzungsbedingungen.
+
+- `Geplante Ereignismeldungen (EVIS.AT)`
+  - Quelle: `https://mobilitaetsdaten.gv.at/daten/geplante-ereignismeldungen-evisat`
+  - Inhalt: Baustellen, Veranstaltungen, Wintersperren, Sperren; DATEX II/XML; Aktualisierung 5 Minuten.
+  - Lizenzmodell: `Nutzungsvertrag mit Nutzungsgebühr`.
+  - Entscheidung: nicht ins Open-Source-MVP importieren; späterer lizenzierter Adapter möglich.
+
+- `Ungeplante Ereignismeldungen (EVIS.AT)`
+  - Quelle: `https://mobilitaetsdaten.gv.at/en/daten/ungeplante-ereignismeldungen-evisat`
+  - Inhalt: Unfall, Panne, Stau, Störung; DATEX II/XML; Aktualisierung 5 Minuten.
+  - Lizenzmodell: `Contract and Fee`.
+  - Entscheidung: nicht ohne Vertrag importieren.
+
+- `Verkehrslage (EVIS.AT)`
+  - Quelle: `https://mobilitaetsdaten.gv.at/daten/verkehrslage-evisat`
+  - Inhalt: Level of Service, Reisezeiten, Verkehrsaufkommen, Geschwindigkeiten; JSON; Aktualisierung 5 Minuten.
+  - Lizenzmodell: `Nutzungsvertrag mit Nutzungsgebühr`.
+  - Entscheidung: wertvoll für spätere Live-Bewertung, aber nicht Open-Source-Standarddatenquelle.
 
 #### Stadt Graz Mobilitätsseiten
 
@@ -362,7 +406,26 @@ Ein sinnvoller KI-Workflow:
 
 Wichtig: Die KI soll keine Geodaten erfinden. Sie darf nur aus den gefundenen Quellen argumentieren.
 
+Umsetzung im Viewer:
+
+- Die Baustellenprüfung berechnet jetzt zuerst eine Regelbewertung `niedrig`, `mittel` oder `hoch`.
+- Regeln berücksichtigen räumliche Treffer, zeitliche Überschneidung, aktuelle/künftige Baustellen, Totalsperre und sensible Orte wie LKH, Schule, Bahnhof, Stadion oder Innenstadt.
+- Danach werden Quellenblöcke aus Baustelleninfos, Gemeinderatseinträgen und Parkgaragen erzeugt.
+- Die Standardantwort wird lokal aus Regelbewertung, Quellen und Zusammenfassungsfeldern aufgebaut.
+- Wenn kein belastbarer Quellenkontext gefunden wird, erzeugt die App keine freie Antwort.
+
 ## Konkrete Nächste Tickets
+
+Umsetzungsstand 2026-06-09:
+
+- Erledigt: OGD-Parkgaragen-Encoding mit `utf-8-sig`, `cp1252`, `latin-1`.
+- Erledigt: Parkgaragenkarte nutzt bevorzugt OGD-Daten und fällt nur bei leerem OGD-Datensatz auf lokale Fallbacks zurück.
+- Erledigt: Baustellenzeiträume werden zu `start_date`, `end_date` und `time_status` normalisiert.
+- Erledigt: Baustellenkarte hat Statuschips, Statusfarben und Filter.
+- Erledigt: Baustellen- und Parkgaragenkarte haben Fortschrittsbalken.
+- Erledigt: Neuer Start-Tab mit lokaler Quellenantwort, begrenztem Top-Treffer-Kontext und Quellenblöcken.
+- Erledigt: Traffic-Data-Source-Audit für zusätzliche Verkehrs-/ÖV-/GIP-Daten.
+- Erledigt: Eigene KI-Baustellenbewertung mit Regelbasis, lokaler KI-Erklärung und Quellenpflicht.
 
 1. `Fix OGD parking CSV encoding`
    - `load_parking_garages` muss cp1252/latin-1 fallback können.
@@ -386,8 +449,9 @@ Wichtig: Die KI soll keine Geodaten erfinden. Sie darf nur aus den gefundenen Qu
 
 6. `Start tab with local AI question field`
    - Tab vor `Suche`.
-   - Lokaler Ollama-Call.
+   - Kostenlose lokale Quellenantwort.
    - Kontext aus Top-Treffern statt kompletter JSONL.
+   - Trennung nach beschlossen/umgesetzt, beantragt, gefragt, mitgeteilt und offen.
 
 7. `Traffic data source audit`
    - data.gv.at, data.graz.gv.at und mobilitydata.gv.at gezielt nach Verkehrszählung, Radzählstellen, GIP, ÖV, Verkehrsmeldungen durchsuchen.

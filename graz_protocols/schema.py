@@ -6,16 +6,30 @@ from typing import Any
 from .parser import AgendaRecord
 
 
-SCHEMA_VERSION = "1.1"
-VALID_RECORD_TYPES = {"agenda_item", "urgent_motion", "written_question", "written_motion"}
+SCHEMA_VERSION = "1.3"
+VALID_RECORD_TYPES = {
+    "agenda_item",
+    "archive_agenda_item",
+    "archive_source",
+    "attendance_list",
+    "communication",
+    "amendment_motion",
+    "additional_motion",
+    "urgent_motion",
+    "written_question",
+    "written_motion",
+    "question_hour",
+}
 VALID_STATUSES = {
     "accepted",
     "accepted_majority",
     "accepted_unanimous",
     "assigned",
+    "noted",
     "postponed",
     "rejected",
     "rejected_majority",
+    "source_available",
     "unknown",
 }
 REQUIRED_FIELDS = {
@@ -38,7 +52,10 @@ REQUIRED_FIELDS = {
     "source_snippet": str,
     "parser_confidence": float,
     "source_url": str,
+    "source_page": int,
+    "local_source_url": str,
     "submitter": str,
+    "question_parts": dict,
 }
 
 

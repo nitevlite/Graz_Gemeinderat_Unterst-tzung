@@ -2,10 +2,14 @@ from bs4 import BeautifulSoup
 
 from graz_protocols.digra_import import (
     DigraEntry,
+    best_digra_title,
     canonical_digra_url,
+    dedupe_digra_entries,
+    digra_entries_to_records,
     enrich_records_with_digra,
     fetch_digra_result,
     find_best_digra_entry,
+    import_exporter,
 )
 from graz_protocols.parser import AgendaRecord
 
@@ -16,6 +20,30 @@ class FakeExporter:
 
     def fetch_soup(self, session, url):  # noqa: ANN001
         return BeautifulSoup(self.html, "html.parser")
+
+
+def test_digra_written_motion_without_result_is_assigned():
+    entry = DigraEntry(
+        meeting_date="2026-05-21",
+        meeting_number="58",
+        record_type="written_motion",
+        section="Selbständige Anträge",
+        order_in_type=1,
+        agenda_item_no=1,
+        business_number="123/2026",
+        title="Umleitung bei Baustellen koordinieren",
+        url="https://digra.graz.at/document?ref=test",
+        status="unknown",
+        result_text="",
+        raw_result_text="",
+        votes=[],
+    )
+
+    records = digra_entries_to_records([entry])
+
+    assert records[0].status == "assigned"
+    assert records[0].result_text == "Verfahren: zugewiesen"
+    assert records[0].raw_result_text == "Der geschäftsordnungsmäßigen Behandlung zugewiesen."
 
 
 def test_extracts_result_only_from_digra_decision_note():
@@ -41,9 +69,320 @@ def test_extracts_result_only_from_digra_decision_note():
     result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
 
     assert result.status == "accepted_majority"
-    assert result.result_text == "Antrag: mehrheitlich angenommen\nZustimmung: KPÖ, Grüne, KFG, NEOS"
+    assert result.result_text == "Gemeinderat am 11.12.2025: mehrheitlich angenommen\nZustimmung: KPÖ, Grüne, KFG, NEOS"
     assert result.votes[0]["approval"] == ["KPÖ", "Grüne", "KFG", "NEOS"]
     assert "Der Gemeinderat wolle beschließen" not in result.raw_result_text
+
+
+def test_extracts_committee_and_council_decision_notes_separately():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 781/1</title></head>
+      <body>
+        <div class="preview">
+          <p>Tagesordnungspunkt</p>
+          <p>Datum:</p>
+          <p>21.05.2026</p>
+          <p>Finanzstück Beispiel</p>
+          <p>Beschlussvermerk</p>
+          <p>Ausschuss für Finanzen, Beteiligungen und Immobilien</p>
+          <p>am 12.05.2026</p>
+          <p>einstimmig angenommen</p>
+          <p>Gemeinderat</p>
+          <p>am 21.05.2026</p>
+          <p>mehrheitlich angenommen</p>
+          <p>Schriftführer:in: Beispiel</p>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+
+    assert result.status == "accepted_majority"
+    assert "Ausschuss für Finanzen, Beteiligungen und Immobilien am 12.05.2026: einstimmig angenommen" in result.result_text
+    assert "Gemeinderat am 21.05.2026: mehrheitlich angenommen" in result.result_text
+    assert result.votes[0]["organ"] == "Ausschuss für Finanzen, Beteiligungen und Immobilien"
+    assert result.votes[1]["organ"] == "Gemeinderat"
+
+
+def test_detects_question_hour_with_oral_answer_from_digra():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 999/1</title></head>
+      <body>
+        <div class="preview">
+          <p>Fragestunde</p>
+          <p>Fragesteller:in:</p>
+          <p>GR Beispiel (NEOS)</p>
+          <p>Frage 2: Radweg Beispiel (GR Beispiel, NEOS, an StRin. Muster, Grüne)</p>
+          <p>Beschlussvermerk</p>
+          <p>Gemeinderat</p>
+          <p>am 21.05.2026</p>
+          <p>mündlich beantwortet</p>
+          <p>Schriftführer:in: Beispiel</p>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+
+    assert result.record_type_override == "question_hour"
+    assert result.status == "source_available"
+    assert result.result_text == "Gemeinderat am 21.05.2026: mündlich beantwortet"
+    assert result.votes[0]["outcome_text"] == "mündlich beantwortet"
+
+
+def test_extracts_digra_submitter_from_document_preview():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 3397/1</title></head>
+      <body>
+        <div class="preview">
+          <p>Dringlicher Antrag (§ 18 GO-GR)</p>
+          <p>Antragsteller:in(nen):</p>
+          <p>GR Tristan Ammerer (Grüne)</p>
+          <p>EZ/OZ: 3397/1</p>
+          <p>Lärmblitzer-Piloten auch in der Steiermark</p>
+          <p>Beschlussvermerk</p>
+          <p>Gemeinderat</p>
+          <p>am 21.05.2026</p>
+          <p>mehrheitlich angenommen</p>
+          <p>Anmerkungen zur Abstimmung:</p>
+          <p>Dringlichkeit wurde mehrheitlich angenommen. Zustimmung: KPÖ, ÖVP, Grüne; dagegen: KFG</p>
+          <p>Schriftführer:in: Beispiel</p>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+
+    assert result.submitter == "GR Tristan Ammerer (Grüne)"
+    assert result.status == "accepted_majority"
+    assert "Dagegen: KFG" in result.result_text
+
+
+def test_extracts_digra_reporter_from_agenda_document_preview():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 3420/1</title></head>
+      <body>
+        <div class="preview">
+          <p>Tagesordnungspunkt</p>
+          <p>Bearbeiter:in:</p>
+          <p>Dipl.-Ing.in Heike Schütz-Krammer, MA</p>
+          <p>Berichterstatter:in:</p>
+          <p>GR Anna Slama (Grüne)</p>
+          <p>Datum:</p>
+          <p>21.05.2026</p>
+          <p>Beispiel Tagesordnungspunkt</p>
+          <p>Freigaben / Unterschriften:</p>
+          <p>Mag. Beispiel Person</p>
+          <p>Beschlussvermerk</p>
+          <p>Gemeinderat</p>
+          <p>am 21.05.2026</p>
+          <p>einstimmig angenommen</p>
+          <p>Schriftführer:in: Beispiel</p>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+
+    assert result.submitter == "Berichterstatterin: GR Anna Slama (Grüne)"
+    assert result.status == "accepted_unanimous"
+
+
+def test_best_digra_title_uses_document_snippet_when_tab_title_is_only_reporter():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 3067/1</title></head>
+      <body>
+        <div class="preview">
+          <p>Tagesordnungspunkt</p>
+          <p>Berichterstatter:in:</p>
+          <p>GR Tristan Ammerer (Grüne)</p>
+          <p>Datum:</p>
+          <p>21.05.2026</p>
+          <p>Umsetzung der Vorschläge zur Stärkung der Grazer Bezirksdemokratie (Konvent Bezirksdemokratie): Änderung von Geschäftsordnungen / Petition an den Landesgesetzgeber</p>
+          <p>I. Allgemeiner Teil</p>
+          <p>Der Gemeinderat hat in seiner Sitzung einen Dringlichkeitsantrag beschlossen.</p>
+          <p>Beschlussvermerk</p>
+          <p>Gemeinderat</p>
+          <p>am 21.05.2026</p>
+          <p>einstimmig angenommen</p>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+    title = best_digra_title(["Berichterstatter:in: GR Tristan Ammerer (Grüne)"], result)
+
+    assert title == (
+        "Umsetzung der Vorschläge zur Stärkung der Grazer Bezirksdemokratie (Konvent Bezirksdemokratie): "
+        "Änderung von Geschäftsordnungen / Petition an den Landesgesetzgeber"
+    )
+
+
+def test_detects_digra_communication_with_editor_and_noted_result():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 3399/1</title></head>
+      <body>
+        <div class="preview">
+          <p>Mitteilung an den Gemeinderat (§ 15 GO-GR)</p>
+          <p>Bearbeiter:in:</p>
+          <p>Dipl.-Ing. Teresa Riedenbauer</p>
+          <p>Datum:</p>
+          <p>21.05.2026</p>
+          <p>Leistungsbericht Haus Graz 2025</p>
+          <p>Beschlussvermerk</p>
+          <p>Gemeinderat</p>
+          <p>am 21.05.2026</p>
+          <p>zur Kenntnis gebracht</p>
+          <p>Schriftführer:in: Beispiel</p>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+
+    assert result.record_type_override == "communication"
+    assert result.submitter == "Bearbeiterin: Dipl.-Ing. Teresa Riedenbauer"
+    assert result.status == "noted"
+    assert result.result_text == "Gemeinderat am 21.05.2026: zur Kenntnis gebracht"
+
+
+def test_extracts_multiline_digra_subject_and_document_snippet():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 3366/1</title></head>
+      <body>
+        <div class="preview">
+          <p>Mitteilung an den Gemeinderat (§ 15 GO-GR)</p>
+          <p>Bearbeiter:in:</p>
+          <p>Mag. Dr. Verena Binder</p>
+          <p>Datum:</p>
+          <p>21.05.2026</p>
+          <p>Antrag auf Aufnahme eines Stückes auf die Tagesordnung:</p>
+          <p>Städtische Tagesbetreuung Graz GmbH</p>
+          <p>Einrichtung eines Aufsichtsrats und Bestellung von Vertretern der Stadt Graz</p>
+          <p>Antrag auf Aufnahme eines Stückes auf die Tagesordnung der Gemeinderatssitzung vom 21.05.2026</p>
+          <p>Frau GRin Daniela Gamsjäger-Katzensteiner, BA (KPÖ) stellt den Antrag gemäß § 19 Abs. 3 der Geschäftsordnung des Gemeinderates, das Stück laut Anlage mit obigem Betreff auf die Tagesordnung zu nehmen.</p>
+          <p>Ein Antrag gemäß § 19 Abs. 3 GO-GR war deshalb erforderlich, weil die Frage, welche Personen für die Wahl in den Aufsichtsrat vorgeschlagen werden sollen, erst kurzfristig geklärt werden konnte.</p>
+          <p>Anlagen:</p>
+          <p>3371_1-Bericht.pdf</p>
+          <p>Beschlussvermerk</p>
+          <p>Gemeinderat</p>
+          <p>am 21.05.2026</p>
+          <p>einstimmig angenommen</p>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+
+    assert result.subject_title == (
+        "Städtische Tagesbetreuung Graz GmbH "
+        "Einrichtung eines Aufsichtsrats und Bestellung von Vertretern der Stadt Graz"
+    )
+    assert "Gamsjäger-Katzensteiner" in result.source_snippet
+    assert "erst kurzfristig geklärt" in result.source_snippet
+
+
+def test_extracts_split_digra_vote_results():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 3413/1</title></head>
+      <body>
+        <div class="preview">
+          <p>Dringlicher Antrag (§ 18 GO-GR)</p>
+          <p>Antragsteller:in(nen):</p>
+          <p>GR Miriam Rebecca Herlicska (KPÖ)</p>
+          <p>Fußball-Weltmeisterschaft 2026: Sportwetten endlich als Glücksspiel behandeln</p>
+          <p>Beschlussvermerk</p>
+          <p>Gemeinderat</p>
+          <p>am 21.05.2026</p>
+          <p>getrennt abgestimmt</p>
+          <p>Anmerkungen zur Abstimmung:</p>
+          <p>Dringlichkeit wurde mehrheitlich angenommen; Zustimmung: KPÖ, ÖVP, Grüne, SPÖ, NEOS, Reininghaus; dagegen: KFG.</p>
+          <p>Punkt  1: mehrheitlich angenommen; Zustimmung: KPÖ, ÖVP, Grüne, SPÖ, NEOS, Reininghaus; dagegen: KFG</p>
+          <p>Punkt  2: mehrheitlich angenommen; Zustimmung: KPÖ, Grüne, SPÖ, NEOS; dagegen: ÖVP, KFG, Reininghaus</p>
+          <p>Schriftführer:in: Beispiel</p>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+
+    assert result.submitter == "GR Miriam Rebecca Herlicska (KPÖ)"
+    assert result.status == "accepted_majority"
+    assert "Punkt 1: mehrheitlich angenommen" in result.result_text
+    assert "Punkt 2: mehrheitlich angenommen" in result.result_text
+    assert result.votes[1]["against"] == ["KFG"]
+
+
+def test_extracts_urgent_motion_no_majority_as_rejected_urgency():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 3425/1</title></head>
+      <body>
+        <div class="preview">
+          <p>Dringlicher Antrag (§ 18 GO-GR)</p>
+          <p>Antragsteller:in(nen):</p>
+          <p>Clubobfrau Anna Hopper (ÖVP)</p>
+          <p>Datum:</p>
+          <p>21.05.2026</p>
+          <p>Keine Kürzungen für Sport- und Kultursponsoring</p>
+          <p>Beschlussvermerk</p>
+          <p>Gemeinderat</p>
+          <p>am 21.05.2026</p>
+          <p>keine Mehrheit</p>
+          <p>Anmerkungen zur Abstimmung:</p>
+          <p>Dringlichkeit bekam keine Mehrheit.</p>
+          <p>Schriftführer:in: Beispiel</p>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+
+    assert result.submitter == "Clubobfrau Anna Hopper (ÖVP)"
+    assert result.status == "rejected_majority"
+    assert result.result_text == "Dringlichkeit: mehrheitlich abgelehnt"
+    assert result.votes[0]["subject"] == "urgency"
+
+
+def test_detects_digra_amendment_and_additional_motion_types():
+    amendment_html = """
+    <html><body><div class="preview">
+      <p>Abänderungsantrag</p>
+      <p>Antragsteller:in(nen):</p>
+      <p>GR Beispiel (KPÖ)</p>
+      <p>Datum:</p>
+      <p>21.05.2026</p>
+      <p>Budgetpunkt ändern</p>
+      <p>Beschlussvermerk</p>
+      <p>mehrheitlich angenommen</p>
+    </div></body></html>
+    """
+    additional_html = amendment_html.replace("Abänderungsantrag", "Zusatzantrag").replace("Budgetpunkt ändern", "Ergänzung Budget")
+
+    amendment = fetch_digra_result(FakeExporter(amendment_html), session=None, url="https://digra.graz.at/document?ref=a")
+    additional = fetch_digra_result(FakeExporter(additional_html), session=None, url="https://digra.graz.at/document?ref=b")
+
+    assert amendment.record_type_override == "amendment_motion"
+    assert amendment.subject_title == "Budgetpunkt ändern"
+    assert additional.record_type_override == "additional_motion"
+    assert additional.subject_title == "Ergänzung Budget"
 
 
 def test_does_not_parse_gegenstaendlich_as_against_vote():
@@ -334,3 +673,50 @@ def test_canonicalizes_digra_session_urls():
         == "https://digra.graz.at/document?ref=62ffdb64-e7eb-41a9-917d-349c5ef37a9c"
     )
     assert canonical_digra_url("https://example.com/document?ref=x") == ""
+
+
+def test_import_exporter_falls_back_to_public_http_importer(tmp_path):
+    exporter = import_exporter(tmp_path / "missing-digra-tool")
+
+    assert exporter.__name__ == "graz_protocols.digra_public"
+    assert hasattr(exporter, "list_recent_meetings")
+    assert hasattr(exporter, "fetch_soup")
+    assert hasattr(exporter, "get_panel_for_tab")
+    assert hasattr(exporter, "extract_entries_in_order")
+
+
+def test_dedupes_digra_entries_by_url_preferring_specific_type():
+    common = {
+        "meeting_date": "2026-05-21",
+        "meeting_number": "61",
+        "agenda_item_no": 1,
+        "business_number": "3413/1",
+        "url": "https://digra.graz.at/document?ref=7df45b14-e3da-4abd-8e06-9fa5e4602cc7",
+        "status": "accepted_majority",
+        "result_text": "Antrag: mehrheitlich angenommen",
+        "raw_result_text": "mehrheitlich angenommen",
+        "votes": [],
+        "submitter": "GR Beispiel",
+    }
+    entries = [
+        DigraEntry(
+            **common,
+            record_type="agenda_item",
+            section="Tagesordnung",
+            order_in_type=68,
+            title="",
+        ),
+        DigraEntry(
+            **common,
+            record_type="urgent_motion",
+            section="Dringlichkeitsanträge",
+            order_in_type=1,
+            title="Sportwetten als Glücksspiel behandeln",
+        ),
+    ]
+
+    deduped = dedupe_digra_entries(entries)
+
+    assert len(deduped) == 1
+    assert deduped[0].record_type == "urgent_motion"
+    assert deduped[0].title == "Sportwetten als Glücksspiel behandeln"

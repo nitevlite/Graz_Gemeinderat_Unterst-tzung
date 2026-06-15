@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
+import hashlib
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 import json
 import re
-from urllib.parse import urljoin
+from urllib.parse import unquote, urljoin
 import xml.etree.ElementTree as ET
 
 from bs4 import BeautifulSoup
@@ -32,6 +34,15 @@ class CityMeetingPage:
     title: str
     url: str
     source_url: str
+
+
+@dataclass(frozen=True)
+class CityArchiveAsset:
+    meeting_date: str
+    title: str
+    url: str
+    source_url: str
+    kind: str
 
 
 @dataclass(frozen=True)
@@ -140,6 +151,295 @@ def write_city_meeting_index(output_path: Path) -> dict:
     )
     years = sorted({page.meeting_date[:4] for page in pages})
     return {"city_meeting_pages": len(pages), "years": years, "output": str(output_path), "errors": errors}
+
+
+def write_city_archive_asset_index(output_path: Path, input_index: Path | None = None, limit: int = 0) -> dict:
+    pages, errors = read_city_meeting_index(input_index) if input_index else fetch_city_meeting_pages_with_errors()
+    if limit > 0:
+        pages = pages[:limit]
+    assets = fetch_city_archive_assets(pages)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(
+            {"source": ARCHIVE_URL, "legacy_source": LEGACY_ARCHIVE_URL, "assets": [asset.__dict__ for asset in assets], "errors": errors},
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    kinds = Counter(asset.kind for asset in assets)
+    years = sorted({asset.meeting_date[:4] for asset in assets if asset.meeting_date})
+    return {
+        "city_archive_assets": len(assets),
+        "city_meeting_pages_scanned": len(pages),
+        "kinds": dict(kinds),
+        "document_types": dict(kinds),
+        "years": years,
+        "output": str(output_path),
+        "errors": errors,
+    }
+
+
+def read_city_archive_asset_index(input_path: Path) -> tuple[list[CityArchiveAsset], list[dict[str, str]]]:
+    payload = json.loads(input_path.read_text(encoding="utf-8"))
+    assets = [
+        CityArchiveAsset(
+            meeting_date=str(asset.get("meeting_date", "")),
+            title=str(asset.get("title", "")),
+            url=str(asset.get("url", "")),
+            source_url=str(asset.get("source_url", "")),
+            kind=str(asset.get("kind", "")),
+        )
+        for asset in payload.get("assets", [])
+    ]
+    errors = payload.get("errors", [])
+    return assets, errors if isinstance(errors, list) else []
+
+
+def city_archive_assets_to_records(assets: list[CityArchiveAsset]) -> list[AgendaRecord]:
+    records: list[AgendaRecord] = []
+    for index, asset in enumerate(unique_assets(assets), start=1):
+        kind_label = archive_asset_kind_label(asset.kind)
+        title = archive_asset_record_title(asset)
+        records.append(
+            AgendaRecord(
+                record_id=city_archive_asset_record_id(asset, index),
+                record_type=archive_asset_record_type(asset),
+                source_file="Stadt-Graz-Archiv",
+                meeting_date=asset.meeting_date,
+                section="Stadt-Graz-Archiv",
+                agenda_item_no=index,
+                business_numbers=[],
+                title=title,
+                status="source_available",
+                status_text="Quelle verfügbar",
+                result_text="Archivquelle: verfügbar",
+                raw_result_text="",
+                votes=[],
+                amounts=[],
+                locations=[],
+                source_snippet=f"{kind_label} aus der Stadt-Graz-Archivseite.",
+                parser_confidence=0.7 if asset.kind == "protocol_document" else 0.55,
+                result_source="archiv",
+                source_url=asset.url,
+            )
+        )
+    return records
+
+
+def clean_archive_asset_title(title: str, kind_label: str) -> str:
+    text = re.sub(r"\s+", " ", title).strip(" :-")
+    prefix = re.escape(kind_label)
+    text = re.sub(rf"^{prefix}\s*:\s*", "", text, flags=re.IGNORECASE).strip()
+    return text or kind_label or "Archivquelle"
+
+
+def archive_asset_record_type(asset: CityArchiveAsset) -> str:
+    if is_attendance_asset(asset.title, asset.url):
+        return "attendance_list"
+    return "archive_source"
+
+
+def archive_asset_record_title(asset: CityArchiveAsset) -> str:
+    title = clean_archive_asset_title(asset.title, archive_asset_kind_label(asset.kind))
+    improved = archive_asset_title_from_url(asset.url, title)
+    return improved or title
+
+
+def is_attendance_asset(title: str, url: str) -> bool:
+    return "anwesenheits" in f"{title} {url}".casefold()
+
+
+def archive_asset_title_from_url(url: str, fallback: str = "") -> str:
+    filename = Path(url.split("?", 1)[0].split("#", 1)[0]).name
+    decoded = unquote(filename)
+    stem = Path(decoded).stem
+    normalized = re.sub(r"[_%-]+", " ", stem).casefold()
+    date = archive_asset_date_label(stem)
+    part = archive_asset_part_label(stem)
+    if "anwesenheits" in normalized:
+        return f"Anwesenheitsliste{date}".strip()
+    if "antwort" in normalized and ("fs" in normalized or "fragestunde" in normalized):
+        suffix = archive_asset_person_suffix(stem)
+        return f"Antwort zur Fragestunde{date}{suffix}".strip()
+    if "dringliche" in normalized:
+        result = " mit Abstimmungsergebnissen" if "abstimmung" in fallback.casefold() else ""
+        return f"Dringlichkeitsanträge{date}{part}{result}".strip()
+    if "fragestunde" in normalized or re.search(r"\bfs\d{6}", normalized):
+        return f"Fragestunde{date}{part}".strip()
+    if "antraege" in normalized or "anträge" in fallback.casefold():
+        return f"Schriftliche Anträge{date}{part}".strip()
+    if "tagesordnung" in normalized:
+        return f"Tagesordnung{date}{part}".strip()
+    return ""
+
+
+def archive_asset_date_label(value: str) -> str:
+    match = re.search(r"(?<!\d)(?P<date>\d{6})(?!\d)", value)
+    if not match:
+        return ""
+    raw = match.group("date")
+    year, month, day = raw[:2], raw[2:4], raw[4:]
+    return f" vom {day}.{month}.20{year}"
+
+
+def archive_asset_part_label(value: str) -> str:
+    normalized = unquote(value).casefold()
+    match = re.search(r"(\d+)\s*von\s*(\d+)", normalized)
+    if match:
+        return f" (Teil {match.group(1)} von {match.group(2)})"
+    match = re.search(r"(?:antraege|anträge|dringliche|fragestunde)(\d+)\b", normalized)
+    if match:
+        return f" (Teil {match.group(1)})"
+    return ""
+
+
+def archive_asset_person_suffix(value: str) -> str:
+    cleaned = re.sub(r"\.[^.]+$", "", value)
+    parts = [part for part in re.split(r"[_\s-]+", cleaned) if part]
+    if not parts:
+        return ""
+    person = parts[-1]
+    if person.casefold() in {"antwort", "fs"} or re.search(r"\d", person):
+        return ""
+    return f" ({person})"
+
+
+def archive_asset_kind_label(kind: str) -> str:
+    return {
+        "meeting_overview": "Sitzungsübersicht",
+        "archive_document": "Archivdokument",
+        "protocol_document": "Protokolldokument",
+        "protocol_page": "Protokollseite",
+    }.get(kind, kind or "Archivquelle")
+
+
+def city_archive_asset_record_id(asset: CityArchiveAsset, index: int) -> str:
+    digest = hashlib.sha1(asset.url.encode("utf-8")).hexdigest()[:12]
+    date = asset.meeting_date or "unknown-date"
+    return f"{date}-city-archive-{asset.kind or 'asset'}-{index}-{digest}"
+
+
+def read_city_meeting_index(input_index: Path | None) -> tuple[list[CityMeetingPage], list[dict[str, str]]]:
+    if input_index is None or not input_index.exists():
+        return fetch_city_meeting_pages_with_errors()
+    payload = json.loads(input_index.read_text(encoding="utf-8"))
+    pages = [
+        CityMeetingPage(
+            meeting_date=str(page.get("meeting_date", "")),
+            title=str(page.get("title", "")),
+            url=str(page.get("url", "")),
+            source_url=str(page.get("source_url", "")),
+        )
+        for page in payload.get("pages", [])
+    ]
+    errors = payload.get("errors", [])
+    return pages, errors if isinstance(errors, list) else []
+
+
+def fetch_city_archive_assets(pages: list[CityMeetingPage]) -> list[CityArchiveAsset]:
+    assets: list[CityArchiveAsset] = []
+    for page in pages:
+        try:
+            response = requests.get(page.url, timeout=20)
+            response.raise_for_status()
+        except requests.RequestException:
+            continue
+        assets.extend(parse_city_archive_assets(response.text, page))
+    return unique_assets(assets)
+
+
+def parse_city_archive_assets(html: str, page: CityMeetingPage) -> list[CityArchiveAsset]:
+    soup = BeautifulSoup(html, "html.parser")
+    assets: list[CityArchiveAsset] = []
+    for anchor in soup.find_all("a"):
+        href = anchor.get("href")
+        label = anchor.get_text(" ", strip=True)
+        if not href or not label:
+            continue
+        url = urljoin(page.url, href)
+        kind = city_asset_kind(label, url)
+        if not kind:
+            continue
+        meeting_date = asset_meeting_date(anchor, label, url, page.meeting_date)
+        assets.append(
+            CityArchiveAsset(
+                meeting_date=meeting_date,
+                title=clean_city_asset_label(label, url),
+                url=url,
+                source_url=page.url,
+                kind=kind,
+            )
+        )
+    return assets
+
+
+def city_asset_kind(label: str, url: str) -> str:
+    normalized = f"{label} {url}".casefold()
+    path = url.split("?", 1)[0].split("#", 1)[0].casefold()
+    if is_navigation_archive_label(label, url):
+        return ""
+    if path.endswith((".docx", ".doc")):
+        return "protocol_document"
+    if path.endswith(".pdf") and any(token in normalized for token in ("protokoll", "wortprotokoll", "fragestunde")):
+        return "protocol_document"
+    if path.endswith(".pdf"):
+        return "archive_document"
+    if any(token in normalized for token in ("wortprotokoll", "protokoll")):
+        return "protocol_page"
+    return ""
+
+
+def is_navigation_archive_label(label: str, url: str) -> bool:
+    normalized = re.sub(r"\s+", " ", label.casefold()).strip()
+    if re.fullmatch(r"(?:alt\s*\+\s*)?\d+|20\d{2}", normalized):
+        return True
+    if normalized in {"kontakt", "feedback an autor", "archiv/nachlese übersicht", "archiv/nachlese uebersicht"}:
+        return True
+    path = url.split("?", 1)[0].casefold()
+    if "cms_nearest" in url and not path.endswith((".pdf", ".doc", ".docx")):
+        return True
+    return False
+
+
+def clean_city_asset_label(label: str, url: str) -> str:
+    title = re.sub(r"\s+", " ", label).strip()
+    if title:
+        return title
+    return Path(url.split("?", 1)[0]).name
+
+
+def asset_meeting_date(anchor, label: str, url: str, fallback: str) -> str:
+    path_name = Path(url.split("?", 1)[0]).name
+    values = [label, path_name]
+    parent = anchor.find_parent() if anchor is not None else None
+    if parent:
+        values.append(parent.get_text(" ", strip=True))
+    for value in values:
+        match = re.search(r"\b\d{1,2}\.\d{1,2}\.\d{4}\b", value)
+        if match:
+            return normalize_date(match.group(0))
+        compact_matches = re.finditer(r"(?<!\d)(?P<a>\d{2})(?P<b>\d{2})(?P<c>\d{2})(?!\d)", value)
+        for compact in compact_matches:
+            a, b, c = compact.group("a"), compact.group("b"), compact.group("c")
+            yymmdd = compact_date(a, b, c)
+            ddmmyy = compact_date(c, b, a)
+            if compact.start() == 0 and yymmdd:
+                return yymmdd
+            if yymmdd and int(a) <= 26:
+                return yymmdd
+            if ddmmyy:
+                return ddmmyy
+    return fallback
+
+
+def compact_date(year: str, month: str, day: str) -> str:
+    year_int = 2000 + int(year)
+    month_int = int(month)
+    day_int = int(day)
+    if not (2004 <= year_int <= 2026 and 1 <= month_int <= 12 and 1 <= day_int <= 31):
+        return ""
+    return f"{year_int:04d}-{month}-{day}"
 
 
 def fetch_city_meeting_pages_with_errors(
@@ -369,4 +669,16 @@ def unique_meeting_pages(pages: list[CityMeetingPage]) -> list[CityMeetingPage]:
             continue
         seen.add(key)
         result.append(page)
+    return result
+
+
+def unique_assets(assets: list[CityArchiveAsset]) -> list[CityArchiveAsset]:
+    seen: set[tuple[str, str]] = set()
+    result: list[CityArchiveAsset] = []
+    for asset in sorted(assets, key=lambda item: (item.meeting_date, item.kind, item.title, item.url)):
+        key = (asset.meeting_date, asset.url)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(asset)
     return result

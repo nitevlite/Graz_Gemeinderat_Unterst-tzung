@@ -2,12 +2,22 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+from dataclasses import replace
+import hashlib
 from pathlib import Path
 import json
+import re
 import sys
 
 from .audit import write_audit_report
-from .city_sources import enrich_records_with_city_links, write_city_meeting_index
+from .archive_agenda_pdf import parse_archive_agenda_text, read_archive_agenda_source
+from .city_sources import (
+    city_archive_assets_to_records,
+    enrich_records_with_city_links,
+    read_city_archive_asset_index,
+    write_city_archive_asset_index,
+    write_city_meeting_index,
+)
 from .docx_text import read_docx_paragraph_blocks
 from .digra_import import (
     DEFAULT_DIGRA_TOOL_PATH,
@@ -17,10 +27,12 @@ from .digra_import import (
     list_digra_meetings,
 )
 from .parser import AgendaRecord, parse_protocol
+from .question_pdf import parse_question_hour_text, read_question_hour_source
 from .schema import SCHEMA_VERSION, validate_record
 from .sqlite_export import write_sqlite
 from .street_names import load_street_names
 from .topics import write_topic_candidates
+from .update_sources import normalize_digra_meeting_date, update_records_with_latest_digra
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -35,12 +47,26 @@ def main(argv: list[str] | None = None) -> int:
         return run_digra_list(args)
     if args.command == "digra-export":
         return run_digra_export(args)
+    if args.command == "digra-sync":
+        return run_digra_sync(args)
+    if args.command == "digra-update":
+        return run_digra_update(args)
+    if args.command == "question-pdf":
+        return run_question_pdf(args)
+    if args.command == "agenda-pdf":
+        return run_archive_agenda_pdf(args)
     if args.command == "topics":
         return run_topics(args)
     if args.command == "summaries":
         return run_summaries(args)
+    if args.command == "search":
+        return run_search(args)
+    if args.command == "eval-search":
+        return run_eval_search(args)
     if args.command == "city-index":
         return run_city_index(args)
+    if args.command == "city-assets":
+        return run_city_assets(args)
     parser.print_help()
     return 2
 
@@ -149,6 +175,93 @@ def build_parser() -> argparse.ArgumentParser:
     digra_export_cmd.add_argument("--sqlite", type=Path, default=None)
     digra_export_cmd.add_argument("--digra-tool-path", type=Path, default=DEFAULT_DIGRA_TOOL_PATH)
 
+    digra_sync_cmd = subparsers.add_parser(
+        "digra-sync", help="Aktuelle DIGRA-Sitzungen ohne lokale DOCX-Protokolle als Standarddatenbasis exportieren."
+    )
+    digra_sync_cmd.add_argument("--limit", type=int, default=30, help="Anzahl zu prüfender DIGRA-Sitzungen.")
+    digra_sync_cmd.add_argument("--output", type=Path, default=Path("out") / "agenda_items_digra_sync.jsonl")
+    digra_sync_cmd.add_argument("--summary", type=Path, default=Path("out") / "summary_digra_sync.json")
+    digra_sync_cmd.add_argument("--sqlite", type=Path, default=None)
+    digra_sync_cmd.add_argument("--digra-tool-path", type=Path, default=DEFAULT_DIGRA_TOOL_PATH)
+    digra_sync_cmd.add_argument(
+        "--city-archive-links",
+        action="store_true",
+        help="Stadt-Graz-Archivlinks als Quellen-Fallback ergänzen.",
+    )
+    digra_sync_cmd.add_argument(
+        "--city-archive-cache",
+        type=Path,
+        default=Path("out") / "city_archive_links.json",
+        help="Lokaler Cache für Stadt-Graz-Archivlinks. Standard: out/city_archive_links.json.",
+    )
+    digra_sync_cmd.add_argument(
+        "--city-archive-assets",
+        action="store_true",
+        help="Vorhandenen Stadt-Graz-Archivassetindex als zusätzliche Archivquellen einbeziehen.",
+    )
+    digra_sync_cmd.add_argument(
+        "--city-archive-assets-index",
+        type=Path,
+        default=Path("out") / "city_archive_assets.json",
+        help="Assetindex aus city-assets. Standard: out/city_archive_assets.json.",
+    )
+    digra_sync_cmd.add_argument(
+        "--city-protocols-dir",
+        type=Path,
+        default=None,
+        help="Lokale, ignorierte Stadt-Graz-DOCX-Protokolle als Ergänzung einbeziehen.",
+    )
+    digra_sync_cmd.add_argument(
+        "--city-protocol-types",
+        default="communication,question_hour",
+        help="Kommagetrennte interne Typen aus --city-protocols-dir. Standard: communication,question_hour.",
+    )
+    digra_sync_cmd.add_argument(
+        "--street-names",
+        type=Path,
+        default=None,
+        help="Optionale XLSX-Datei mit gültigen Grazer Straßennamen zur Ortserkennung in lokalen Protokollen.",
+    )
+
+    digra_update_cmd = subparsers.add_parser(
+        "digra-update", help="Vorhandene JSONL-Ausgabe automatisch um neue DIGRA-Sitzungen erweitern."
+    )
+    digra_update_cmd.add_argument("--base-records", type=Path, default=Path("out") / "agenda_items_digra_ai.jsonl")
+    digra_update_cmd.add_argument("--base-summary", type=Path, default=Path("out") / "summary_digra.json")
+    digra_update_cmd.add_argument("--output", type=Path, default=Path("out") / "agenda_items_digra_ai_plus_latest.jsonl")
+    digra_update_cmd.add_argument("--summary", type=Path, default=Path("out") / "summary_digra_plus_latest.json")
+    digra_update_cmd.add_argument("--limit", type=int, default=30, help="Anzahl zu prüfender DIGRA-Sitzungen.")
+    digra_update_cmd.add_argument("--digra-tool-path", type=Path, default=DEFAULT_DIGRA_TOOL_PATH)
+
+    question_pdf_cmd = subparsers.add_parser(
+        "question-pdf",
+        help="Alte Fragestunden-PDFs oder bereinigte TXT-Exporte in strukturierte Fragestunden-Einträge zerlegen.",
+    )
+    question_pdf_cmd.add_argument("input", type=Path, help="PDF-/TXT-Datei oder Ordner mit PDF-/TXT-Dateien.")
+    question_pdf_cmd.add_argument("--output", type=Path, default=Path("out") / "question_hours.jsonl")
+    question_pdf_cmd.add_argument("--summary", type=Path, default=Path("out") / "question_hours_summary.json")
+    question_pdf_cmd.add_argument("--sqlite", type=Path, default=None)
+    question_pdf_cmd.add_argument(
+        "--source-index",
+        type=Path,
+        default=None,
+        help="Optionaler Stadt-Graz-Archivassetindex; ordnet lokal geparsten PDFs ihre Original-URL zu.",
+    )
+
+    agenda_pdf_cmd = subparsers.add_parser(
+        "agenda-pdf",
+        help="Tagesordnungs-PDFs oder bereinigte TXT-Exporte in einzelne Archiv-Tagesordnungspunkte zerlegen.",
+    )
+    agenda_pdf_cmd.add_argument("input", type=Path, help="PDF-/TXT-Datei oder Ordner mit PDF-/TXT-Dateien.")
+    agenda_pdf_cmd.add_argument("--output", type=Path, default=Path("out") / "archive_agenda_items.jsonl")
+    agenda_pdf_cmd.add_argument("--summary", type=Path, default=Path("out") / "archive_agenda_summary.json")
+    agenda_pdf_cmd.add_argument("--sqlite", type=Path, default=None)
+    agenda_pdf_cmd.add_argument(
+        "--source-url",
+        default="",
+        help="Optionale Original-URL für eine einzelne Quelle; PDF-Seiten werden als #page= ergänzt.",
+    )
+
     topics_cmd = subparsers.add_parser("topics", help="Topic-Kandidaten über mehrere Sitzungen erzeugen.")
     topics_cmd.add_argument("--records", type=Path, default=Path("out") / "agenda_items_digra.jsonl")
     topics_cmd.add_argument("--output", type=Path, default=Path("out") / "topic_candidates.json")
@@ -182,9 +295,9 @@ def build_parser() -> argparse.ArgumentParser:
     summaries_cmd.add_argument("--output", type=Path, default=Path("out") / "agenda_items_digra_ai.jsonl")
     summaries_cmd.add_argument(
         "--ai-provider",
-        choices=["ollama", "openai"],
-        default="ollama",
-        help="KI-Provider. Standard: lokales Ollama.",
+        choices=["ollama", "openai", "local"],
+        default="local",
+        help="Provider. Standard: local erzeugt kostenlose Zusammenfassungen ohne externen Dienst. Ollama/OpenAI sind optional.",
     )
     summaries_cmd.add_argument("--ai-model", default="", help="Optionales KI-Modell.")
     summaries_cmd.add_argument(
@@ -199,10 +312,50 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximale Anzahl neu zu erzeugender Zusammenfassungen. 0 bedeutet alle fehlenden.",
     )
     summaries_cmd.add_argument("--overwrite", action="store_true", help="Vorhandene KI-Zusammenfassungen neu erzeugen.")
+    search_cmd = subparsers.add_parser("search", help="Lokalen SQLite-Suchindex abfragen.")
+    search_cmd.add_argument("query", help="Suchfrage oder Suchbegriff.")
+    search_cmd.add_argument(
+        "--sqlite",
+        type=Path,
+        default=Path("out") / "eintraege.sqlite",
+        help="SQLite-Datenbank mit Suchindex. Standard: out/eintraege.sqlite.",
+    )
+    search_cmd.add_argument("--limit", type=int, default=10, help="Maximale Trefferzahl. Standard: 10.")
+    eval_search_cmd = subparsers.add_parser("eval-search", help="Lokale Suche gegen einen bereinigten Goldstandard messen.")
+    eval_search_cmd.add_argument(
+        "--sqlite",
+        type=Path,
+        default=Path("out") / "eintraege.sqlite",
+        help="SQLite-Datenbank mit Suchindex. Standard: out/eintraege.sqlite.",
+    )
+    eval_search_cmd.add_argument(
+        "--goldset",
+        type=Path,
+        default=Path("tests") / "fixtures" / "search_goldstandard.json",
+        help="Bereinigter Goldstandard. Standard: tests/fixtures/search_goldstandard.json.",
+    )
+    eval_search_cmd.add_argument("--limit", type=int, default=10, help="Trefferfenster für @K-Metriken. Standard: 10.")
+    eval_search_cmd.add_argument("--output", type=Path, default=None, help="Optionaler JSON-Ausgabepfad.")
     city_index_cmd = subparsers.add_parser(
         "city-index", help="Stadt-Graz-Archivseiten für ältere Gemeinderatssitzungen indexieren."
     )
     city_index_cmd.add_argument("--output", type=Path, default=Path("out") / "city_archive_index.json")
+    city_assets_cmd = subparsers.add_parser(
+        "city-assets", help="Dokument-/Übersichtslinks aus Stadt-Graz-Sitzungsseiten indexieren."
+    )
+    city_assets_cmd.add_argument("--output", type=Path, default=Path("out") / "city_archive_assets.json")
+    city_assets_cmd.add_argument(
+        "--input-index",
+        type=Path,
+        default=Path("out") / "city_archive_index.json",
+        help="Vorhandenen Stadt-Graz-Sitzungsindex verwenden, statt die Archivliste neu zu laden.",
+    )
+    city_assets_cmd.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="Maximale Anzahl Sitzungsseiten scannen. 0 bedeutet alle.",
+    )
     return parser
 
 
@@ -311,6 +464,352 @@ def run_digra_export(args: argparse.Namespace) -> int:
     return 1 if validation_errors else 0
 
 
+def run_digra_sync(args: argparse.Namespace) -> int:
+    meetings = list_digra_meetings(args.digra_tool_path, limit=args.limit)
+    dates = sorted(
+        {
+            normalized
+            for meeting in meetings
+            if (normalized := normalize_digra_meeting_date(str(meeting.date)))
+        }
+    )
+    entries = fetch_digra_entries(dates, tool_path=args.digra_tool_path)
+    records = digra_entries_to_records(entries)
+    city_summary: dict = {}
+    errors: list[dict[str, str]] = []
+    city_protocol_files = 0
+    city_protocol_records = 0
+    city_protocol_types: list[str] = []
+    archive_asset_records = 0
+    archive_asset_years: list[str] = []
+    archive_asset_errors: list[dict[str, str]] = []
+    if args.city_protocols_dir:
+        protocol_types = parse_type_list(args.city_protocol_types)
+        city_protocol_types = sorted(protocol_types)
+        street_names = load_street_names(args.street_names) if args.street_names else None
+        all_protocol_records, city_protocol_files, protocol_errors = parse_city_protocol_records(
+            args.city_protocols_dir,
+            street_names=street_names,
+        )
+        records = inherit_locations_from_matching_records(records, all_protocol_records)
+        protocol_records = [record for record in all_protocol_records if record.record_type in protocol_types]
+        protocol_records = inherit_links_from_matching_records(records, protocol_records)
+        city_protocol_records = len(protocol_records)
+        records = merge_missing_records(records, protocol_records)
+        errors.extend(protocol_errors)
+    if args.city_archive_assets:
+        try:
+            assets, archive_asset_errors = read_city_archive_asset_index(args.city_archive_assets_index)
+            archive_records = city_archive_assets_to_records(assets)
+            archive_asset_records = len(archive_records)
+            archive_asset_years = sorted({record.meeting_date[:4] for record in archive_records if record.meeting_date})
+            records.extend(archive_records)
+        except Exception as exc:  # pylint: disable=broad-except
+            errors.append({"datei": "Stadt-Graz-Archivassets", "fehler": str(exc)})
+    if args.city_archive_links:
+        try:
+            records, city_summary = enrich_records_with_city_links(records, cache_path=args.city_archive_cache)
+        except Exception as exc:  # pylint: disable=broad-except
+            errors.append({"datei": "Stadt-Graz-Archiv", "fehler": str(exc)})
+    records = inherit_links_within_records(records)
+    records, validation_errors = validate_records(records)
+    errors.extend(validation_errors)
+    summary = build_summary([], records, errors)
+    summary.update(
+        {
+            "source_mode": "digra_sync",
+            "digra_sync_meetings_seen": len(meetings),
+            "digra_sync_dates": dates,
+            "digra_entries_total": len(entries),
+            "digra_results_used": sum(1 for record in records if record.result_source == "digra"),
+            "digra_records_matched": sum(1 for record in records if record.digra_url),
+            "digra_protocol_fallbacks": 0,
+            "city_protocol_files": city_protocol_files,
+            "city_protocol_records": city_protocol_records,
+            "city_protocol_types": city_protocol_types,
+            "city_archive_asset_records": archive_asset_records,
+            "city_archive_asset_years": archive_asset_years,
+            "city_archive_asset_index_errors": archive_asset_errors,
+        }
+    )
+    summary.update(city_summary)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with args.output.open("w", encoding="utf-8") as handle:
+        for record in records:
+            handle.write(record.to_json())
+            handle.write("\n")
+    args.summary.parent.mkdir(parents=True, exist_ok=True)
+    args.summary.write_text(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    if args.sqlite is not None:
+        write_sqlite(args.sqlite, records, summary)
+    print(f"{len(records)} DIGRA-Einträge aus {len(dates)} Sitzungen nach {args.output} geschrieben.")
+    if args.sqlite is not None:
+        print(f"SQLite-Datenbank nach {args.sqlite} geschrieben.")
+    if errors:
+        print(f"Hinweis: {len(errors)} Fehler beim DIGRA-Sync.", file=sys.stderr)
+        return 1
+    return 0
+
+
+def parse_type_list(value: str) -> set[str]:
+    return {item.strip() for item in value.split(",") if item.strip()}
+
+
+def parse_city_protocol_supplements(
+    input_dir: Path,
+    record_types: set[str],
+    street_names: set[str] | None = None,
+) -> tuple[list[AgendaRecord], int, list[dict[str, str]]]:
+    records, file_count, errors = parse_city_protocol_records(input_dir, street_names=street_names)
+    return [record for record in records if record.record_type in record_types], file_count, errors
+
+
+def parse_city_protocol_records(
+    input_dir: Path,
+    street_names: set[str] | None = None,
+) -> tuple[list[AgendaRecord], int, list[dict[str, str]]]:
+    if not input_dir.exists() or not input_dir.is_dir():
+        return [], 0, [{"datei": str(input_dir), "fehler": "Stadt-Graz-Protokollordner nicht gefunden"}]
+    records: list[AgendaRecord] = []
+    errors: list[dict[str, str]] = []
+    docx_files = sorted(input_dir.glob("*.docx"))
+    for path in docx_files:
+        try:
+            parsed = parse_protocol(read_docx_paragraph_blocks(path), path.name, street_names=street_names)
+        except Exception as exc:  # pylint: disable=broad-except
+            errors.append({"datei": path.name, "fehler": str(exc)})
+            continue
+        records.extend(parsed)
+    return records, len(docx_files), errors
+
+
+def merge_missing_records(base_records: list[AgendaRecord], supplemental_records: list[AgendaRecord]) -> list[AgendaRecord]:
+    seen = {record_identity(record) for record in base_records}
+    merged = list(base_records)
+    for record in supplemental_records:
+        identity = record_identity(record)
+        if identity in seen:
+            continue
+        merged.append(record)
+        seen.add(identity)
+    return merged
+
+
+def inherit_links_from_matching_records(
+    base_records: list[AgendaRecord],
+    supplemental_records: list[AgendaRecord],
+) -> list[AgendaRecord]:
+    links_by_identity: dict[tuple[str, str], AgendaRecord] = {}
+    for record in base_records:
+        identity = title_date_identity(record)
+        if not identity:
+            continue
+        if record.digra_url or record.source_url:
+            links_by_identity.setdefault(identity, record)
+
+    enriched: list[AgendaRecord] = []
+    for record in supplemental_records:
+        match = links_by_identity.get(title_date_identity(record))
+        if not match:
+            enriched.append(record)
+            continue
+        enriched.append(
+            replace(
+                record,
+                digra_url=record.digra_url or match.digra_url,
+                digra_business_number=record.digra_business_number or match.digra_business_number,
+                digra_match_score=record.digra_match_score or match.digra_match_score,
+                source_url=record.source_url or match.source_url,
+            )
+        )
+    return enriched
+
+
+def inherit_links_within_records(records: list[AgendaRecord]) -> list[AgendaRecord]:
+    return inherit_links_from_matching_records(records, records)
+
+
+def inherit_locations_from_matching_records(
+    base_records: list[AgendaRecord],
+    location_source_records: list[AgendaRecord],
+) -> list[AgendaRecord]:
+    locations_by_identity: dict[tuple[str, str], AgendaRecord] = {}
+    for record in location_source_records:
+        identity = title_date_identity(record)
+        if identity and record.locations:
+            locations_by_identity.setdefault(identity, record)
+
+    enriched: list[AgendaRecord] = []
+    for record in base_records:
+        if record.locations:
+            enriched.append(record)
+            continue
+        match = locations_by_identity.get(title_date_identity(record))
+        if not match:
+            enriched.append(record)
+            continue
+        enriched.append(replace(record, locations=match.locations, location_details=match.location_details))
+    return enriched
+
+
+def title_date_identity(record: AgendaRecord) -> tuple[str, str]:
+    if not record.meeting_date or not record.title:
+        return ("", "")
+    return (record.meeting_date, record.title.casefold())
+
+
+def record_identity(record: AgendaRecord) -> tuple[str, str, str, str]:
+    return (
+        record.meeting_date,
+        record.record_type,
+        " ".join(record.business_numbers),
+        record.title.casefold(),
+    )
+
+
+def run_digra_update(args: argparse.Namespace) -> int:
+    summary = update_records_with_latest_digra(
+        args.base_records,
+        args.base_summary,
+        args.output,
+        args.summary,
+        tool_path=args.digra_tool_path,
+        limit=args.limit,
+    )
+    if summary["new_dates"]:
+        print(f"Neue DIGRA-Termine: {', '.join(summary['new_dates'])}")
+    else:
+        print("Keine neuen DIGRA-Termine gefunden.")
+    print(f"{summary['added_records']} neue DIGRA-Einträge ergänzt; gesamt {summary['records_total']}.")
+    print(f"Ausgabe: {summary['output_records']}")
+    if summary["validation_errors"]:
+        print(f"Hinweis: {len(summary['validation_errors'])} Validierungsfehler.", file=sys.stderr)
+        return 1
+    return 0
+
+
+def run_question_pdf(args: argparse.Namespace) -> int:
+    input_path: Path = args.input
+    if not input_path.exists():
+        print(f"Eingabe nicht gefunden: {input_path}", file=sys.stderr)
+        return 1
+    paths = question_hour_input_paths(input_path)
+    if not paths:
+        print(f"Keine PDF-/TXT-Dateien gefunden: {input_path}", file=sys.stderr)
+        return 1
+
+    source_urls = source_urls_by_local_question_file(args.source_index) if args.source_index else {}
+    records: list[AgendaRecord] = []
+    errors: list[dict[str, str]] = []
+    for path in paths:
+        try:
+            parsed = parse_question_hour_text(read_question_hour_source(path), path.name)
+            source_url = source_urls.get(path.name)
+            if source_url:
+                parsed = [replace(record, source_url=source_url) for record in parsed]
+            records.extend(parsed)
+        except Exception as exc:  # pylint: disable=broad-except
+            errors.append({"datei": path.name, "fehler": str(exc)})
+    records, validation_errors = validate_records(records)
+    errors.extend(validation_errors)
+    summary = build_summary(paths, records, errors)
+    summary["source_mode"] = "question_pdf"
+    summary["question_hour_sources"] = [path.name for path in paths]
+    summary["question_hour_source_urls_applied"] = sum(1 for record in records if record.source_url)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with args.output.open("w", encoding="utf-8") as handle:
+        for record in records:
+            handle.write(record.to_json())
+            handle.write("\n")
+    args.summary.parent.mkdir(parents=True, exist_ok=True)
+    args.summary.write_text(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    if args.sqlite is not None:
+        write_sqlite(args.sqlite, records, summary)
+    print(f"{len(records)} Fragestunden-Einträge aus {len(paths)} Quellen nach {args.output} geschrieben.")
+    if errors:
+        print(f"Hinweis: {len(errors)} Fehler beim Fragestunden-Import.", file=sys.stderr)
+        return 1
+    return 0
+
+
+def run_archive_agenda_pdf(args: argparse.Namespace) -> int:
+    input_path: Path = args.input
+    if not input_path.exists():
+        print(f"Eingabe nicht gefunden: {input_path}", file=sys.stderr)
+        return 1
+    paths = question_hour_input_paths(input_path)
+    if not paths:
+        print(f"Keine PDF-/TXT-Dateien gefunden: {input_path}", file=sys.stderr)
+        return 1
+
+    records: list[AgendaRecord] = []
+    errors: list[dict[str, str]] = []
+    for path in paths:
+        try:
+            source_url = args.source_url if len(paths) == 1 else ""
+            records.extend(parse_archive_agenda_text(read_archive_agenda_source(path), path.name, source_url=source_url))
+        except Exception as exc:  # pylint: disable=broad-except
+            errors.append({"datei": path.name, "fehler": str(exc)})
+    records, validation_errors = validate_records(records)
+    errors.extend(validation_errors)
+    summary = build_summary(paths, records, errors)
+    summary["source_mode"] = "archive_agenda_pdf"
+    summary["archive_agenda_sources"] = [path.name for path in paths]
+    summary["archive_agenda_source_url_applied"] = bool(args.source_url and len(paths) == 1)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with args.output.open("w", encoding="utf-8") as handle:
+        for record in records:
+            handle.write(record.to_json())
+            handle.write("\n")
+    args.summary.parent.mkdir(parents=True, exist_ok=True)
+    args.summary.write_text(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    if args.sqlite is not None:
+        write_sqlite(args.sqlite, records, summary)
+    print(f"{len(records)} Archiv-Tagesordnungspunkte aus {len(paths)} Quellen nach {args.output} geschrieben.")
+    if errors:
+        print(f"Hinweis: {len(errors)} Fehler beim Tagesordnungs-PDF-Import.", file=sys.stderr)
+        return 1
+    return 0
+
+
+def source_urls_by_local_question_file(source_index: Path) -> dict[str, str]:
+    if not source_index.exists():
+        return {}
+    try:
+        assets, _errors = read_city_archive_asset_index(source_index)
+    except Exception:  # pylint: disable=broad-except
+        return {}
+    mapping: dict[str, str] = {}
+    for asset in assets:
+        if asset.kind != "protocol_document":
+            continue
+        if "fragestunde" not in f"{asset.title} {asset.url}".casefold():
+            continue
+        digest = hashlib.sha1(asset.url.encode("utf-8")).hexdigest()[:10]
+        date = asset.meeting_date or "unknown-date"
+        stem = safe_filename_part(asset.title or "Fragestunde des Gemeinderates")
+        mapping[f"{date}_{stem}_{digest}.pdf"] = asset.url
+        mapping[f"{date}_{stem}_{digest}.txt"] = asset.url
+    return mapping
+
+
+def safe_filename_part(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9ÄÖÜäöüß]+", "-", value).strip("-")
+    return cleaned[:80] or "quelle"
+
+
+def question_hour_input_paths(input_path: Path) -> list[Path]:
+    if input_path.is_file() and input_path.suffix.casefold() in {".pdf", ".txt"}:
+        return [input_path]
+    if input_path.is_dir():
+        return sorted(
+            path
+            for path in input_path.iterdir()
+            if path.is_file() and path.suffix.casefold() in {".pdf", ".txt"}
+        )
+    return []
+
+
 def run_topics(args: argparse.Namespace) -> int:
     if not args.records.exists():
         print(f"Eintragsdatei nicht gefunden: {args.records}", file=sys.stderr)
@@ -359,12 +858,80 @@ def run_summaries(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_search(args: argparse.Namespace) -> int:
+    if not args.sqlite.exists():
+        print(f"SQLite-Datenbank nicht gefunden: {args.sqlite}", file=sys.stderr)
+        return 1
+    from .search_index import search_sqlite
+
+    results = search_sqlite(args.sqlite, args.query, limit=args.limit)
+    if not results:
+        print("Keine Treffer gefunden.")
+        return 0
+    for index, result in enumerate(results, start=1):
+        source = result.digra_url or result.source_url or "-"
+        fields = ", ".join(result.matched_fields) or "-"
+        print(f"{index}. {result.date} | {result.record_type} | {result.title}")
+        print(f"   ID: {result.record_id}")
+        print(f"   Ergebnis: {result.result_text or '-'}")
+        print(f"   Trefferfelder: {fields} | Score: {result.score}")
+        print(f"   Quelle: {source}")
+        if result.snippets:
+            print(f"   Kontext: {result.snippets[0]}")
+    return 0
+
+
+def run_eval_search(args: argparse.Namespace) -> int:
+    if not args.sqlite.exists():
+        print(f"SQLite-Datenbank nicht gefunden: {args.sqlite}", file=sys.stderr)
+        return 1
+    if not args.goldset.exists():
+        print(f"Goldstandard nicht gefunden: {args.goldset}", file=sys.stderr)
+        return 1
+    from .search_eval import evaluate_search_goldstandard
+
+    try:
+        summary = evaluate_search_goldstandard(args.sqlite, args.goldset, limit=args.limit)
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(
+        f"Such-Eval: {summary['hits_at_k']}/{summary['cases_total']} Treffer @ {summary['limit']} | "
+        f"Recall@K {summary['recall_at_k']:.4f} | MRR {summary['mean_reciprocal_rank']:.4f} | "
+        f"Precision@K {summary['mean_precision_at_k']:.4f}"
+    )
+    missed = [case for case in summary["case_results"] if not case["hit"]]
+    if missed:
+        print("Nicht getroffen:")
+        for case in missed:
+            expected = ", ".join(case["expected_record_ids"])
+            print(f"- {case['case_id']}: erwartet {expected}")
+    if args.output is not None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        print(f"Eval-Bericht: {args.output}")
+    return 0
+
+
 def run_city_index(args: argparse.Namespace) -> int:
     summary = write_city_meeting_index(args.output)
     years = ", ".join(summary["years"])
     print(f"{summary['city_meeting_pages']} Stadt-Graz-Sitzungsseiten nach {summary['output']} geschrieben.")
     if years:
         print(f"Jahre: {years}")
+    if summary.get("errors"):
+        print(f"Hinweis: {len(summary['errors'])} Stadt-Graz-Seiten konnten nicht geladen werden.", file=sys.stderr)
+    return 0
+
+
+def run_city_assets(args: argparse.Namespace) -> int:
+    summary = write_city_archive_asset_index(args.output, input_index=args.input_index, limit=args.limit)
+    print(
+        f"{summary['city_archive_assets']} Stadt-Graz-Archivassets aus "
+        f"{summary['city_meeting_pages_scanned']} Sitzungsseiten nach {summary['output']} geschrieben."
+    )
+    if summary.get("kinds"):
+        print("Typen: " + ", ".join(f"{key}={value}" for key, value in sorted(summary["kinds"].items())))
     if summary.get("errors"):
         print(f"Hinweis: {len(summary['errors'])} Stadt-Graz-Seiten konnten nicht geladen werden.", file=sys.stderr)
     return 0

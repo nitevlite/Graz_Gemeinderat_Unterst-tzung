@@ -105,7 +105,7 @@ GOLDSET_CASES = [
         },
     },
     {
-        "name": "agenda_no_result_unknown",
+        "name": "agenda_noted",
         "section": "Tagesordnung",
         "heading": "Stk. 8) A7-890123/2025 Informationsbericht Beispiel",
         "body": ["Bericht wurde zur Kenntnis genommen."],
@@ -114,7 +114,7 @@ GOLDSET_CASES = [
             "title": "Informationsbericht Beispiel",
             "business_numbers": ["A7-890123/2025"],
             "amounts": [],
-            "status": "unknown",
+            "status": "noted",
         },
     },
     {

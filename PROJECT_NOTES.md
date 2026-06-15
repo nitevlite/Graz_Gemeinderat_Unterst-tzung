@@ -35,14 +35,17 @@ Aktuelle Module:
 - `graz_protocols/docx_text.py`: DOCX-Textextraktion mit Standardbibliothek
 - `graz_protocols/parser.py`: Extraktion von Tagesordnungspunkten, Status, Beträgen, Geschäftszahlen und Ortshinweisen
 - `graz_protocols/digra_import.py`: DIGRA-Abgleich über das vorhandene DIGRA-Export-Tool, Sitzungssuche, Dokumentlinks und Beschlussvermerk-Ergebnisse
+- `graz_protocols/digra_public.py`: öffentlicher HTTP-Fallback für DIGRA-Sitzungen, damit `digra-sync` ohne lokales Export-Tool in CI/GitHub Actions läuft
 - `graz_protocols/audit.py`: Markdown-Auditbericht für Ergebnisquellen, Fallbacks und niedrige DIGRA-Trefferwerte
 - `graz_protocols/schema.py`: Validierung des JSONL-Datenmodells
 - `graz_protocols/street_names.py`: XLSX-Import und Normalisierung der Grazer Straßennamenliste
 - `graz_protocols/topics.py`: Themenkandidaten über Geschäftszahlen und Titel-Keywords
 - `graz_protocols/ai_topics.py`: optionale KI-Überschriften für Themenverläufe, standardmäßig über lokales Ollama/Qwen, optional über OpenAI
-- `graz_protocols/ai_summaries.py`: optionale KI-Zusammenfassungen pro Stück und Version in einfacher Sprache, standardmäßig über lokales Ollama/Qwen
+- `graz_protocols/ai_summaries.py`: kostenlose Einzeldokument-Zusammenfassungen pro Stück, einfache Sprache, Kernpunkte, offene Punkte und Quellenlimits; Standardprovider ist `local`, Ollama/OpenAI bleiben explizite Zusatzoptionen
 - `graz_protocols/cli.py`: Stapelverarbeitung über die Kommandozeile
-- `graz_protocols/sqlite_export.py`: lokale SQLite-Ausgabe mit Tabelle `eintraege`, normalisierten Tabellen und FTS5
+- `graz_protocols/sqlite_export.py`: lokale SQLite-Ausgabe mit Tabelle `eintraege`, normalisierten Tabellen, bisheriger FTS5-Tabelle und produktionsnäherem Chunk-Suchindex
+- `graz_protocols/search_index.py`: testbare lokale SQLite-Suche über `search_documents`, `search_chunks` und `search_fts`
+- `graz_protocols/search_eval.py`: Goldstandard-Auswertung für lokale Suchqualität mit Recall@K, Precision@K und MRR
 - `graz_protocols/viewer.py`: erzeugte lokale Doppelklick-HTML-Ansicht
 - `scripts/check_git_safety.py`: lokaler und CI-fähiger Sicherheitscheck gegen versehentlich committed Quellen-/Exportdaten
 - `tests/test_parser.py`: bereinigte Parser-Tests
@@ -67,8 +70,11 @@ Aktuelle Ergebnisbehandlung:
 - Zeitstrahlen zeigen nur Themen mit mindestens zwei sichtbaren Einträgen, KI-Hinweise und den letzten bekannten Ergebnisstand.
 - DIGRA-Links werden im Viewer auf stabile `document?ref=...`-URLs ohne flüchtige Session-Parameter normalisiert.
 - `city-index` legt einen lokalen Index älterer Stadt-Graz-Archivseiten an; bei DNS-/Netzwerkfehlern werden Fehler im Index dokumentiert.
+- `city-assets` erzeugt einen lokalen Assetindex für alte Stadt-Graz-Protokolldokumente, Protokollseiten und Sitzungsübersichten. `digra-sync --city-archive-assets` übernimmt diese Links als `archive_source`-Records, ohne Rohdokumente herunterzuladen oder zu committen.
 - Der lokale Viewer kann nach Ergebnisquelle filtern: `DIGRA`, `Protokoll`, `DIGRA fehlt`.
 - Der lokale Viewer kann nach Betragsvorkommen und Quelldatei filtern und die aktuelle Trefferliste als CSV exportieren.
+- Die SQLite-Ausgabe enthält einen stabilen lokalen Suchindex mit Dokument- und Chunk-IDs. Indexiert werden unter anderem Titel, Ergebnis, Geschäftszahlen, Orte, Beträge, Einbringer, Abstimmungen, Fragestundenteile und kurze lokale Quellenausschnitte. `python -m graz_protocols.cli search ... --sqlite ...` fragt diesen Index read-only ab.
+- `tests\fixtures\search_goldstandard.json` enthält einen bereinigten synthetischen Such-Goldstandard. `python -m graz_protocols.cli eval-search ...` misst Trefferquote, MRR und Precision gegen diesen Goldstandard; echte Qualitätsläufe müssen erwartete `record_id`s aus lokalen Daten verwenden, ohne Rohprotokolltexte zu übernehmen.
 - Der lokale Viewer zeigt optional Themenverläufe aus `out\topic_candidates.json`.
 - Der lokale Viewer enthält eine Graz-Karte mit Leaflet/OpenStreetMap; Orte sind anklickbar, Marker-Popups führen zu den Einträgen.
 - Der Jahresfilter wirkt auf Trefferliste, Themenverläufe und Karte.
@@ -78,10 +84,14 @@ Aktuelle Ergebnisbehandlung:
 - Beträge werden nur aus Titel/Überschrift oder aus formalen Antrag-/Anfrageabschnitten übernommen, nicht aus beliebigen Debattenstellen.
 - Ortskandidaten werden optional gegen `Straßennamen_Graz.xlsx` geprüft; Titel-Orte haben Vorrang vor späteren Vergleichsstraßen im Antragstext.
 - Straßengruppen und zusammengesetzte Straßennamen wie `Waltendorfer Hauptstraße – Schulgasse – Ruckerlberggasse` werden vollständig aus der Straßennamenliste erkannt.
-- Der Viewer zeigt vorhandene KI-Zusammenfassungen pro Stück als ausklappbare Blöcke: fachliche Kurzfassung und einfache Sprache.
+- Der Viewer zeigt vorhandene KI-Zusammenfassungen pro Stück als ausklappbare Blöcke: fachliche Zusammenfassung, einfache Sprache, "Warum ist das interessant?", Kernpunkte und offene Punkte.
+- Die bisherige KI-Zusammenfassung wird fachlich neu aufgesetzt: `AI_SUMMARY_GUIDE.md` definiert längere Einzeldokument-Zusammenfassungen, einfache Sprache für Menschen mit kognitiven Einschränkungen, Kernpunkte, offene Punkte und Quellenlimits. Künftige Qualitätsläufe sollen nicht mehrere Einträge gemeinsam zusammenfassen, sondern jeden Eintrag einzeln verarbeiten.
 - Schriftliche Anträge, schriftliche Anfragen und Dringlichkeitsanträge erhalten nach Möglichkeit ein Feld `submitter` aus dem Berichterstatter-/Einbringer-Hinweis. Der Viewer zeigt dieses Feld als `Einbringer`.
+- Mitteilungen werden als eigener Typ `communication` mit Status `noted` geführt, damit sie nicht mehr als unklare Tagesordnungspunkte erscheinen.
 - Bei KI-Zusammenfassungen von Anträgen/Anfragen blendet der Viewer eine Einordnung ein, damit Forderungen einzelner Gemeinderatsmitglieder/Klubs nicht als Aussage der Gemeinde missverstanden werden.
-- Der Viewer hat zusätzliche Reiter `Baustellen` und `Tiefgaragen`. Baustellen werden aus der öffentlichen Stadt-Graz-Baustellenseite lokal in `out\baustellen_graz.html` gecacht und in der Karte angezeigt; der Cache bleibt aus Git draußen. Tiefgaragen nutzen bevorzugt den OGD-Datensatz `Parkgaragen Graz` mit `CC BY 4.0`; für die lokale Anzeige gibt es Koordinaten-Fallbacks, damit Punkte auch ohne Browser-Geocoding sichtbar sind. Live-Verfügbarkeit bleibt `unbekannt`.
+- Der Viewer hat zusätzliche Reiter `Baustellen`, `Tiefgaragen`, `Apotheken`, `Ärzte` und `Service & Ämter`. Baustellen werden aus der öffentlichen Stadt-Graz-Baustellenseite lokal in `out\baustellen_graz.html` gecacht und in der Karte angezeigt; der Cache bleibt aus Git draußen. Tiefgaragen nutzen bevorzugt den OGD-Datensatz `Parkgaragen Graz` mit `CC BY 4.0`; für die lokale Anzeige gibt es Koordinaten-Fallbacks, damit Punkte auch ohne Browser-Geocoding sichtbar sind. Live-Verfügbarkeit bleibt `unbekannt`. `Service & Ämter` nutzt eine kleine kuratierte Liste mit Quellenlinks und klarer Lizenznotiz; aktuelle Öffnungszeiten, Termine und Detailzuständigkeiten werden nur verlinkt.
+- Der Export-Reiter erzeugt öffentliche Baustellen-/Veranstaltungsdaten als JSON, CSV, RSS und ICS. Zusätzlich gibt es browser-lokale Abos nach Straße, Bezirk oder Zeitraum und einen lokalen Feedbackexport; beides bleibt statisches `localStorage`-Arbeitsmaterial ohne personenbezogene Veröffentlichung.
+- Die öffentliche Viewer-Version kann über GitHub Pages bereitgestellt werden. `.github/workflows/pages.yml` baut täglich aus DIGRA eine statische `public/index.html`; Arbeitsdateien wie JSONL und SQLite bleiben nur im GitHub-Runner.
 
 ## DIGRA-Abgleich
 
@@ -134,8 +144,8 @@ Letzter DIGRA-Lauf am 2026-06-08:
 - Ausgabe: `out/agenda_items_digra.jsonl`
 - SQLite-Ausgabe: `out\eintraege_digra.sqlite`
 - Viewer-Ausgabe: `viewer.html`
-- KI-Zusammenfassungs-Probe: `python -m graz_protocols.cli summaries --records out\agenda_items_digra.jsonl --output out\agenda_items_digra_ai.jsonl --ai-model qwen2.5:7b-instruct --limit 10`
-- Vollständiger KI-Lauf: gleicher Befehl ohne `--limit`; der Lauf schreibt fortlaufend nach `out\agenda_items_digra_ai.jsonl` und kann erneut gestartet werden, um vorhandene Zusammenfassungen wiederzuverwenden.
+- Zusammenfassungs-Probe ohne externe KI-Kosten: `python -m graz_protocols.cli summaries --records out\agenda_items_digra.jsonl --output out\agenda_items_digra_ai.jsonl --limit 10`
+- Vollständiger Zusammenfassungslauf: gleicher Befehl ohne `--limit`; der Lauf schreibt fortlaufend nach `out\agenda_items_digra_ai.jsonl` und kann erneut gestartet werden, um vorhandene Zusammenfassungen wiederzuverwenden.
 - Audit-Ausgabe: `out\digra_audit.md`
 - Themenkandidaten: `out\topic_candidates.json`
 - Topic-News: optional über Stadt-Graz-RSS mit `--city-news`
@@ -146,8 +156,8 @@ Aktualisierung am 2026-06-09:
 
 - DIGRA-Links werden beim Import und beim Cache-Lesen kanonisch gespeichert: `https://digra.graz.at/document?ref=...`; Session-Parameter wie `jfwid` werden entfernt.
 - Rebuild: 18 DOCX-Dateien, 1135 Einträge, 914 DIGRA-Links, 0 fehlerhafte DIGRA-Linkformen.
-- KI-Datei: `out\agenda_items_digra_ai.jsonl` enthält 1135/1135 kurze KI-Zusammenfassungen und 1135/1135 Texte in einfacher Sprache.
-- Viewer: `viewer.html` zeigt KI-Zusammenfassungen im Detailbereich eines ausgewählten Eintrags als ausklappbare Blöcke `KI-Zusammenfassung` und `Einfache Sprache`.
+- KI-Datei: `out\agenda_items_digra_ai.jsonl` enthält lokale Zusammenfassungsfelder. Neuere Läufe ergänzen zusätzlich Kernpunkte, offene Punkte und Quellenlimits.
+- Viewer: `viewer.html` zeigt Zusammenfassungen im Detailbereich eines ausgewählten Eintrags als ausklappbare Blöcke `KI-Zusammenfassung`, `Einfache Sprache`, `Warum ist das interessant?` und `Kernpunkte und offene Punkte`.
 - Karte: Beim Öffnen des Kartenreiters werden alle Orte der aktuellen Filterauswahl geocodiert; ein Ladebalken zeigt den Fortschritt, bis alle Orte geprüft sind.
 - Karte: Beim Fokussieren eines Eintrags werden alle Orte dieses Eintrags markiert; zugehörige Marker werden grün hervorgehoben.
 - Karte: Marker und Koordinaten werden im Browser wiederverwendet, damit Jahreswechsel wie 2026 -> 2025 -> 2026 nicht alles neu aufbauen müssen.
@@ -164,12 +174,14 @@ Erzeugte Ausgabe ist absichtlich ignoriert.
 
 ## Nächster Ausbauschritt
 
-Die Extraktionsqualität über die Abschnittserkennung hinaus verbessern:
+Die Extraktionsqualität und die KI-Nutzbarkeit über die Abschnittserkennung hinaus verbessern:
 
 - DIGRA-Ergebnisse systematisch gegen Parser-Ergebnisse abgleichen
 - komplexe Änderungs- und Zusatzanträge besser trennen
 - Ortserkennung verbessern und geocoding-taugliche Ortsdatensätze erzeugen
 - Zeitachsenabfragen auf der SQLite-Ausgabe aufbauen
+- Einzeldokument-Zusammenfassungen nach `AI_SUMMARY_GUIDE.md` neu erzeugen
+- Antwortassistent auf den neuen Python-Retrieval-Unterbau umstellen und den Such-Goldstandard mit echten, bereinigten lokalen Record-IDs erweitern
 
 ## GitHub Issues
 

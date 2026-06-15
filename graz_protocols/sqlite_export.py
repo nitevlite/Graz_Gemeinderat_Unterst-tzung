@@ -11,7 +11,7 @@ import uuid
 from .parser import AgendaRecord
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 def write_sqlite(path: Path, records: list[AgendaRecord], summary: dict) -> None:
@@ -141,6 +141,37 @@ def create_schema(connection: sqlite3.Connection) -> None:
           content=''
         );
 
+        CREATE TABLE IF NOT EXISTS search_documents (
+          eintrag_id TEXT PRIMARY KEY,
+          datum TEXT NOT NULL,
+          typ TEXT NOT NULL,
+          titel TEXT NOT NULL,
+          status TEXT NOT NULL,
+          ergebnis TEXT NOT NULL,
+          ergebnisquelle TEXT NOT NULL,
+          digra_url TEXT NOT NULL,
+          source_url TEXT NOT NULL,
+          einbringer TEXT NOT NULL,
+          FOREIGN KEY (eintrag_id) REFERENCES eintraege(eintrag_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS search_chunks (
+          chunk_id TEXT PRIMARY KEY,
+          eintrag_id TEXT NOT NULL,
+          feld TEXT NOT NULL,
+          gewicht REAL NOT NULL,
+          text TEXT NOT NULL,
+          FOREIGN KEY (eintrag_id) REFERENCES eintraege(eintrag_id)
+        );
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
+          chunk_id UNINDEXED,
+          eintrag_id UNINDEXED,
+          feld UNINDEXED,
+          text,
+          tokenize='unicode61 remove_diacritics 2'
+        );
+
         CREATE INDEX IF NOT EXISTS idx_eintraege_datum ON eintraege(datum);
         CREATE INDEX IF NOT EXISTS idx_eintraege_typ ON eintraege(typ);
         CREATE INDEX IF NOT EXISTS idx_eintraege_status ON eintraege(status);
@@ -149,6 +180,8 @@ def create_schema(connection: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_business_numbers_wert ON business_numbers(wert);
         CREATE INDEX IF NOT EXISTS idx_locations_wert ON locations(wert);
         CREATE INDEX IF NOT EXISTS idx_votes_outcome ON votes(outcome);
+        CREATE INDEX IF NOT EXISTS idx_search_chunks_eintrag ON search_chunks(eintrag_id);
+        CREATE INDEX IF NOT EXISTS idx_search_chunks_feld ON search_chunks(feld);
 
         CREATE TABLE IF NOT EXISTS zusammenfassung (
           schluessel TEXT PRIMARY KEY,
@@ -168,6 +201,9 @@ def clear_existing_data(connection: sqlite3.Connection) -> None:
     connection.execute("DELETE FROM votes")
     connection.execute("DELETE FROM source_spans")
     connection.execute("DELETE FROM eintraege_fts")
+    connection.execute("DELETE FROM search_documents")
+    connection.execute("DELETE FROM search_chunks")
+    connection.execute("DELETE FROM search_fts")
     connection.execute("DELETE FROM zusammenfassung")
     connection.execute("DELETE FROM meta")
     connection.execute(
@@ -324,3 +360,106 @@ def insert_normalized_tables(connection: sqlite3.Connection, records: list[Agend
             for index, record in enumerate(data, start=1)
         ],
     )
+    insert_search_index(connection, data)
+
+
+def insert_search_index(connection: sqlite3.Connection, records: list[dict]) -> None:
+    connection.executemany(
+        """
+        INSERT INTO search_documents (
+          eintrag_id, datum, typ, titel, status, ergebnis, ergebnisquelle,
+          digra_url, source_url, einbringer
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                record["record_id"],
+                record["meeting_date"],
+                record["record_type"],
+                record["title"],
+                record["status"],
+                record["result_text"],
+                record["result_source"],
+                record["digra_url"],
+                record["source_url"],
+                record["submitter"],
+            )
+            for record in records
+        ],
+    )
+    chunks = [chunk for record in records for chunk in search_chunks_for_record(record)]
+    connection.executemany(
+        "INSERT INTO search_chunks (chunk_id, eintrag_id, feld, gewicht, text) VALUES (?, ?, ?, ?, ?)",
+        chunks,
+    )
+    connection.executemany(
+        "INSERT INTO search_fts (chunk_id, eintrag_id, feld, text) VALUES (?, ?, ?, ?)",
+        [
+            (chunk_id, record_id, field, normalize_index_text(text))
+            for chunk_id, record_id, field, _weight, text in chunks
+        ],
+    )
+
+
+def search_chunks_for_record(record: dict) -> list[tuple[str, str, str, float, str]]:
+    record_id = str(record["record_id"])
+    fields: list[tuple[str, float, str]] = [
+        ("titel", 5.0, str(record.get("title", ""))),
+        ("ergebnis", 3.0, str(record.get("result_text", ""))),
+        ("status", 2.0, str(record.get("status_text", ""))),
+        ("geschaeftszahlen", 5.0, " ".join(str(value) for value in record.get("business_numbers", []))),
+        ("orte", 4.0, " ".join(str(value) for value in record.get("locations", []))),
+        ("betraege", 3.0, " ".join(str(value) for value in record.get("amounts", []))),
+        ("einbringer", 3.0, str(record.get("submitter", ""))),
+        ("quellenausschnitt", 1.5, str(record.get("source_snippet", ""))),
+        ("abstimmungen", 2.5, votes_search_text(record.get("votes", []))),
+        ("fragestunde", 3.0, question_parts_search_text(record.get("question_parts", {}))),
+    ]
+    chunks: list[tuple[str, str, str, float, str]] = []
+    for field, weight, text in fields:
+        cleaned = clean_search_text(text)
+        if not cleaned:
+            continue
+        chunks.append((f"{record_id}:{field}", record_id, field, weight, cleaned))
+    return chunks
+
+
+def votes_search_text(votes: object) -> str:
+    if not isinstance(votes, list):
+        return ""
+    parts: list[str] = []
+    for vote in votes:
+        if not isinstance(vote, dict):
+            continue
+        parts.extend(
+            [
+                str(vote.get("subject", "")),
+                str(vote.get("outcome", "")),
+                " ".join(str(value) for value in vote.get("approval", []) if str(value).strip()),
+                " ".join(str(value) for value in vote.get("against", []) if str(value).strip()),
+                " ".join(str(value) for value in vote.get("abstention", []) if str(value).strip()),
+            ]
+        )
+    return " ".join(parts)
+
+
+def question_parts_search_text(parts: object) -> str:
+    if not isinstance(parts, dict):
+        return ""
+    return " ".join(str(value) for value in parts.values() if str(value).strip())
+
+
+def clean_search_text(value: str) -> str:
+    return " ".join(str(value or "").split())
+
+
+def normalize_index_text(value: str) -> str:
+    text = clean_search_text(value)
+    normalized = (
+        text.casefold()
+        .replace("ß", "ss")
+        .replace("ä", "ae")
+        .replace("ö", "oe")
+        .replace("ü", "ue")
+    )
+    return f"{text} {normalized}" if normalized and normalized != text.casefold() else text

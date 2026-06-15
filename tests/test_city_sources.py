@@ -9,6 +9,11 @@ from graz_protocols.city_sources import (
     meeting_date_from_anchor,
     meeting_page_label,
     parse_city_meeting_page_index,
+    parse_city_archive_assets,
+    city_archive_assets_to_records,
+    write_city_archive_asset_index,
+    CityArchiveAsset,
+    CityMeetingPage,
 )
 from bs4 import BeautifulSoup
 
@@ -79,3 +84,110 @@ def test_parse_city_meeting_page_index_discovers_year_and_meeting_links():
     assert links == ["https://www.graz.at/cms/beitrag/10390232/7768145/ArchivNachlese.html"]
     assert meetings[0].meeting_date == "2021-12-16"
     assert meetings[0].url == "https://www.graz.at/cms/beitrag/10382049/7768145/Gemeinderatssitzung_vom_Dezember.html"
+
+
+def test_parse_city_archive_assets_discovers_protocol_documents():
+    page = CityMeetingPage(
+        meeting_date="2021-12-16",
+        title="Gemeinderatssitzung",
+        url="https://www.graz.at/cms/beitrag/page",
+        source_url="https://www.graz.at/cms/beitrag/index",
+    )
+    html = """
+    <html><body>
+      <a href="/fileadmin/protokoll.docx">Protokoll Gemeinderat</a>
+      <a href="/cms/dokumente/10036908_7768145/4297f20e/040422_antraege.pdf">Anträge</a>
+      <a href="/cms/beitrag/overview?cms_nearest=10036908">Kontakt</a>
+    </body></html>
+    """
+
+    assets = parse_city_archive_assets(html, page)
+
+    assert {asset.kind for asset in assets} == {"protocol_document", "archive_document"}
+    assert assets[0].meeting_date == "2021-12-16"
+    assert assets[1].meeting_date == "2004-04-22"
+
+
+def test_city_archive_asset_summary_reports_years_and_document_types(monkeypatch, tmp_path):
+    pages = [
+        CityMeetingPage(
+            meeting_date="2021-12-16",
+            title="Gemeinderatssitzung",
+            url="https://www.graz.at/cms/beitrag/page",
+            source_url="https://www.graz.at/cms/beitrag/index",
+        )
+    ]
+    monkeypatch.setattr("graz_protocols.city_sources.read_city_meeting_index", lambda input_index: (pages, []))
+    monkeypatch.setattr(
+        "graz_protocols.city_sources.fetch_city_archive_assets",
+        lambda loaded_pages: parse_city_archive_assets(
+            '<a href="/fileadmin/protokoll.docx">Protokoll Gemeinderat</a><a href="/cms/dokumente/10036908_7768145/4297f20e/040422_antraege.pdf">Anträge</a>',
+            loaded_pages[0],
+        ),
+    )
+
+    summary = write_city_archive_asset_index(tmp_path / "assets.json", input_index=tmp_path / "index.json")
+
+    assert summary["years"] == ["2004", "2021"]
+    assert summary["document_types"]["protocol_document"] == 1
+    assert summary["document_types"]["archive_document"] == 1
+
+
+def test_city_archive_assets_become_source_records():
+    page = CityMeetingPage(
+        meeting_date="2021-12-16",
+        title="Gemeinderatssitzung",
+        url="https://www.graz.at/cms/beitrag/page",
+        source_url="https://www.graz.at/cms/beitrag/index",
+    )
+    assets = parse_city_archive_assets('<a href="/fileadmin/protokoll.docx">Protokoll Gemeinderat</a>', page)
+
+    records = city_archive_assets_to_records(assets)
+
+    assert len(records) == 1
+    assert records[0].record_type == "archive_source"
+    assert records[0].title == "Protokoll Gemeinderat"
+    assert records[0].status == "source_available"
+    assert records[0].result_source == "archiv"
+    assert records[0].source_url == "https://www.graz.at/fileadmin/protokoll.docx"
+
+
+def test_city_archive_assets_use_specific_titles_and_attendance_type():
+    assets = [
+        CityArchiveAsset(
+            meeting_date="2023-12-14",
+            title="Anträge",
+            url="https://www.graz.at/cms/dokumente/10419397_7768145/4c6e45d9/231214_antraege2.pdf",
+            source_url="https://www.graz.at/cms/beitrag/page",
+            kind="archive_document",
+        ),
+        CityArchiveAsset(
+            meeting_date="2023-12-14",
+            title="Tagesordnung",
+            url="https://www.graz.at/cms/dokumente/10419397_7768145/04fa2430/231214_tagesordnung%202von2.pdf",
+            source_url="https://www.graz.at/cms/beitrag/page",
+            kind="archive_document",
+        ),
+        CityArchiveAsset(
+            meeting_date="2023-11-16",
+            title="->schriftliche ANTWORT",
+            url="https://www.graz.at/cms/dokumente/10418174_8106610/668ab7c2/Antwort_FS231116_10_Pascuttini.pdf",
+            source_url="https://www.graz.at/cms/beitrag/page",
+            kind="archive_document",
+        ),
+        CityArchiveAsset(
+            meeting_date="2023-11-16",
+            title="Anwesenheitsliste",
+            url="https://www.graz.at/cms/dokumente/10418012_7768145/11111111/231116_anwesenheitsliste.pdf",
+            source_url="https://www.graz.at/cms/beitrag/page",
+            kind="archive_document",
+        ),
+    ]
+
+    records = {record.source_url: record for record in city_archive_assets_to_records(assets)}
+
+    assert records[assets[0].url].title == "Schriftliche Anträge vom 14.12.2023 (Teil 2)"
+    assert records[assets[1].url].title == "Tagesordnung vom 14.12.2023 (Teil 2 von 2)"
+    assert records[assets[2].url].title == "Antwort zur Fragestunde vom 16.11.2023 (Pascuttini)"
+    assert records[assets[3].url].record_type == "attendance_list"
+    assert records[assets[3].url].title == "Anwesenheitsliste vom 16.11.2023"

@@ -25,7 +25,7 @@ MEETING_DATE_IN_TEXT_RE = re.compile(
     r"(?P<date>\d{1,2}\s*\.\s*\d{1,2}\s*\.\s*\d{4})",
     re.IGNORECASE,
 )
-ISO_DATE_IN_FILENAME_RE = re.compile(r"\b(?P<date>\d{4}-\d{2}-\d{2})\b")
+ISO_DATE_IN_FILENAME_RE = re.compile(r"(?<!\d)(?P<date>\d{4}-\d{2}-\d{2})(?!\d)")
 BUSINESS_NO_RE = re.compile(
     r"\b(?:"
     r"Präs\.?|Praes\.?|"
@@ -58,6 +58,7 @@ LOCATION_TYPED_PATTERNS = [
     ("land_register", re.compile(r"\bEZ\s+\d+", re.IGNORECASE)),
     ("parcel", re.compile(r"\bGdst\.?\s*Nr\.?\s*[\d/]+", re.IGNORECASE)),
 ]
+NON_PUBLIC_LOCATION_TYPES = {"parcel", "land_register", "cadastral_municipality"}
 REPORTER_RE = re.compile(r"\((?:Berichterstatter(?:in)?|GR|KlObm|KlObf)[^)]+\)")
 REPORTER_DETAIL_RE = re.compile(r"\((?P<role>Berichterstatter(?:in)?|GR|KlObm|KlObf)\s*:?\s*(?P<name>[^)]+)\)")
 MOTION_AUTHOR_RE = re.compile(
@@ -80,6 +81,7 @@ SECTION_HEADINGS = {
 
 STATUS_PATTERNS = [
     ("assigned", re.compile(r"geschäftsordnungsmäßigen Behandlung zugewiesen", re.IGNORECASE)),
+    ("noted", re.compile(r"zur Kenntnis (?:genommen|gebracht)", re.IGNORECASE)),
     ("accepted_unanimous", re.compile(r"einstimmig angenommen", re.IGNORECASE)),
     ("accepted_majority", re.compile(r"mehr(?:heitlich|stimmig) angenommen", re.IGNORECASE)),
     ("rejected_majority", re.compile(r"mehr(?:heitlich|stimmig) abgelehnt", re.IGNORECASE)),
@@ -131,12 +133,15 @@ OUTCOME_LABELS = {
     "accepted_unanimous": "einstimmig angenommen",
     "accepted_majority": "mehrheitlich angenommen",
     "accepted": "angenommen",
+    "noted": "zur Kenntnis genommen",
     "rejected_majority": "mehrheitlich abgelehnt",
     "rejected": "abgelehnt",
+    "source_available": "Quelle verfügbar",
     "assigned": "zugewiesen",
     "postponed": "vertagt",
     "unknown": "unbekannt",
 }
+WRITTEN_SUBMISSION_TYPES = {"written_question", "written_motion", "amendment_motion", "additional_motion"}
 
 
 @dataclass(frozen=True)
@@ -165,7 +170,10 @@ class AgendaRecord:
     protocol_result_text: str = ""
     digra_match_score: float = 0.0
     source_url: str = ""
+    source_page: int = 0
+    local_source_url: str = ""
     submitter: str = ""
+    question_parts: dict[str, str] = field(default_factory=dict)
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False, sort_keys=True)
@@ -195,6 +203,9 @@ def parse_protocol(
         submitter = extract_submitter(chunk_text)
         raw_result_text = extract_result_text(chunk_text)
         status, status_text = classify_status(raw_result_text or chunk_text)
+        status, status_text, raw_result_text = normalize_written_submission_status(
+            chunk.record_type, status, status_text, raw_result_text
+        )
         votes = extract_votes(raw_result_text, status)
         result_text = format_result_text(votes, status, status_text)
         business_numbers = unique_preserve_order(
@@ -307,7 +318,7 @@ def iter_record_chunks(paragraphs: Iterable[ParserParagraph]) -> Iterable[Agenda
                 heading=heading,
                 heading_body=heading_body,
                 item_no=item_no,
-                record_type="agenda_item",
+                record_type=generic_record_type(current_section) or "agenda_item",
                 is_toc=paragraph.is_toc or looks_like_toc_entry(paragraph.text),
                 body=[],
             )
@@ -352,6 +363,8 @@ def with_body(chunk: AgendaChunk, body: list[str]) -> AgendaChunk:
 
 def generic_record_type(section: str) -> str:
     return {
+        "Mitteilungen": "communication",
+        "Fragestunde": "question_hour",
         "Dringlichkeitsanträge": "urgent_motion",
         "Anfragen (schriftlich)": "written_question",
         "Anträge (schriftlich)": "written_motion",
@@ -435,6 +448,18 @@ def classify_status(text: str) -> tuple[str, str]:
     return "unknown", ""
 
 
+def normalize_written_submission_status(
+    record_type: str, status: str, status_text: str, raw_result_text: str = ""
+) -> tuple[str, str, str]:
+    if record_type == "communication" and status == "unknown":
+        noted_text = "Mitteilung ohne Beschluss."
+        return "noted", status_text or "zur Kenntnis genommen", raw_result_text or noted_text
+    if record_type in WRITTEN_SUBMISSION_TYPES and status == "unknown":
+        assigned_text = "Der geschäftsordnungsmäßigen Behandlung zugewiesen."
+        return "assigned", status_text or "zugewiesen", raw_result_text or assigned_text
+    return status, status_text, raw_result_text
+
+
 def extract_result_text(text: str) -> str:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     result_lines: list[str] = []
@@ -500,15 +525,17 @@ def format_result_text(votes: list[dict[str, object]], status: str, status_text:
     if votes:
         return "\n\n".join(format_vote(vote) for vote in votes)
     if status == "assigned":
-        return "Zugewiesen"
+        return "Verfahren: zugewiesen"
     if status == "unknown":
         return "Unbekannt"
     return normalize_status_label(status, status_text)
 
 
 def format_vote(vote: dict[str, object]) -> str:
-    subject = SUBJECT_LABELS.get(str(vote.get("subject", "")), "Antrag")
-    outcome = OUTCOME_LABELS.get(str(vote.get("outcome", "")), str(vote.get("outcome", "")) or "unbekannt")
+    subject = vote_subject_label(vote)
+    outcome = str(vote.get("outcome_text", "") or "").strip() or OUTCOME_LABELS.get(
+        str(vote.get("outcome", "")), str(vote.get("outcome", "")) or "unbekannt"
+    )
     lines = [f"{subject}: {outcome}"]
     approval = vote.get("approval")
     against = vote.get("against")
@@ -520,6 +547,14 @@ def format_vote(vote: dict[str, object]) -> str:
     if isinstance(abstention, list) and abstention:
         lines.append(f"Enthaltung: {', '.join(str(item) for item in abstention)}")
     return "\n".join(lines)
+
+
+def vote_subject_label(vote: dict[str, object]) -> str:
+    organ = str(vote.get("organ", "") or "").strip()
+    date = str(vote.get("date", "") or "").strip()
+    if organ:
+        return f"{organ} am {date}" if date else organ
+    return SUBJECT_LABELS.get(str(vote.get("subject", "")), "Antrag")
 
 
 def normalize_status_label(status: str, status_text: str = "") -> str:
@@ -620,6 +655,8 @@ def extract_location_details(text: str, street_names: set[str] | None = None) ->
     details: list[dict[str, object]] = []
     seen: set[tuple[str, str]] = set()
     for location_type, pattern in LOCATION_TYPED_PATTERNS:
+        if location_type in NON_PUBLIC_LOCATION_TYPES:
+            continue
         for match in pattern.finditer(text):
             value = match.group(0).strip()
             if street_names is not None and location_type not in {"street", "place", "park", "bridge"}:

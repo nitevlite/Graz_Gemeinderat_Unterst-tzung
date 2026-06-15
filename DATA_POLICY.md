@@ -44,6 +44,13 @@ Für erzeugte Extraktionsergebnisse ignorierte Ausgabeorte verwenden:
 - `exports/`
 - `*.sqlite`
 - `*.jsonl`
+- `graz-baustellen-feed.json`
+- `graz-baustellen-feed.csv`
+- `graz-baustellen.ics`
+- `graz-baustellen-feed.rss`
+- `graz-baustellen-abos.json`
+- `graz-baustellen-feedback.json`
+- `graz-baustellen-auditlog.json`
 
 ## Technischer Git-Check
 
@@ -59,6 +66,7 @@ Die GitHub Action `checks` führt denselben Check bei Push und Pull Request aus.
 ## Bereinigte Fixtures
 
 Wenn Tests Beispiele brauchen, kurze künstliche Ausschnitte erstellen, die die Struktur erhalten, aber keinen vollständigen Protokollinhalt kopieren.
+Such-Goldstandards dürfen nur bereinigte Fragen, erwartete lokale `record_id`s, kurze synthetische Hinweise und Tags enthalten. Keine vollständigen Protokollpassagen, keine heruntergeladenen Dokumenttexte und keine rohen Exporte in Goldstandard-Dateien übernehmen.
 
 ## Externe Mobilitätsdaten
 
@@ -77,3 +85,13 @@ Aktuell nicht direkt einzubetten:
 - Grund: keine OGD-Freigabe gefunden; die Geoportal-Nutzungsbedingungen sind restriktiv.
 - Zulässig im Projekt: lokale Anzeige der öffentlichen Baustellen-Webseite von `graz.at` über einen ignorierten Cache unter `out/`, Verlinkung auf die offizielle Quelle und eigene Planungs-/Prüfdaten, die Nutzer:innen selbst eingeben.
 - Nicht zulässig: den geladenen Baustellen-HTML-Cache, Geoportal-Geometrien oder daraus erzeugte statische Baustellen-Datensätze ins Repository committen.
+
+Die statische Amtsansicht speichert Entwürfe, Freigaben und Auditlog nur im Browser-`localStorage`. Lokale Bürger-Abos und Feedbackhinweise werden ebenfalls nur im Browser gespeichert. Exporte daraus sind lokale Arbeitsdaten. Sie dürfen nur nach fachlicher Prüfung und ohne personenbezogene oder interne Inhalte veröffentlicht werden.
+
+KI bleibt optional. Der Standardbetrieb darf keine kostenpflichtige Cloud-KI, externen API-Abos oder proprietären Datenquellen voraussetzen. Quellenanzeige, Suche, Karte, Feed-Export und regelbasierte Baustellenprüfung müssen ohne KI funktionieren.
+
+## Öffentliche Website
+
+Für GitHub Pages darf nur der statisch erzeugte Viewer als Website-Artefakt veröffentlicht werden.
+Build-Zwischendaten wie JSONL, Summary-JSON, SQLite-Datenbanken, DIGRA-Caches, lokale Archivassets oder heruntergeladene Quelldokumente dürfen nicht in `public/` kopiert und nicht committed werden.
+Der Pages-Workflow nutzt `public_work/` nur als temporären Runner-Arbeitsordner und veröffentlicht ausschließlich `public/`.

@@ -1,0 +1,66 @@
+{
+  "description": "Bereinigter Such-Goldstandard mit synthetischen Grazer Gemeinderatsfragen. Keine Rohprotokolle.",
+  "version": 1,
+  "cases": [
+    {
+      "id": "verkehr-haltestelle-waltendorf",
+      "question": "Was gibt es zur barrierefreien Haltestelle in Waltendorf?",
+      "expected_record_ids": ["gold-haltestelle-waltendorf"],
+      "tags": ["verkehr", "ort", "antrag"]
+    },
+    {
+      "id": "parken-gruene-zone",
+      "question": "Welche offenen Anträge gibt es zum Parken in der Grünen Zone?",
+      "expected_record_ids": ["gold-parken-gruene-zone"],
+      "tags": ["verkehr", "parken", "offen"]
+    },
+    {
+      "id": "fragestunde-sozialamt",
+      "question": "Wurde in der Fragestunde etwas zum Sozialamt gefragt?",
+      "expected_record_ids": ["gold-fragestunde-sozialamt"],
+      "tags": ["fragestunde", "soziales"]
+    },
+    {
+      "id": "budget-kultur-betrag",
+      "question": "Welche Beschlüsse enthalten einen Betrag für Kulturarbeit?",
+      "expected_record_ids": ["gold-budget-kultur"],
+      "tags": ["budget", "betrag", "beschluss"]
+    },
+    {
+      "id": "einbringer-kpoe-verkehr",
+      "question": "Welche Verkehrsanträge wurden von der KPÖ eingebracht?",
+      "expected_record_ids": ["gold-haltestelle-waltendorf"],
+      "tags": ["einbringer", "partei", "verkehr"]
+    },
+    {
+      "id": "geschaeftszahl-a10-bd",
+      "question": "Finde die Geschäftszahl A10 BD 123 2026.",
+      "expected_record_ids": ["gold-haltestelle-waltendorf"],
+      "tags": ["geschaeftszahl"]
+    },
+    {
+      "id": "abgelehnt-stadion",
+      "question": "Welche Stadion-Anträge wurden abgelehnt?",
+      "expected_record_ids": ["gold-stadion-abgelehnt"],
+      "tags": ["sport", "abgelehnt"]
+    },
+    {
+      "id": "mitteilung-leistungsbericht",
+      "question": "Gibt es eine Mitteilung zum Leistungsbericht Haus Graz?",
+      "expected_record_ids": ["gold-leistungsbericht"],
+      "tags": ["mitteilung", "verwaltung"]
+    },
+    {
+      "id": "ort-hauptplatz",
+      "question": "Welche Einträge betreffen den Hauptplatz?",
+      "expected_record_ids": ["gold-hauptplatz-service"],
+      "tags": ["ort"]
+    },
+    {
+      "id": "frage-ohne-antwort",
+      "question": "Welche Fragen haben in den lokalen Daten keine Antwort?",
+      "expected_record_ids": ["gold-fragestunde-sozialamt"],
+      "tags": ["offen", "fragestunde"]
+    }
+  ]
+}

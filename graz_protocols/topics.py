@@ -24,7 +24,30 @@ STOPWORDS = {
     "stadt",
     "graz",
     "beschluss",
+    "genehmigung",
     "projektgenehmigung",
+    "protokoll",
+    "protokolle",
+    "öffentlichen",
+    "oeffentlichen",
+    "nichtöffentlichen",
+    "nichtoeffentlichen",
+    "sitzung",
+    "april",
+    "dezember",
+    "jänner",
+    "jaenner",
+    "januar",
+    "februar",
+    "märz",
+    "maerz",
+    "mai",
+    "juni",
+    "juli",
+    "august",
+    "september",
+    "oktober",
+    "november",
     "änderung",
     "aenderung",
     "entwurf",
@@ -89,6 +112,8 @@ def read_jsonl(path: Path) -> list[dict]:
 def build_topic_candidates(records: list[dict]) -> list[dict]:
     groups: dict[str, list[dict]] = defaultdict(list)
     for record in records:
+        if is_topic_noise_record(record):
+            continue
         for number in record.get("business_numbers", []):
             groups[f"business:{base_business_number(number)}"].append(record)
         for keyword in topic_keywords(record.get("title", "")):
@@ -102,6 +127,8 @@ def build_topic_candidates(records: list[dict]) -> list[dict]:
         reason_type, value = key.split(":", 1)
         confidence = 0.95 if reason_type == "business" else min(0.85, 0.45 + len(group_records) * 0.08)
         label = topic_label(group_records, fallback=value)
+        if reason_type == "business" and label == value:
+            continue
         candidates.append(
             {
                 "topic_id": stable_topic_id(key),
@@ -127,6 +154,17 @@ def build_topic_candidates(records: list[dict]) -> list[dict]:
             }
         )
     return sorted(candidates, key=lambda item: (-item["confidence"], item["label"]))[:200]
+
+
+def is_topic_noise_record(record: dict) -> bool:
+    if record.get("record_type") == "archive_source":
+        return True
+    title = str(record.get("title", "")).casefold()
+    if re.search(r"\b(?:auflage|genehmigung)\s+der\s+protokolle\b", title):
+        return True
+    if "protokolle der öffentlichen" in title or "protokolle der nichtöffentlichen" in title:
+        return True
+    return False
 
 
 def base_business_number(value: str) -> str:

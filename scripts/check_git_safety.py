@@ -28,6 +28,15 @@ FORBIDDEN_DIRS = {
     "out",
     "protokolle",
 }
+FORBIDDEN_FILENAMES = {
+    "graz-baustellen-auditlog.json",
+    "graz-baustellen-abos.json",
+    "graz-baustellen-feedback.json",
+    "graz-baustellen-feed.csv",
+    "graz-baustellen-feed.json",
+    "graz-baustellen-feed.rss",
+    "graz-baustellen.ics",
+}
 DEFAULT_MAX_BYTES = 1_000_000
 
 
@@ -74,6 +83,9 @@ def check_paths(tracked_paths: list[str], staged_paths: list[str], max_bytes: in
     for path_text in all_paths:
         normalized = normalize_path(path_text)
         suffix = Path(normalized).suffix.casefold()
+        if Path(normalized).name.casefold() in FORBIDDEN_FILENAMES:
+            findings.append(Finding(path_text, "lokaler Baustellen-/Audit-Export"))
+            continue
         if suffix in FORBIDDEN_SUFFIXES:
             findings.append(Finding(path_text, f"verbotener Dateityp {suffix}"))
             continue
