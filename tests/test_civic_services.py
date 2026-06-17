@@ -92,8 +92,10 @@ def test_parse_council_member_links_from_official_member_page_shape():
         <a href="/cms/beitrag/10379867/7768635/Gemeinderaetin_Anna_Hopper_OeVP.html">
           Hopper, Anna ( CLUBOBFRAU ÖVP)
         </a>
+        <a href="/cms/beitrag/10379873/7768635/Gemeinderat_Georg_Topf_OeVP.html">Topf, Georg DI (ÖVP)</a>
         <a href="/cms/beitrag/1/7768635/Gemeinderat_Thomas_Alic_KPOE.html">Alic, Thomas Horst (KPÖ)</a>
         <a href="/cms/beitrag/2/7768635/Gemeinderat_Philipp_Pointner_NEOS.html">Pointner, Philipp Mag. (Neos)</a>
+        <a href="/cms/beitrag/3/7768635/Gemeinderat_Alexis_Pascuttini.html">Alexis KLUBOBMANN Freier Gemeinderatsklub Pascuttini</a>
         """,
         "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html",
     )
@@ -105,6 +107,8 @@ def test_parse_council_member_links_from_official_member_page_shape():
     }
     assert seats["KPÖ"]["members"][0]["name"] == "Thomas Horst Alic"
     assert seats["NEOS"]["members"][0]["url"].startswith("https://www.graz.at/cms/beitrag/2/")
+    assert {member["name"] for member in seats["ÖVP"]["members"]} == {"Anna Hopper", "Georg Topf"}
+    assert seats["KFG"]["members"][0]["name"] == "Alexis Pascuttini"
 
 
 def test_parse_city_senate_member_links_from_official_page_shape():

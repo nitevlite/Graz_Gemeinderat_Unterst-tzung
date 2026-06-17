@@ -420,9 +420,13 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "return years[0] || ''" in html
     assert "function fillYearSelect" in html
     assert "function fillDateSelect" in html
+    assert "function updateTemporalFilterOptions()" in html
+    assert "function recordsMatchingNonTemporalFilters()" in html
     assert "String(right).localeCompare(String(left)" in html
     assert "fillYearSelect(yearFilter" in html
     assert "fillDateSelect(dateFilter" in html
+    assert "matching.map((record) => String(record.datum || '').slice(0, 4))" in html
+    assert "updateTemporalFilterOptions();" in html
     assert "fillYearSelect(topicYearFilter" not in html
     assert "yearFilter.value = defaultYearValue()" in html
     assert "dateFilter.value = ''" in html
@@ -630,6 +634,9 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "roadworkStatusLabels" in html
     assert "data-roadwork-status" in html
     assert "activeRoadworkStatus" in html
+    assert "const officialRoadworksRaw" in html
+    assert "time_status: roadworkDateStatus(roadwork.start_date || '', roadwork.end_date || '', roadwork.period || roadwork.time_status || '')" in html
+    assert "derzeit" in html
     assert "roadworkRuleAssessment" not in html
     assert "buildRoadworkAssessmentSources" not in html
     assert "plannedRoadworkDraft" not in html
@@ -1503,7 +1510,9 @@ def test_viewer_exposes_archive_source_filter_and_warning():
     assert "archiveNotice" in html
     assert "isArchiveRecord(record)" in html
     assert "Stadt-Graz-Archiv" in html
+    assert "Stadt-Graz-Protokoll" in html
     assert "function fillSourceSelect()" in html
+    assert "records.filter((r) => r.ergebnisquelle === 'Stadt-Graz-Protokoll').length" in html
     assert "'Stadt-Graz-Archiv'" in html
     assert "'Stadt-Graz-Protokoll'" in html
 

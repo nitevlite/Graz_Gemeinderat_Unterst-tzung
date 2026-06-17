@@ -3036,7 +3036,11 @@ def build_html(
     const summary = {summary_data};
     const topics = {topics_data};
     const parkingGarages = {parking_data};
-    const officialRoadworks = {roadworks_data};
+    const officialRoadworksRaw = {roadworks_data};
+    const officialRoadworks = officialRoadworksRaw.map((roadwork) => ({{
+      ...roadwork,
+      time_status: roadworkDateStatus(roadwork.start_date || '', roadwork.end_date || '', roadwork.period || roadwork.time_status || '')
+    }}));
     const pharmacies = {pharmacies_data};
     const doctors = {doctors_data};
     const civicServices = {civic_services_data};
@@ -3316,32 +3320,30 @@ def build_html(
       }});
     }}
 
-    function fillDateSelect(select, values) {{
-      const existing = new Set([...select.options].map((option) => option.value));
+    function resetSelectOptions(select, values, emptyLabel) {{
+      const current = select.value;
+      select.innerHTML = '';
+      const emptyOption = document.createElement('option');
+      emptyOption.value = '';
+      emptyOption.textContent = emptyLabel;
+      select.appendChild(emptyOption);
       [...new Set(values.filter(Boolean))]
         .sort((left, right) => String(right).localeCompare(String(left), 'de-AT'))
         .forEach((value) => {{
-          if (existing.has(value)) return;
           const option = document.createElement('option');
           option.value = value;
           option.textContent = value;
           select.appendChild(option);
-          existing.add(value);
         }});
+      select.value = [...select.options].some((option) => option.value === current) ? current : '';
+    }}
+
+    function fillDateSelect(select, values) {{
+      resetSelectOptions(select, values, 'Alle Daten');
     }}
 
     function fillYearSelect(select, values) {{
-      const existing = new Set([...select.options].map((option) => option.value));
-      [...new Set(values.filter(Boolean))]
-        .sort((left, right) => String(right).localeCompare(String(left), 'de-AT'))
-        .forEach((value) => {{
-          if (existing.has(value)) return;
-          const option = document.createElement('option');
-          option.value = value;
-          option.textContent = value;
-          select.appendChild(option);
-          existing.add(value);
-        }});
+      resetSelectOptions(select, values, 'Alle Jahre');
     }}
 
     function defaultYearValue() {{
@@ -3400,6 +3402,29 @@ def build_html(
         'Stadt-Graz-Protokoll'
       ];
       fillSelect(sourceFilter, [...preferredSources, ...records.map((record) => record.ergebnisquelle)]);
+    }}
+
+    function recordsMatchingNonTemporalFilters() {{
+      const query = normalizeSearchText(search.value);
+      return records.filter((record) => {{
+        if (activeTopicRecordIds && !activeTopicRecordIds.has(record.record_id)) return false;
+        if (typeFilter.value && record.typ !== typeFilter.value) return false;
+        if (statusFilter.value && record.status_filter !== statusFilter.value) return false;
+        if (categoryFilter.value && record.kategorie !== categoryFilter.value) return false;
+        if (sourceFilter.value && record.ergebnisquelle !== sourceFilter.value) return false;
+        if (amountFilter.value === 'mit' && !(record.betraege || []).length) return false;
+        if (amountFilter.value === 'ohne' && (record.betraege || []).length) return false;
+        if (query && !recordHaystack(record).includes(query)) return false;
+        return true;
+      }});
+    }}
+
+    function updateTemporalFilterOptions() {{
+      const matching = recordsMatchingNonTemporalFilters();
+      fillYearSelect(yearFilter, matching.map((record) => String(record.datum || '').slice(0, 4)));
+      fillDateSelect(dateFilter, matching
+        .filter((record) => !yearFilter.value || String(record.datum || '').startsWith(yearFilter.value + '-'))
+        .map((record) => record.datum));
     }}
 
     function fillDatalist(id, values, limit = 900) {{
@@ -3787,12 +3812,13 @@ def build_html(
       URL.revokeObjectURL(url);
     }}
 
-    function roadworkDateStatus(startText, endText) {{
-      if (!startText || !endText) return 'unklar';
+    function roadworkDateStatus(startText, endText, periodText = '') {{
       const today = new Date().toISOString().slice(0, 10);
+      if (endText && today > endText) return 'abgeschlossen';
+      if ((!startText && endText) || (endText && /derzeit/i.test(String(periodText || '')))) return 'aktuell';
+      if (!startText || !endText) return 'unklar';
       if (startText > endText) return 'unklar';
       if (today < startText) return 'kuenftig';
-      if (today > endText) return 'abgeschlossen';
       return 'aktuell';
     }}
 
@@ -7184,6 +7210,7 @@ def build_html(
       }}
       activeTopicRecordIds = null;
       activeTopicLabel = '';
+      updateTemporalFilterOptions();
       render();
       activateSearchSubtab('table', false);
       requestAnimationFrame(() => window.scrollTo({{ top: searchSubtabScroll.table || 0, behavior: 'auto' }}));
@@ -7237,7 +7264,7 @@ def build_html(
       setOptionalText('fileCount', summary.dateien_mit_eintraegen ?? new Set(records.map((r) => r.quell_datei)).size);
       setOptionalText('digraCount', summary.digra_ergebnisse ?? records.filter((r) => r.ergebnisquelle === 'DIGRA').length);
       if (digraMatchedCount) digraMatchedCount.textContent = summary.digra_treffer ?? records.filter((r) => r.digra_url).length;
-      if (digraFallbackCount) digraFallbackCount.textContent = summary.digra_protokoll_fallbacks ?? records.filter((r) => r.ergebnisquelle === 'Protokoll').length;
+      if (digraFallbackCount) digraFallbackCount.textContent = summary.digra_protokoll_fallbacks ?? records.filter((r) => r.ergebnisquelle === 'Stadt-Graz-Protokoll').length;
       if (cityLinkCount) cityLinkCount.textContent = summary.stadt_graz_links ?? records.filter((r) => r.source_url).length;
       if (digraMissingCount) digraMissingCount.textContent = records.filter((r) => !r.ergebnis || r.status_filter === 'Unbekannt').length;
       currentLocationIndex = buildLocationIndex(sichtbareEintraege);
@@ -7311,6 +7338,7 @@ def build_html(
     fillSourceSelect();
     yearFilter.value = defaultYearValue();
     dateFilter.value = '';
+    updateTemporalFilterOptions();
     fillDatalist('locationSuggestions', records.flatMap((record) => record.orte || []));
     const globalSuggestionValues = records.flatMap((record) => [
       record.titel,
@@ -7330,6 +7358,7 @@ def build_html(
     search.addEventListener('input', () => {{
       activeTopicRecordIds = null;
       activeTopicLabel = '';
+      updateTemporalFilterOptions();
       render();
     }});
     aiAsk.addEventListener('click', askLocalAi);
@@ -7361,15 +7390,20 @@ def build_html(
       if (yearFilter.value && dateFilter.value && !dateFilter.value.startsWith(yearFilter.value + '-')) {{
         dateFilter.value = '';
       }}
+      updateTemporalFilterOptions();
       render();
     }});
     dateFilter.addEventListener('input', () => {{
       if (dateFilter.value && yearFilter.value && !dateFilter.value.startsWith(yearFilter.value + '-')) {{
         yearFilter.value = '';
       }}
+      updateTemporalFilterOptions();
       render();
     }});
-    [typeFilter, statusFilter, categoryFilter, sourceFilter, amountFilter].forEach((el) => el.addEventListener('input', render));
+    [typeFilter, statusFilter, categoryFilter, sourceFilter, amountFilter].forEach((el) => el.addEventListener('input', () => {{
+      updateTemporalFilterOptions();
+      render();
+    }}));
     tableWrap.addEventListener('click', (event) => {{
       const locationButton = event.target.closest('[data-location]');
       if (locationButton) {{
@@ -7514,6 +7548,7 @@ def build_html(
     clearTopicFilter.addEventListener('click', () => {{
       activeTopicRecordIds = null;
       activeTopicLabel = '';
+      updateTemporalFilterOptions();
       render();
       activateTab('search');
     }});
@@ -7524,6 +7559,7 @@ def build_html(
       categoryFilter.value = categoryFilter.value === category ? '' : category;
       activeTopicRecordIds = null;
       activeTopicLabel = '';
+      updateTemporalFilterOptions();
       render();
     }});
     byId('grazMap').addEventListener('click', (event) => {{

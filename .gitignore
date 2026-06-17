@@ -10,6 +10,7 @@ data/source/
 *.doc
 *.pdf
 *.xlsx
+!Straßennamen_Graz.xlsx
 *.xls
 *.odt
 

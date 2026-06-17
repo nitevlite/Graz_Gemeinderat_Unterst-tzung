@@ -204,10 +204,20 @@ class CouncilMemberLinkParser(HTMLParser):
         if tag.lower() != "a" or not self._href:
             return
         label = re.sub(r"\s+", " ", "".join(self._parts)).strip()
-        if label and "(" in label and ")" in label:
+        if label and (("(" in label and ")" in label) or council_label_has_party_text(label)):
             self.links.append({"label": label, "url": self._href})
         self._href = ""
         self._parts = []
+
+
+def council_label_has_party_text(label: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(?:KPÖ|KPOE|ÖVP|OEVP|Grüne|Gruene|SPÖ|SPOE|NEOS|FPÖ|FPOE|KFG|Freier Gemeinderatsklub|ohne Klub)\b",
+            label,
+            flags=re.IGNORECASE,
+        )
+    )
 
 
 def council_party_from_label(label: str) -> str:
@@ -234,6 +244,7 @@ def council_party_from_label(label: str) -> str:
 
 def council_member_name_from_label(label: str) -> str:
     name = re.sub(r"\([^)]*\)", "", label)
+    name = strip_council_role_text(name)
     name = re.sub(r"\s+", " ", name).strip(" ,")
     if "," in name:
         last, first = [part.strip(" ,") for part in name.split(",", 1)]
@@ -256,15 +267,27 @@ def city_senate_label_has_role(label: str) -> bool:
 def city_senate_member_name_from_label(label: str) -> str:
     name = re.sub(r"\([^)]*\)", "", label)
     name = re.sub(r"\b(?:Bürgermeisterin-Stellvertreterin|Vizebürgermeisterin|Bürgermeisterin|Stadträtin|Stadtrat|StRin|StR)\b\.?", "", name)
-    name = re.sub(r"\b(?:Freier Gemeinderatsklub|Gemeinderatsklub)\b", "", name)
+    name = strip_council_role_text(name)
     name = re.sub(r"\s+", " ", name).strip(" ,")
     return council_member_name_from_label(name)
+
+
+def strip_council_role_text(value: str) -> str:
+    cleaned = re.sub(
+        r"\b(?:CLUBOBFRAU|KLUBOBFRAU|CLUBOBMANN|KLUBOBMANN|Klubobmann|Klubobfrau|Clubobmann|Clubobfrau)\b\.?",
+        "",
+        value,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"\(Korruptions-\)\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b(?:Freier Gemeinderatsklub|Gemeinderatsklub)\b", "", cleaned, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", cleaned).strip(" ,")
 
 
 def strip_council_name_titles(value: str) -> str:
     title_pattern = (
         r"\b(?:DI\.?\s*in|Dipl\.-Museol\.?\s*in|Dipl\.-Wirtschaftsing\.?\s*in|Dipl\.-Ing\.?\s*in|"
-        r"Dipl\.-Ing\.?|Univ\.-Prof\.?\s*in|Mag\.?\s*a|Mag\.?|Dr\.?\s*in|Dr\.?|MBA|MA|MPH|BSc|BA|FH|med\.?|in)\b"
+        r"Dipl\.-Ing\.?|Univ\.-Prof\.?\s*in|Mag\.?\s*a|Mag\.?|Dr\.?\s*in|Dr\.?|DI\.?|MBA|MA|MPH|BSc|BA|FH|med\.?|in)\b"
     )
     cleaned = re.sub(title_pattern, "", value)
     cleaned = re.sub(r"\s*\.\s*", " ", cleaned)
