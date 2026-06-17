@@ -5194,7 +5194,7 @@ def build_html(
           String(b.date || '').localeCompare(String(a.date || '')) ||
           a.title.localeCompare(b.title, 'de-AT')
         );
-      const displaySources = scored.slice(0, 40);
+      const displaySources = scored;
       const contextSources = balancedQuestionContextSources(scored);
       return {{
         scannedCount: allSources.length,
@@ -5207,16 +5207,12 @@ def build_html(
     }}
 
     function balancedQuestionContextSources(scored) {{
-      const accepted = scored.filter((source) => source.decisionPriority === 0).slice(0, 18);
-      const treated = scored.filter((source) => source.decisionPriority === 1).slice(0, 8);
-      const rejected = scored.filter((source) => source.decisionPriority === 2).slice(0, 8);
-      const open = scored.filter((source) => source.decisionPriority >= 3).slice(0, 18);
       const byId = new Map();
-      [...accepted, ...treated, ...rejected, ...open, ...scored.slice(0, 24)].forEach((source) => {{
+      scored.forEach((source) => {{
         const key = `${{source.kind}}|${{source.title}}|${{source.url}}`;
         if (!byId.has(key)) byId.set(key, source);
       }});
-      return [...byId.values()].sort(answerSourceSort).slice(0, 48);
+      return [...byId.values()].sort(answerSourceSort);
     }}
 
     function answerSourceSort(a, b) {{
@@ -5874,7 +5870,7 @@ def build_html(
         ranked.push(source);
         used.add(key);
       }});
-      return ranked.slice(0, 40);
+      return ranked;
     }}
 
     function citedSourceIndexes(answer) {{
@@ -5902,7 +5898,7 @@ def build_html(
     }}
 
     function buildLocalQuestionAnswer(question, candidateSet) {{
-      const sources = (candidateSet.answerSources || candidateSet.contextSources).slice(0, 30);
+      const sources = candidateSet.answerSources || candidateSet.contextSources;
       const personAnswer = personContributionAnswer(question, sources, candidateSet);
       if (personAnswer) return personAnswer;
       const groups = groupedAnswerSources(sources);
@@ -6347,7 +6343,7 @@ def build_html(
       }}
       const candidateSet = buildQuestionCandidateSet(question);
       const personSources = personContributionSources(question, candidateSet);
-      const answerSources = personSources.length ? personSources : candidateSet.contextSources.slice(0, 30);
+      const answerSources = personSources.length ? personSources : candidateSet.contextSources;
       candidateSet.answerSources = answerSources;
       renderAiSources(answerSources);
       if (!answerSources.length) {{

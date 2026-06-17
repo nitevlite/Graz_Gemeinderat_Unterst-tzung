@@ -901,6 +901,46 @@ def test_extracts_split_digra_vote_results():
     assert result.votes[1]["against"] == ["KFG"]
 
 
+def test_extracts_split_digra_vote_results_with_punkt_dot_and_additional_motion():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 2867/1</title></head>
+      <body>
+        <div class="preview">
+          <p>Dringlicher Antrag (§ 18 GO-GR)</p>
+          <p>Antragsteller:in(nen):</p>
+          <p>GR Beispiel (KPÖ)</p>
+          <p>Verbesserung der mobilen Versorgung von Patient:innen mit ME/CFS</p>
+          <p>Beschlussvermerk</p>
+          <p>Gemeinderat</p>
+          <p>am 12.03.2026</p>
+          <p>getrennt abgestimmt</p>
+          <p>Anmerkungen zur Abstimmung:</p>
+          <p>Die Dringlichkeit wurde einstimmig angenommen (Eustacchio nicht anwesend).</p>
+          <p>Punkt 1.: mehrheitlich angenommen; Zustimmung: KPÖ, Grüne, SPÖ, KFG, NEOS, FPÖ, Eustacchio; Dagegen: ÖVP</p>
+          <p>Punkt 2.: mehrheitlich angenommen; Zustimmung: KPÖ, Grüne, SPÖ, KFG, NEOS, FPÖ, Eustacchio; Dagegen: ÖVP</p>
+          <p>Punkt 3.: mehrheitlich angenommen; Zustimmung: KPÖ, Grüne, SPÖ, KFG, FPÖ, Eustacchio; Dagegen: ÖVP, NEOS</p>
+          <p>Punkt 4.: mehrheitlich angenommen; Zustimmung: KPÖ, Grüne, SPÖ, KFG, Eustacchio; Dagegen: ÖVP, NEOS, FPÖ</p>
+          <p>Zusatzantrag Einlagezahl 2867/3, keine Mehrheit</p>
+          <p>Schriftführer:in: Beispiel</p>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+
+    assert result.status == "accepted_majority"
+    assert "Dringlichkeit: einstimmig angenommen" in result.result_text
+    assert "Punkt 1: mehrheitlich angenommen" in result.result_text
+    assert "Punkt 4: mehrheitlich angenommen" in result.result_text
+    assert "Zusatzantrag 2867/3: mehrheitlich abgelehnt" in result.result_text
+    assert result.votes[0]["subject"] == "urgency"
+    assert result.votes[1]["against"] == ["ÖVP"]
+    assert result.votes[-1]["subject"] == "additional_motion_2867/3"
+    assert result.votes[-1]["outcome"] == "rejected_majority"
+
+
 def test_extracts_urgent_motion_no_majority_as_rejected_urgency():
     html = """
     <html>

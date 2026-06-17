@@ -523,7 +523,7 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "answer-more" in html
     assert "Alle ${escapeHtml(sources.length)} Treffer in diesem Abschnitt anzeigen" in html
     assert "function answerSourceSort" in html
-    assert "candidateSet.contextSources.slice(0, 30)" in html
+    assert "candidateSet.contextSources.slice(0, 30)" not in html
     assert "function personContributionAnswer" in html
     assert "passende Personentreffer" in html
     assert "Person: ${escapeHtml(person)}" in html
@@ -565,8 +565,8 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "merkur arena" in html
     assert "Apotheke" in html
     assert "Ordination/Ärztin/Arzt" in html
-    assert ".slice(0, 40)" in html
-    assert ".slice(0, 48)" in html
+    assert ".slice(0, 40)" not in html
+    assert ".slice(0, 48)" not in html
     assert "grazMap" in html
     assert "roadworksMap" in html
     assert "parkingMap" in html

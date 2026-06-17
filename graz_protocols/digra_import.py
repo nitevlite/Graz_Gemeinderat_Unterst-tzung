@@ -98,10 +98,10 @@ PARTY_NOTE_RE = re.compile(
     re.IGNORECASE,
 )
 SPLIT_VOTE_LINE_RE = re.compile(
-    r"^(?P<label>Dringlichkeit|Punkt\s*\d+|Antrag|Abänderungsantrag|Abaenderungsantrag|Zusatzantrag)"
-    r"(?:\s+wurde)?\s*[:;,]?\s*"
+    r"^(?:Die\s+)?(?P<label>Dringlichkeit|Punkt\s*\d+|Antrag|Abänderungsantrag|Abaenderungsantrag|Zusatzantrag(?:\s+Einlagezahl\s+\d{1,6}/\d{1,4})?)"
+    r"(?:\s+wurde)?\s*\.?\s*[:;,]?\s*"
     r"(?P<modifier>einstimmig|mehrheitlich|mehrstimmig)?\s*"
-    r"(?P<decision>angenommen|abgelehnt|zugewiesen|vertagt)\b",
+    r"(?P<decision>angenommen|abgelehnt|zugewiesen|vertagt|keine\s+Mehrheit)\b",
     re.IGNORECASE,
 )
 ROLE_TITLE_RE = re.compile(
@@ -1114,9 +1114,12 @@ def extract_split_votes(note_lines: list[str], raw_result_text: str) -> list[dic
         match = SPLIT_VOTE_LINE_RE.match(line)
         if match is None:
             continue
+        decision = match.group("decision")
+        modifier = match.group("modifier") or ""
+        outcome = "rejected_majority" if decision.casefold() == "keine mehrheit" else normalize_vote_outcome(modifier, decision)
         vote = {
             "subject": split_vote_subject(match.group("label")),
-            "outcome": normalize_vote_outcome(match.group("modifier") or "", match.group("decision")),
+            "outcome": outcome,
             "approval": [],
             "against": [],
             "abstention": [],
@@ -1149,6 +1152,9 @@ def split_vote_subject(value: str) -> str:
         return "amendment"
     if normalized == "zusatzantrag":
         return "additional_motion"
+    additional_match = re.match(r"zusatzantrag\s+einlagezahl\s+(\d{1,6}/\d{1,4})", normalized)
+    if additional_match:
+        return f"additional_motion_{additional_match.group(1)}"
     return "motion"
 
 
@@ -1200,6 +1206,9 @@ def split_vote_label(value: str) -> str:
         return "Abänderungsantrag"
     if value == "additional_motion":
         return "Zusatzantrag"
+    additional_match = re.match(r"additional_motion_(\d{1,6}/\d{1,4})", value)
+    if additional_match:
+        return f"Zusatzantrag {additional_match.group(1)}"
     return "Antrag"
 
 
