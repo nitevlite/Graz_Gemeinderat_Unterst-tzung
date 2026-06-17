@@ -2822,7 +2822,7 @@ def build_html(
           <button id="clearTopicFilter" type="button">Zurücksetzen</button>
         </div>
         <div class="active-filter archive-notice" id="archiveNotice">
-          <span>Ältere Archivtreffer stammen nicht aus DIGRA. Die automatische Erkennung kann unvollständig sein, besonders wenn ein Archiv-PDF mehrere Stücke enthält. Bitte die verlinkte Originalquelle prüfen.</span>
+          <span>DIGRA ist in dieser öffentlichen Ansicht ab 01.02.2025 die Hauptquelle. Ältere Archivtreffer stammen nicht aus DIGRA. Die automatische Erkennung kann unvollständig sein, besonders wenn ein Archiv-PDF mehrere Stücke enthält. Bitte die verlinkte Originalquelle prüfen.</span>
         </div>
         <section class="tab-panel active start-panel" id="startPanel">
           <div class="question-box">
@@ -3183,6 +3183,7 @@ def build_html(
       'Sonstiges': '#6b7280'
     }};
     let activeTabName = 'start';
+    const digraCoverageStartLabel = '01.02.2025';
     let lastMarkerLocationKey = '';
     let markerLoadRun = 0;
     let lastMapPlacesKey = '';
@@ -3944,6 +3945,7 @@ def build_html(
       document.querySelectorAll('.tab-panel').forEach((panel) => {{
         panel.classList.toggle('active', panel.id === `${{target}}Panel`);
       }});
+      updateArchiveNotice();
       if (target === 'map' && grazMap) {{
         setTimeout(() => {{
           grazMap.invalidateSize();
@@ -5932,12 +5934,14 @@ def build_html(
         ),
       ].filter(Boolean).join('');
       const limits = answerSourceLimits(sources);
+      const archiveNoticeText = archiveAnswerNotice(sources);
       return `
         <div class="answer-shell">
           <div class="answer-meta">
             ${{candidateSet.focusLabel ? `<span class="answer-pill">Fokus: ${{escapeHtml(candidateSet.focusLabel)}}</span>` : ''}}
           </div>
           ${{sections}}
+          ${{archiveNoticeText ? `<div class="answer-note">${{escapeHtml(archiveNoticeText)}}</div>` : ''}}
           ${{limits ? `<div class="answer-note">Grenzen der Antwort: ${{escapeHtml(limits)}}</div>` : ''}}
         </div>
       `;
@@ -5985,6 +5989,7 @@ def build_html(
         answerGroupHtml('Abgelehnt oder nur Verfahren', grouped.rejected, 'Diese Treffer sind abgelehnt oder nur als Verfahren belegt.', ''),
         answerGroupHtml('Offene Anträge und Fragen', grouped.open, 'Diese Punkte sind als Antrag, Anfrage oder offenes Verfahren erfasst.', ''),
       ].filter(Boolean).join('');
+      const archiveNoticeText = archiveAnswerNotice(matching);
       return `
         <div class="answer-shell">
           <div class="answer-meta">
@@ -5993,6 +5998,7 @@ def build_html(
             ${{year ? `<span class="answer-pill">Jahr: ${{escapeHtml(year)}}</span>` : ''}}
           </div>
           ${{sections}}
+          ${{archiveNoticeText ? `<div class="answer-note">${{escapeHtml(archiveNoticeText)}}</div>` : ''}}
         </div>
       `;
     }}
@@ -6302,6 +6308,24 @@ def build_html(
       if (!hasDecision) notes.push('Eine Umsetzung ist nur dann genannt, wenn sie in den lokalen Quellen ausdrücklich belegt ist; aus einem Antrag oder einer Frage allein wird keine Umsetzung abgeleitet.');
       if (hasOpen) notes.push('Bei Anfragen und Fragestunden bedeutet "keine Antwort erfasst" nur, dass die Antwort in dieser lokalen Datenbasis fehlt.');
       return notes.join(' ');
+    }}
+
+    function archiveAnswerNotice(sources) {{
+      if (!(sources || []).some((source) => isArchiveAnswerSource(source))) return '';
+      return `DIGRA ist in dieser öffentlichen Ansicht ab ${{digraCoverageStartLabel}} die Hauptquelle. Ältere Archivtreffer stammen nicht aus DIGRA. Die automatische Erkennung kann unvollständig sein, besonders wenn ein Archiv-PDF mehrere Stücke enthält. Bitte die verlinkte Originalquelle prüfen.`;
+    }}
+
+    function isArchiveAnswerSource(source) {{
+      const haystack = [
+        source.source,
+        source.sourceRole,
+        source.kind,
+        source.recordType,
+        source.url,
+        source.title,
+        source.titleText
+      ].join(' ').toLocaleLowerCase('de-AT');
+      return haystack.includes('stadt-graz-archiv') || haystack.includes('archiv') || haystack.includes('graz.at/cms/dokumente');
     }}
 
     function compactAnswerText(value, maxLength) {{
@@ -7253,7 +7277,7 @@ def build_html(
 
     function updateArchiveNotice() {{
       if (!archiveNotice) return;
-      const hasArchiveRecords = sichtbareEintraege.some((record) => isArchiveRecord(record));
+      const hasArchiveRecords = activeTabName === 'search' && sichtbareEintraege.some((record) => isArchiveRecord(record));
       archiveNotice.classList.toggle('is-active', hasArchiveRecords);
     }}
 

@@ -1509,9 +1509,14 @@ def test_viewer_exposes_archive_source_filter_and_warning():
     html = build_html([raw_record], {})
 
     assert record["ergebnisquelle"] == "Stadt-Graz-Archiv"
+    assert "DIGRA ist in dieser öffentlichen Ansicht ab 01.02.2025 die Hauptquelle" in html
     assert "Ältere Archivtreffer stammen nicht aus DIGRA" in html
     assert "archiveNotice" in html
     assert "isArchiveRecord(record)" in html
+    assert "activeTabName === 'search' && sichtbareEintraege.some((record) => isArchiveRecord(record))" in html
+    assert "updateArchiveNotice();" in html
+    assert "function archiveAnswerNotice(sources)" in html
+    assert "function isArchiveAnswerSource(source)" in html
     assert "Stadt-Graz-Archiv" in html
     assert "Stadt-Graz-Protokoll" in html
     assert "function fillSourceSelect()" in html
