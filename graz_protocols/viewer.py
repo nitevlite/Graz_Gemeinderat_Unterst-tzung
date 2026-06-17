@@ -2846,7 +2846,7 @@ def build_html(
                 <div class="question-sources" id="aiSources" hidden></div>
               </div>
             </div>
-            <div class="ai-disclaimer">KI-generierte Antworten können Fehler enthalten. Bitte immer die Quellen prüfen.</div>
+            <div class="ai-disclaimer">Die Antwort wird automatisch aus lokalen Quellen zusammengestellt und kann Fehler enthalten. Bitte immer die Quellen prüfen.</div>
           </div>
         </section>
         <section class="tab-panel" id="searchPanel">
@@ -3019,7 +3019,7 @@ def build_html(
       </main>
     </div>
   </div>
-  <div class="global-ai-disclaimer">KI-generierte Inhalte können Fehler enthalten. Bitte immer Quellen prüfen.</div>
+  <div class="global-ai-disclaimer">Automatisch erzeugte Zusammenfassungen können Fehler enthalten. Bitte immer Quellen prüfen.</div>
   <div class="civic-modal" id="civicFeedbackModal" role="dialog" aria-modal="true" aria-labelledby="civicFeedbackModalTitle">
     <div class="civic-modal-card">
       <h2 id="civicFeedbackModalTitle">Neue Stücke vor der Sitzung</h2>
@@ -5785,7 +5785,7 @@ def build_html(
         return;
       }}
       aiSources.hidden = false;
-      const note = 'KI-generierte Antworten können Fehler enthalten. Bitte immer die Quellen prüfen.';
+      const note = 'Die Antwort wird automatisch aus lokalen Quellen zusammengestellt und kann Fehler enthalten. Bitte immer die Quellen prüfen.';
       const visible = sources.slice(0, 8);
       const hidden = sources.slice(8);
       aiSources.innerHTML = `
@@ -7775,7 +7775,7 @@ def fallback_decision_summary(record: dict, result_text: str) -> str:
     cleaned_result = clean_viewer_text(result_text)
     if cleaned_result and cleaned_result != "Unbekannt":
         return f"Zum Punkt „{title or record_type}“ ist als Ergebnis erfasst: {cleaned_result}."
-    return f"Zum Punkt „{title or record_type}“ ist keine belastbare KI-Zusammenfassung erfasst."
+    return f"Zum Punkt „{title or record_type}“ ist keine belastbare Zusammenfassung erfasst."
 
 
 def viewer_ai_key_points(value: object) -> list[dict[str, str]]:

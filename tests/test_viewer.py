@@ -416,7 +416,8 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "GTFS-Adapter vorbereiten" in html
     assert "lizenzierter DATEX-II-Adapter" in html
     assert "Wobei kann ich behilflich sein?" in html
-    assert "KI-generierte Antworten können Fehler enthalten" in html
+    assert "Die Antwort wird automatisch aus lokalen Quellen zusammengestellt und kann Fehler enthalten" in html
+    assert "KI-generierte Antworten können Fehler enthalten" not in html
     assert "background: rgba(255, 255, 255, 0.96)" in html
     assert "background: #f8fafc" in html
     assert "function defaultYearValue()" in html
@@ -513,7 +514,7 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "Verlauf/Folgebeschlüsse" in html
     assert "balancedQuestionContextSources" in html
     assert "questionCandidateOverview" in html
-    assert "KI-generierte Antworten können Fehler enthalten. Bitte immer die Quellen prüfen." in html
+    assert "Die Antwort wird automatisch aus lokalen Quellen zusammengestellt und kann Fehler enthalten. Bitte immer die Quellen prüfen." in html
     assert "Quellen nach der KI-Antwort gereiht" not in html
     assert "rankSourcesFromAiAnswer" in html
     assert "citedSourceIndexes" in html
@@ -685,7 +686,8 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "abstimmungen" in html
     assert "gegenstimmen" in html
     assert "enthaltungen" in html
-    assert "KI-generierte Inhalte können Fehler enthalten" in html
+    assert "Automatisch erzeugte Zusammenfassungen können Fehler enthalten" in html
+    assert "KI-generierte Inhalte können Fehler enthalten" not in html
     assert "source_snippet" not in html
     assert "raw_text" not in html
 
