@@ -524,6 +524,10 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "Alle ${escapeHtml(sources.length)} Treffer in diesem Abschnitt anzeigen" in html
     assert "function answerSourceSort" in html
     assert "candidateSet.contextSources.slice(0, 30)" not in html
+    assert "'beschlossen'" in html
+    assert "'angenommen'" in html
+    assert "'antrag'" in html
+    assert "'wurde'" in html
     assert "function personContributionAnswer" in html
     assert "passende Personentreffer" in html
     assert "Person: ${escapeHtml(person)}" in html
@@ -1604,6 +1608,10 @@ def test_viewer_labels_amendment_and_additional_motion_types():
     assert viewer_record({"record_type": "amendment_motion", "status": "unknown"})["typ"] == "Abänderungsantrag"
     assert viewer_record({"record_type": "additional_motion", "status": "unknown"})["typ"] == "Zusatzantrag"
     assert viewer_record({"record_type": "additional_motion", "status": "unknown"})["ergebnis"] == "Verfahren: zugewiesen"
+
+
+def test_viewer_labels_pending_status():
+    assert viewer_record({"record_type": "agenda_item", "status": "pending"})["status"] == "ausstehend"
 
 
 def test_viewer_hides_topics_with_only_one_visible_record_after_filters():

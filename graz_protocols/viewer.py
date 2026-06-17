@@ -5711,11 +5711,14 @@ def build_html(
 
     function relevantQuestionTokens(query) {{
       const stopwords = new Set([
-        'also', 'alles', 'auch', 'bezirk', 'bezirke', 'dann', 'dass', 'dazu', 'deine',
-        'einen', 'einer', 'eine', 'erzaehl', 'erzähle', 'gibt', 'hier', 'info', 'infos',
-        'kann', 'kurz', 'mehr', 'nicht', 'oder', 'sage',
-        'sag', 'sich', 'sind', 'über', 'ueber', 'und', 'warum', 'wenn', 'werden',
-        'wird', 'wieso', 'zum'
+        'also', 'alles', 'angenommen', 'annahme', 'antrag', 'antraege', 'anträge',
+        'auch', 'bezirk', 'bezirke', 'beschluss', 'beschluesse', 'beschlüsse',
+        'beschlossen', 'dann', 'dass', 'dazu', 'deine', 'dringlich', 'dringliche',
+        'einen', 'einer', 'eine', 'einstimmig', 'ergebnis', 'erzaehl', 'erzähle',
+        'frage', 'fragen', 'gemeinderat', 'gemacht', 'gibt', 'hier', 'info',
+        'infos', 'kann', 'kurz', 'mehr', 'mehrheitlich', 'nicht', 'oder', 'sage',
+        'sag', 'sich', 'sind', 'status', 'tagesordnungspunkt', 'ueber', 'über',
+        'und', 'warum', 'wenn', 'werden', 'wird', 'wurde', 'wurden', 'wieso', 'zum'
       ]);
       const tokens = query
         .replace(/[^\\p{{L}}\\p{{N}}äöüß-]+/gu, ' ')
@@ -8572,6 +8575,7 @@ def german_status(value: str) -> str:
         "answer_pending_written": "wird schriftlich beantwortet",
         "assigned": "zugewiesen",
         "postponed": "vertagt",
+        "pending": "ausstehend",
         "unknown": "unklar",
     }.get(value, value)
 

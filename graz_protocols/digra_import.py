@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, replace
+from datetime import date
 from difflib import SequenceMatcher
 from pathlib import Path
 import importlib
@@ -390,7 +391,7 @@ def fetch_digra_entries(dates: list[str], tool_path: Path = DEFAULT_DIGRA_TOOL_P
         if meeting is None:
             continue
         soup = exporter.fetch_soup(session, meeting.url)
-        for tab_title, record_type, section in digra_tabs():
+        for tab_title, base_record_type, section in digra_tabs():
             panel = exporter.get_panel_for_tab(soup, tab_title)
             if panel is None:
                 continue
@@ -399,13 +400,15 @@ def fetch_digra_entries(dates: list[str], tool_path: Path = DEFAULT_DIGRA_TOOL_P
                 desc_lines = flatten_blocks(digra_entry.desc_blocks)
                 metadata = parse_digra_list_metadata(desc_lines)
                 result = fetch_digra_result(exporter, session, digra_entry.href)
+                record_type = result.record_type_override or base_record_type
+                result = pending_future_result_for_type(result, record_type, meeting_date)
                 business_number = extract_business_number(desc_lines, result.document_title)
                 entries.append(
                     DigraEntry(
                         meeting_date=meeting_date,
                         meeting_number=meeting.number,
-                        record_type=result.record_type_override or record_type,
-                        section=digra_section_for_type(result.record_type_override or record_type, section),
+                        record_type=record_type,
+                        section=digra_section_for_type(record_type, section),
                         order_in_type=order,
                         agenda_item_no=extract_agenda_item_no(desc_lines, order),
                         business_number=business_number,
@@ -422,6 +425,27 @@ def fetch_digra_entries(dates: list[str], tool_path: Path = DEFAULT_DIGRA_TOOL_P
                     )
                 )
     return entries
+
+
+def pending_future_result_for_type(result: DigraResult, record_type: str, meeting_date: str) -> DigraResult:
+    if record_type not in {"urgent_motion", "agenda_item"}:
+        return result
+    if not is_future_iso_date(meeting_date):
+        return result
+    raw_result_text = result.raw_result_text or result.result_text
+    return replace(
+        result,
+        status="pending",
+        result_text="ausstehend",
+        raw_result_text=raw_result_text,
+        votes=[],
+    )
+
+
+def is_future_iso_date(value: str) -> bool:
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value or ""):
+        return False
+    return value > date.today().isoformat()
 
 
 def digra_section_for_type(record_type: str, fallback: str) -> str:

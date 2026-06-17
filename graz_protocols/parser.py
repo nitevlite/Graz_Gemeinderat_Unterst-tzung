@@ -160,6 +160,7 @@ OUTCOME_LABELS = {
     "source_available": "Quelle verfügbar",
     "assigned": "zugewiesen",
     "postponed": "vertagt",
+    "pending": "ausstehend",
     "unknown": "unbekannt",
 }
 WRITTEN_SUBMISSION_TYPES = {"written_question", "written_motion", "amendment_motion", "additional_motion"}
@@ -601,6 +602,8 @@ def format_result_text(votes: list[dict[str, object]], status: str, status_text:
         return "\n\n".join(format_vote(vote) for vote in votes)
     if status == "assigned":
         return "Verfahren: zugewiesen"
+    if status == "pending":
+        return "ausstehend"
     if status == "unknown":
         return "Unbekannt"
     return normalize_status_label(status, status_text)

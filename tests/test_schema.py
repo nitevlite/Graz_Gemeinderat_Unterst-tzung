@@ -52,6 +52,30 @@ def test_accepts_amendment_and_additional_motion_types():
         assert validate_record(record) == []
 
 
+def test_accepts_pending_status():
+    record = AgendaRecord(
+        record_id="id",
+        record_type="agenda_item",
+        source_file="DIGRA",
+        meeting_date="2026-12-31",
+        section="Tagesordnung",
+        agenda_item_no=1,
+        business_numbers=[],
+        title="Test",
+        status="pending",
+        status_text="pending",
+        result_text="ausstehend",
+        raw_result_text="",
+        votes=[],
+        amounts=[],
+        locations=[],
+        source_snippet="",
+        parser_confidence=0.5,
+    )
+
+    assert validate_record(record) == []
+
+
 def test_rejects_invalid_record_type():
     record = AgendaRecord(
         record_id="id",

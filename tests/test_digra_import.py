@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 from bs4 import BeautifulSoup
 
 from graz_protocols.digra_import import (
@@ -11,6 +13,7 @@ from graz_protocols.digra_import import (
     find_best_digra_entry,
     import_exporter,
     extract_digra_record_type,
+    pending_future_result_for_type,
     parse_digra_list_metadata,
 )
 from graz_protocols.parser import AgendaRecord
@@ -208,6 +211,36 @@ def test_extracts_result_only_from_digra_decision_note():
     assert result.result_text == "Gemeinderat am 11.12.2025: mehrheitlich angenommen\nZustimmung: KPÖ, Grüne, KFG, NEOS"
     assert result.votes[0]["approval"] == ["KPÖ", "Grüne", "KFG", "NEOS"]
     assert "Der Gemeinderat wolle beschließen" not in result.raw_result_text
+
+
+def test_future_urgent_and_agenda_items_are_pending():
+    future_date = (date.today() + timedelta(days=30)).isoformat()
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 9999/1</title></head>
+      <body>
+        <div class="preview">
+          <p>Dringlicher Antrag (§ 18 GO-GR)</p>
+          <p>Beschlussvermerk</p>
+          <p>Gemeinderat</p>
+          <p>am 11.12.2099</p>
+          <p>einstimmig angenommen</p>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+    urgent = pending_future_result_for_type(result, "urgent_motion", future_date)
+    agenda = pending_future_result_for_type(result, "agenda_item", future_date)
+    written = pending_future_result_for_type(result, "written_motion", future_date)
+
+    assert result.status == "accepted_unanimous"
+    assert urgent.status == "pending"
+    assert urgent.result_text == "ausstehend"
+    assert urgent.votes == []
+    assert agenda.status == "pending"
+    assert written.status == "accepted_unanimous"
 
 
 def test_extracts_committee_and_council_decision_notes_separately():

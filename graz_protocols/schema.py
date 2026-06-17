@@ -27,6 +27,7 @@ VALID_STATUSES = {
     "assigned",
     "noted",
     "postponed",
+    "pending",
     "rejected",
     "rejected_majority",
     "source_available",
