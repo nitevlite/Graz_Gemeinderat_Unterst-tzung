@@ -23,7 +23,7 @@ def test_validates_record_schema():
         parser_confidence=0.5,
     )
 
-    assert SCHEMA_VERSION == "1.3"
+    assert SCHEMA_VERSION == "1.4"
     assert validate_record(record) == []
 
 

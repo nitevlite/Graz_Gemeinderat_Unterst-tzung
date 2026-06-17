@@ -102,7 +102,7 @@ def split_archive_agenda_blocks(lines: list[tuple[int, str]]) -> list[ArchiveAge
             reporter = reporter_match.group("name").strip()
             continue
         item_match = AGENDA_ITEM_RE.match(line)
-        if item_match:
+        if item_match and is_plausible_archive_agenda_start(item_match.group("body")):
             if current_number and current_parts:
                 blocks.append(
                     ArchiveAgendaBlock(
@@ -117,6 +117,8 @@ def split_archive_agenda_blocks(lines: list[tuple[int, str]]) -> list[ArchiveAge
             current_parts = [item_match.group("body").strip()]
             current_reporter = reporter
             continue
+        if item_match:
+            continue
         if current_number and looks_like_archive_agenda_continuation(line):
             current_parts.append(line)
     if current_number and current_parts:
@@ -129,6 +131,17 @@ def split_archive_agenda_blocks(lines: list[tuple[int, str]]) -> list[ArchiveAge
             )
         )
     return [block for block in blocks if clean_archive_agenda_title(block.body)]
+
+
+def is_plausible_archive_agenda_start(body: str) -> bool:
+    text = clean_archive_agenda_title(body)
+    if not text:
+        return False
+    if text[:1].islower():
+        return False
+    if re.match(r"^(?:gegen|bei|das|die|der|den|des|dem|einmal|ist|sind)\b", text, re.IGNORECASE):
+        return False
+    return True
 
 
 def looks_like_archive_agenda_continuation(line: str) -> bool:
@@ -145,9 +158,23 @@ def split_archive_agenda_business_title(body: str) -> tuple[list[str], str]:
     text = clean_archive_agenda_title(body)
     match = AGENDA_BUSINESS_RE.match(text)
     if not match:
-        return [], text
+        legacy_match = re.match(
+            r"^(?P<business>A\s*\d+\s*[–—-]\s*\d+/\d{4}(?:-\d+)?)\s+(?P<title>.+)$",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if not legacy_match:
+            return [], text
+        business = normalize_archive_agenda_business_number(legacy_match.group("business"))
+        title = clean_archive_agenda_title(legacy_match.group("title"))
+        return ([business] if business else []), title or text
     business = normalize_archive_agenda_business_number(match.group("business"))
     title = clean_archive_agenda_title(match.group("title"))
+    trailing_business = re.match(r"^[–—-]\s*\d+/\d{4}(?:-\d+)?\s+(?P<title>.+)$", title)
+    if trailing_business:
+        number_part = title[: trailing_business.start("title")].strip()
+        business = normalize_archive_agenda_business_number(f"{business} {number_part}")
+        title = clean_archive_agenda_title(trailing_business.group("title"))
     return ([business] if business else []), title or text
 
 

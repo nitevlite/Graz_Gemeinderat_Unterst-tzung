@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 import importlib
 import re
@@ -51,6 +52,16 @@ def extract_pdf_text(path: Path) -> str:
     reader = pypdf.PdfReader(str(path))
     page_texts = [page.extract_text() or "" for page in reader.pages]
     return "\n".join(page_texts)
+
+
+def parse_question_hour_pdf_bytes(data: bytes, source_file: str) -> list[AgendaRecord]:
+    try:
+        pypdf = importlib.import_module("pypdf")
+    except ImportError as exc:
+        raise RuntimeError("PDF-Extraktion benötigt optional das Paket pypdf.") from exc
+    reader = pypdf.PdfReader(BytesIO(data))
+    text = "\n".join(page.extract_text() or "" for page in reader.pages)
+    return parse_question_hour_text(text, source_file)
 
 
 def extract_pdf_page_lines(path: Path) -> list[tuple[int, str]]:

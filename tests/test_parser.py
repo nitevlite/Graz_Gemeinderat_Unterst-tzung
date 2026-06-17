@@ -360,6 +360,21 @@ def test_prefers_formal_result_over_words_in_speech():
     assert "Der Antrag wurde mehrheitlich abgelehnt." in records[0].raw_result_text
 
 
+def test_drops_conflicting_generic_accepted_vote_when_rejected_vote_is_specific():
+    paragraphs = [
+        ParserParagraph("Dringlichkeitsanträge", "Heading1", 1),
+        ParserParagraph("Parkplätze in Graz", "Heading2", 2),
+        ParserParagraph("Der Antrag wurde angenommen.", "Normal", 3),
+        ParserParagraph("Der Antrag wurde mehrheitlich abgelehnt.", "Normal", 4),
+        ParserParagraph("Dagegen: ÖVP, KFG, NEOS, FPÖ, Reininghaus", "Normal", 5),
+    ]
+
+    records = parse_protocol(paragraphs, "2026-04-23_Protokoll.docx")
+
+    assert records[0].status == "rejected_majority"
+    assert records[0].result_text == "Antrag: mehrheitlich abgelehnt\nDagegen: ÖVP, KFG, NEOS, FPÖ, Reininghaus"
+
+
 def test_classifies_legacy_mehrstimmig_as_majority():
     paragraphs = [
         ParserParagraph("Tagesordnung", "Heading1", 1),
@@ -427,3 +442,23 @@ def test_amounts_only_from_title_or_formal_motion_scope():
     records = parse_protocol(paragraphs, "2026-04-23_Protokoll.docx")
 
     assert records[0].amounts == ["€ 10.000,-", "€ 20.000,-"]
+
+
+def test_common_words_with_location_suffix_are_not_locations():
+    paragraphs = [
+        ParserParagraph("Tagesordnung", "Heading1", 1),
+        ParserParagraph("Stk. 9) Verkehr und Carsharing", "Heading2", 2),
+        ParserParagraph(
+            (
+                "Vorweg ist klar: schlichtweg kein Umweg, Hinweg, Heimweg, Radweg, "
+                "Gehsteig, Schutzweg oder Umlaufweg soll als Ort gelten."
+            ),
+            "Normal",
+            3,
+        ),
+        ParserParagraph("Der Antrag wurde einstimmig angenommen.", "Normal", 4),
+    ]
+
+    records = parse_protocol(paragraphs, "2026-04-23_Protokoll.docx")
+
+    assert records[0].locations == []

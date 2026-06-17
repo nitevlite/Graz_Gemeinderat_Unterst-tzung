@@ -72,6 +72,7 @@ def test_civic_council_contains_current_seat_distribution_and_sources():
     }
     for group in council["groups"]:
         assert len(group["members"]) == group["seats"]
+        assert all(member["url"].startswith("https://www.graz.at/") for member in group["members"])
     kpoe = next(group for group in council["groups"] if group["short_name"] == "KPÖ")
     oevp = next(group for group in council["groups"] if group["short_name"] == "ÖVP")
     assert "Elke Heinrichs" in {member["name"] for member in kpoe["members"]}
@@ -81,6 +82,8 @@ def test_civic_council_contains_current_seat_distribution_and_sources():
 
     senate = {group["short_name"]: group["seats"] for group in council["city_senate"]["groups"]}
     assert senate == {"KPÖ": 3, "ÖVP": 2, "Grüne": 1, "KFG": 1}
+    for group in council["city_senate"]["groups"]:
+        assert all(member["url"].startswith("https://www.graz.at/") for member in group["members"])
 
 
 def test_parse_council_member_links_from_official_member_page_shape():

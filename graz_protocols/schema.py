@@ -6,7 +6,7 @@ from typing import Any
 from .parser import AgendaRecord
 
 
-SCHEMA_VERSION = "1.3"
+SCHEMA_VERSION = "1.4"
 VALID_RECORD_TYPES = {
     "agenda_item",
     "archive_agenda_item",
@@ -55,6 +55,7 @@ REQUIRED_FIELDS = {
     "source_page": int,
     "local_source_url": str,
     "submitter": str,
+    "addressee": str,
     "question_parts": dict,
     "attachment_titles": list,
 }

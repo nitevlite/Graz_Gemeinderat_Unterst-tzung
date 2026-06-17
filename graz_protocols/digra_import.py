@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from .parser import (
     AgendaRecord,
     apply_vote_parties,
+    extract_amounts,
     format_result_text,
     normalize_date,
     normalize_written_submission_status,
@@ -24,7 +25,7 @@ DEFAULT_DIGRA_TOOL_PATH = Path(r"E:\01_StadtGrazProtokolle\Digra_Export_Tool\app
 DIGRA_SOURCE = "digra"
 DIGRA_MISSING_SOURCE = "digra_fehlt"
 PROTOCOL_SOURCE = "protokoll"
-CACHE_VERSION = 11
+CACHE_VERSION = 13
 MIN_AGENDA_TITLE_SCORE = 0.5
 MIN_GENERIC_TITLE_SCORE = 0.55
 MIN_ORDER_TITLE_SCORE = 0.5
@@ -67,7 +68,15 @@ GENERIC_MATCH_TOKENS = {
 }
 
 BUSINESS_NUMBER_RE = re.compile(r"\b\d{1,6}/\d{1,4}\b")
+DIGRA_REFERENCE_TOKEN_RE = re.compile(r"\b[A-Za-zÄÖÜäöüß]{1,16}-\d{3,}/\d{4}\b")
+DIGRA_REFERENCE_ONLY_RE = re.compile(
+    r"^(?:[A-Za-zÄÖÜäöüß]{1,16}-\d{3,}/\d{4})(?:\s+[A-Za-zÄÖÜäöüß]{1,16}-\d{3,}/\d{4})*$"
+)
 DATE_RE = re.compile(r"\b\d{1,2}\.\d{1,2}\.\d{4}\b")
+DECISION_ORGAN_DATE_RE = re.compile(
+    r"^(?P<organ>Gemeinderat|Ausschuss\b.+?)\s+am\s+(?P<date>\d{1,2}\.\d{1,2}\.\d{4})$",
+    re.IGNORECASE,
+)
 OUTCOME_LINE_RE = re.compile(
     r"^(?P<modifier>einstimmig|mehrheitlich|mehrstimmig)?\s*"
     r"(?P<decision>angenommen|abgelehnt|zugewiesen|vertagt)\.?$",
@@ -78,7 +87,7 @@ NOTED_RE = re.compile(r"^zur\s+kenntnis\s+gebracht\.?$", re.IGNORECASE)
 ANSWERED_RE = re.compile(r"^(?:mündlich|muendlich|schriftlich)?\s*beantwortet\.?$", re.IGNORECASE)
 DECISION_ORGAN_RE = re.compile(r"^(?:Gemeinderat|Ausschuss\b.+)$", re.IGNORECASE)
 DIGRA_BODY_START_RE = re.compile(
-    r"^(?:der|die|das|frau|herr|ich|wir|es|gemäß|gemaess|sehr\s+geehrte|am\s+vergangenen|kurz\s+vor)\b|.*[.!?]$",
+    r"^(?:ausgangslage|der|die|das|frau|herr|ich|wir|es|gemäß|gemaess|seit|sehr\s+geehrte|am\s+vergangenen|kurz\s+vor)\b|.*[.!?]$",
     re.IGNORECASE,
 )
 PARTY_NOTE_RE = re.compile(
@@ -96,6 +105,57 @@ ROLE_TITLE_RE = re.compile(
     r"^(?:Berichterstatter(?:in|:in)?|Bearbeiter(?:in|:in)?|Einbringer(?:in|:in)?)\s*:?\s*",
     re.IGNORECASE,
 )
+DIGRA_TYPE_LABEL_RE = re.compile(
+    r"^(?:"
+    r"Anfrage\s+an\s+Bürgermeister:in|"
+    r"Selbständiger\s+Antrag|"
+    r"Dringlicher\s+Antrag|"
+    r"Mitteilung\s+an\s+den\s+Gemeinderat|"
+    r"Mitteilung\s+von\s+Bürgermeister:in|"
+    r"Bericht\s+an\s+den\s+Gemeinderat|"
+    r"Frage\s+für\s+die\s+Fragestunde|"
+    r"Fragestunde|"
+    r"Tagesordnungspunkt|"
+    r"Abänderungsantrag|"
+    r"Abaenderungsantrag|"
+    r"Zusatzantrag"
+    r")\b",
+    re.IGNORECASE,
+)
+DIGRA_METADATA_PREFIXES = (
+    "antragsteller:in(nen)",
+    "antragsteller:innen",
+    "antragsteller:in",
+    "antragsteller",
+    "berichterstatter:innen",
+    "berichterstatter:in",
+    "berichterstatterin",
+    "berichterstatter",
+    "bearbeiter:in",
+    "bearbeiterin",
+    "bearbeiter",
+    "regierungsmitglied(er)",
+    "regierungsmitglied",
+    "fragesteller:in",
+    "fragesteller",
+    "geschäftszahl(en)",
+    "geschaeftszahl(en)",
+    "dienststelle(n)",
+    "dienststelle",
+    "vorberatendes organ",
+    "freigaben / unterschriften",
+    "kompetenztatbestand",
+    "erhöhte mehrheiten",
+    "erhoehte mehrheiten",
+    "einlagezahl",
+    "materialien",
+    "anlagen",
+    "fraktion",
+    "datum",
+    "ez/oz",
+    "betr",
+    "betreff",
+)
 ROLE_TITLE_PREFIX_RE = re.compile(
     r"^(?:Berichterstatter(?:in|:in)?|Bearbeiter(?:in|:in)?|Einbringer(?:in|:in)?)\s*:?\s*"
     r"[^:;]{0,220}?(?:\([^)]{1,80}\)|,?\s(?:KPÖ|KPOE|Grüne|Gruene|SPÖ|SPOE|ÖVP|OEVP|FPÖ|FPOE|NEOS|KFG|GRÜNE))\s+",
@@ -108,8 +168,12 @@ METADATA_LABELS = {
     "dienststelle",
     "dienststelle(n)",
     "einlagezahl",
+    "ez/oz",
     "freigaben / unterschriften",
+    "fraktion",
     "gemeinderat",
+    "geschäftszahl(en)",
+    "geschaeftszahl(en)",
     "materialien",
     "regierungsmitglied",
     "regierungsmitglied(er)",
@@ -147,6 +211,16 @@ class DigraEntry:
     submitter: str = ""
     source_snippet: str = ""
     attachment_titles: list[str] = field(default_factory=list)
+    addressee: str = ""
+
+
+@dataclass(frozen=True)
+class DigraListMetadata:
+    title: str = ""
+    submitter: str = ""
+    reporter: str = ""
+    editor: str = ""
+    addressee: str = ""
 
 
 def enrich_records_with_digra(
@@ -189,6 +263,7 @@ def enrich_records_with_digra(
                     raw_result_text=entry.raw_result_text,
                     votes=entry.votes,
                     submitter=record.submitter or entry.submitter,
+                    addressee=record.addressee or entry.addressee,
                     result_source=DIGRA_SOURCE,
                     digra_url=canonical_digra_url(entry.url),
                     digra_business_number=entry.business_number,
@@ -212,6 +287,7 @@ def enrich_records_with_digra(
                     raw_result_text=raw_result_text,
                     votes=[],
                     submitter=record.submitter or (entry.submitter if entry else ""),
+                    addressee=record.addressee or (entry.addressee if entry else ""),
                     result_source=DIGRA_MISSING_SOURCE,
                     digra_url=canonical_digra_url(entry.url) if entry and match_score >= MIN_FALLBACK_LINK_SCORE else "",
                     digra_business_number=entry.business_number if entry and match_score >= MIN_FALLBACK_LINK_SCORE else "",
@@ -227,6 +303,7 @@ def enrich_records_with_digra(
                 record,
                 result_source=PROTOCOL_SOURCE if record.result_text and record.result_text != "Unbekannt" else DIGRA_MISSING_SOURCE,
                 submitter=record.submitter or (entry.submitter if entry and match_score >= MIN_FALLBACK_LINK_SCORE else ""),
+                addressee=record.addressee or (entry.addressee if entry and match_score >= MIN_FALLBACK_LINK_SCORE else ""),
                 digra_url=canonical_digra_url(entry.url) if entry and match_score >= MIN_FALLBACK_LINK_SCORE else "",
                 digra_business_number=entry.business_number if entry and match_score >= MIN_FALLBACK_LINK_SCORE else "",
                 protocol_result_text=record.result_text,
@@ -317,6 +394,7 @@ def fetch_digra_entries(dates: list[str], tool_path: Path = DEFAULT_DIGRA_TOOL_P
             digra_entries = exporter.extract_entries_in_order(panel)
             for order, digra_entry in enumerate(digra_entries, start=1):
                 desc_lines = flatten_blocks(digra_entry.desc_blocks)
+                metadata = parse_digra_list_metadata(desc_lines)
                 result = fetch_digra_result(exporter, session, digra_entry.href)
                 business_number = extract_business_number(desc_lines, result.document_title)
                 entries.append(
@@ -328,15 +406,16 @@ def fetch_digra_entries(dates: list[str], tool_path: Path = DEFAULT_DIGRA_TOOL_P
                         order_in_type=order,
                         agenda_item_no=extract_agenda_item_no(desc_lines, order),
                         business_number=business_number,
-                        title=best_digra_title(desc_lines, result),
+                        title=best_digra_title(desc_lines, result, metadata),
                         url=canonical_digra_url(digra_entry.href),
                         status=result.status,
                         result_text=result.result_text,
                         raw_result_text=result.raw_result_text,
                         votes=result.votes,
-                        submitter=result.submitter,
+                        submitter=metadata.submitter or metadata.reporter or result.submitter,
                         source_snippet=result.source_snippet,
                         attachment_titles=result.attachment_titles,
+                        addressee=metadata.addressee or result.addressee,
                     )
                 )
     return entries
@@ -360,6 +439,7 @@ def digra_entries_to_records(entries: list[DigraEntry]) -> list[AgendaRecord]:
         result_text = entry.result_text or format_result_text([], status, status_text)
         if result_text == "Unbekannt":
             result_text = "DIGRA-Ergebnis fehlt"
+        amounts = extract_amounts(" ".join(part for part in [entry.title, entry.source_snippet, result_text] if part), [])
         records.append(
             AgendaRecord(
                 record_id=f"{entry.meeting_date}-digra-{entry.record_type}-{entry.order_in_type}-{index}",
@@ -376,7 +456,8 @@ def digra_entries_to_records(entries: list[DigraEntry]) -> list[AgendaRecord]:
                 raw_result_text=raw_result_text,
                 votes=entry.votes,
                 submitter=entry.submitter,
-                amounts=[],
+                addressee=entry.addressee,
+                amounts=amounts,
                 locations=[],
                 source_snippet=entry.source_snippet,
                 attachment_titles=entry.attachment_titles,
@@ -427,6 +508,7 @@ class DigraResult:
     record_type_override: str = ""
     source_snippet: str = ""
     attachment_titles: list[str] = field(default_factory=list)
+    addressee: str = ""
 
 
 def fetch_digra_result(exporter, session, url: str) -> DigraResult:
@@ -436,13 +518,24 @@ def fetch_digra_result(exporter, session, url: str) -> DigraResult:
     preview = soup.select_one("div.preview") or soup.body or soup
     lines = [line.strip() for line in preview.get_text("\n").splitlines() if line.strip()]
     submitter = extract_digra_submitter(lines)
-    subject_title = extract_digra_subject_title(lines)
+    addressee = extract_digra_addressee(lines)
+    subject_title = extract_digra_subject_title_from_preview(preview) or extract_digra_subject_title(lines)
     source_snippet = extract_digra_source_snippet(lines, subject_title)
     record_type_override = extract_digra_record_type(lines)
     marker_index = next((index for index, line in enumerate(lines) if line.casefold() == "beschlussvermerk"), -1)
     if marker_index < 0:
         return DigraResult(
-            "unknown", "", "", [], document_title, submitter, subject_title, record_type_override, source_snippet, attachment_titles
+            "unknown",
+            "",
+            "",
+            [],
+            document_title,
+            submitter,
+            subject_title,
+            record_type_override,
+            source_snippet,
+            attachment_titles,
+            addressee,
         )
 
     decision_votes = extract_decision_votes(lines[marker_index + 1 : marker_index + 24])
@@ -461,6 +554,7 @@ def fetch_digra_result(exporter, session, url: str) -> DigraResult:
             record_type_override,
             source_snippet,
             attachment_titles,
+            addressee,
         )
 
     outcome_line = ""
@@ -486,7 +580,17 @@ def fetch_digra_result(exporter, session, url: str) -> DigraResult:
 
     if not outcome_line:
         return DigraResult(
-            "unknown", "", "", [], document_title, submitter, subject_title, record_type_override, source_snippet, attachment_titles
+            "unknown",
+            "",
+            "",
+            [],
+            document_title,
+            submitter,
+            subject_title,
+            record_type_override,
+            source_snippet,
+            attachment_titles,
+            addressee,
         )
 
     if outcome_line.casefold() == "getrennt abgestimmt":
@@ -495,7 +599,17 @@ def fetch_digra_result(exporter, session, url: str) -> DigraResult:
         status = aggregate_split_vote_status(votes)
         result_text = format_split_result_text(votes) if votes else ""
         return DigraResult(
-            status, result_text, raw_result_text, votes, document_title, submitter, subject_title, record_type_override, source_snippet, attachment_titles
+            status,
+            result_text,
+            raw_result_text,
+            votes,
+            document_title,
+            submitter,
+            subject_title,
+            record_type_override,
+            source_snippet,
+            attachment_titles,
+            addressee,
         )
 
     if NO_MAJORITY_RE.match(outcome_line):
@@ -520,6 +634,7 @@ def fetch_digra_result(exporter, session, url: str) -> DigraResult:
             record_type_override,
             source_snippet,
             attachment_titles,
+            addressee,
         )
 
     if NOTED_RE.match(outcome_line):
@@ -535,6 +650,7 @@ def fetch_digra_result(exporter, session, url: str) -> DigraResult:
             record_type_override,
             source_snippet,
             attachment_titles,
+            addressee,
         )
 
     if ANSWERED_RE.match(outcome_line):
@@ -550,12 +666,23 @@ def fetch_digra_result(exporter, session, url: str) -> DigraResult:
             record_type_override or "question_hour",
             source_snippet,
             attachment_titles,
+            addressee,
         )
 
     outcome_match = OUTCOME_LINE_RE.match(outcome_line)
     if outcome_match is None:
         return DigraResult(
-            "unknown", "", "", [], document_title, submitter, subject_title, record_type_override, source_snippet, attachment_titles
+            "unknown",
+            "",
+            "",
+            [],
+            document_title,
+            submitter,
+            subject_title,
+            record_type_override,
+            source_snippet,
+            attachment_titles,
+            addressee,
         )
     status = normalize_vote_outcome(outcome_match.group("modifier") or "", outcome_match.group("decision"))
     raw_result_text = "\n".join([outcome_line, *note_lines])
@@ -582,6 +709,7 @@ def fetch_digra_result(exporter, session, url: str) -> DigraResult:
         record_type_override,
         source_snippet,
         attachment_titles,
+        addressee,
     )
 
 
@@ -611,6 +739,16 @@ def extract_digra_submitter(lines: list[str]) -> str:
     return ""
 
 
+def extract_digra_addressee(lines: list[str]) -> str:
+    for index, line in enumerate(lines):
+        normalized = line.casefold().strip(" :")
+        if normalized in {"regierungsmitglied(er)", "regierungsmitglied", "adressat", "adressat:in", "adressat:innen"}:
+            return clean_digra_person(lines[index + 1] if index + 1 < len(lines) else "")
+        if normalized.startswith("regierungsmitglied(er):") or normalized.startswith("regierungsmitglied:"):
+            return clean_digra_person(line.split(":", 1)[1])
+    return ""
+
+
 def clean_digra_person(value: str) -> str:
     cleaned = re.sub(r"\s+", " ", value).strip(" ,;")
     return cleaned if cleaned and ":" not in cleaned else ""
@@ -620,12 +758,20 @@ def extract_digra_record_type(lines: list[str]) -> str:
     head = " ".join(lines[:14]).casefold()
     if "fragestunde" in head or "fragesteller" in head or re.search(r"\bstellt\s+an\s+.+folgende\s+frage\b", head):
         return "question_hour"
-    if "mitteilung an den gemeinderat" in head:
+    if "mitteilung an den gemeinderat" in head or "mitteilung von bürgermeister:in" in head:
         return "communication"
+    if "anfrage an bürgermeister:in" in head:
+        return "written_question"
+    if "selbständiger antrag" in head or "selbstaendiger antrag" in head:
+        return "written_motion"
+    if "dringlicher antrag" in head:
+        return "urgent_motion"
     if "abänderungsantrag" in head or "abaenderungsantrag" in head:
         return "amendment_motion"
     if "zusatzantrag" in head:
         return "additional_motion"
+    if "bericht an den gemeinderat" in head:
+        return "agenda_item"
     return ""
 
 
@@ -639,6 +785,11 @@ def extract_decision_votes(lines: list[str]) -> list[dict[str, object]]:
             continue
         if cleaned.casefold().startswith("schriftführer"):
             break
+        organ_date_match = DECISION_ORGAN_DATE_RE.match(cleaned)
+        if organ_date_match:
+            current_organ = organ_date_match.group("organ")
+            current_date = organ_date_match.group("date")
+            continue
         if DECISION_ORGAN_RE.match(cleaned):
             current_organ = cleaned
             current_date = ""
@@ -697,6 +848,7 @@ def collect_decision_note_lines(lines: list[str]) -> list[str]:
         notes.append(cleaned)
     return notes
 
+
 def extract_digra_attachment_titles(soup) -> list[str]:  # noqa: ANN001
     titles: list[str] = []
     seen: set[str] = set()
@@ -712,7 +864,6 @@ def extract_digra_attachment_titles(soup) -> list[str]:  # noqa: ANN001
     return titles
 
 
-
 def extract_digra_subject_title(lines: list[str]) -> str:
     for index, line in enumerate(lines):
         if line.casefold().strip(" :") == "datum" and index + 2 < len(lines):
@@ -722,8 +873,86 @@ def extract_digra_subject_title(lines: list[str]) -> str:
     return ""
 
 
-def best_digra_title(desc_lines: list[str], result: DigraResult) -> str:
+def extract_digra_subject_title_from_preview(preview) -> str:  # noqa: ANN001
+    for node in preview.find_all(["b", "strong"]):
+        raw_text = node.get_text("\n", strip=True)
+        if not raw_text:
+            continue
+        candidate = clean_digra_dom_title_lines(raw_text.splitlines())
+        if not is_valid_digra_dom_title(candidate):
+            continue
+        return candidate
+    return ""
+
+
+def clean_digra_dom_title_lines(lines: list[str]) -> str:
+    parts: list[str] = []
+    for line in lines:
+        if is_digra_reference_only_line(line):
+            continue
+        cleaned = re.sub(r"\s+", " ", str(line or "").replace("\u200b", "")).strip(" ,")
+        normalized = cleaned.casefold().strip(" :")
+        if not cleaned:
+            break
+        if normalized in {
+            "anlagen",
+            "freigaben / unterschriften",
+            "beschlussvermerk",
+            "gemeinderat",
+            "materialien",
+        }:
+            break
+        if is_digra_metadata_label(cleaned) or is_role_only_title(cleaned):
+            continue
+        if parts and is_generic_digra_title(cleaned):
+            break
+        if parts and len(cleaned) > 160:
+            break
+        if looks_like_digra_body_line(cleaned, has_title=bool(parts)):
+            break
+        parts.append(cleaned)
+    while len(parts) > 1 and is_generic_digra_title(parts[0]):
+        parts.pop(0)
+    return clean_digra_display_title(" ".join(parts))
+
+
+def looks_like_digra_body_line(value: str, *, has_title: bool) -> bool:
+    if has_title:
+        return bool(DIGRA_BODY_START_RE.match(value))
+    return bool(
+        re.match(
+            r"^(?:der|die|das|frau|herr|ich|wir|es|gemäß|gemaess|seit|sehr\s+geehrte|am\s+vergangenen|kurz\s+vor)\b",
+            value,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def is_valid_digra_dom_title(value: str) -> bool:
+    cleaned = clean_digra_display_title(value)
+    if not cleaned:
+        return False
+    normalized = cleaned.casefold().strip(" :")
+    if is_generic_digra_title(cleaned) or is_digra_metadata_label(cleaned) or is_role_only_title(cleaned):
+        return False
+    if normalized in {
+        "stadt graz",
+        "beschlussvermerk",
+        "gemeinderat",
+        "anlagen",
+        "materialien",
+        "freigaben / unterschriften",
+    }:
+        return False
+    if looks_like_role_person_value(cleaned):
+        return False
+    return len(cleaned) >= 8 and bool(re.search(r"[A-Za-zÄÖÜäöüß]", cleaned))
+
+
+def best_digra_title(desc_lines: list[str], result: DigraResult, metadata: DigraListMetadata | None = None) -> str:
+    metadata = metadata or parse_digra_list_metadata(desc_lines)
     for candidate in (
+        metadata.title,
         extract_title_from_digra(desc_lines),
         result.subject_title,
         extract_title_from_source_snippet(result.source_snippet),
@@ -750,6 +979,8 @@ def extract_digra_source_snippet(lines: list[str], subject_title: str = "") -> s
             "gemeinderats- und stadtsenatsdokumente",
         }:
             break
+        if is_digra_reference_only_line(line):
+            continue
         cleaned = clean_digra_title_line(line)
         if not cleaned:
             continue
@@ -769,11 +1000,18 @@ def extract_digra_source_snippet(lines: list[str], subject_title: str = "") -> s
 
 def clean_digra_title_lines(lines: list[str]) -> str:
     parts: list[str] = []
+    skip_role_value = False
     for line in lines:
+        if is_digra_reference_only_line(line):
+            continue
         cleaned = clean_digra_title_line(line)
         normalized = cleaned.casefold().strip(" :")
         if not cleaned:
             break
+        if skip_role_value:
+            skip_role_value = False
+            if looks_like_role_person_value(cleaned):
+                continue
         if normalized in {
             "anlagen",
             "freigaben / unterschriften",
@@ -783,19 +1021,37 @@ def clean_digra_title_lines(lines: list[str]) -> str:
         }:
             break
         if is_digra_metadata_label(cleaned):
+            if ROLE_TITLE_RE.match(cleaned):
+                skip_role_value = True
             continue
         if is_role_only_title(cleaned):
+            if ROLE_TITLE_RE.match(cleaned):
+                skip_role_value = True
             continue
         if parts and is_generic_digra_title(cleaned):
             break
         if parts and len(cleaned) > 160:
             break
-        if DIGRA_BODY_START_RE.match(cleaned) and parts:
+        if looks_like_digra_body_line(cleaned, has_title=bool(parts)):
             break
         parts.append(cleaned)
     while len(parts) > 1 and is_generic_digra_title(parts[0]):
         parts.pop(0)
     return " ".join(parts).strip()
+
+
+def looks_like_role_person_value(value: str) -> bool:
+    cleaned = re.sub(r"\s+", " ", value).strip()
+    if not cleaned:
+        return False
+    return bool(
+        re.match(
+            r"^(?:GR(?:in)?\.?|Klubobfrau|Klubobmann|Clubobfrau|Clubobmann|StR\.?|Stadtrat|Stadträtin|Bürgermeisterin|Bürgermeister|Mag\.|Dipl\.-Ing\.)\b",
+            cleaned,
+            re.IGNORECASE,
+        )
+        or re.search(r"\((?:KPÖ|KPOE|Grüne|Gruene|SPÖ|SPOE|ÖVP|OEVP|FPÖ|FPOE|NEOS|KFG|GRÜNE)\)", cleaned, re.IGNORECASE)
+    )
 
 
 def split_title_parts(value: str) -> list[str]:
@@ -816,8 +1072,8 @@ def compact_snippet(value: str, limit: int = 1100) -> str:
 
 
 def clean_digra_title_line(value: str) -> str:
-    cleaned = re.sub(r"\s+", " ", value).strip(" ,;")
-    cleaned = cleaned.replace("\u200b", "").strip(" ,;")
+    cleaned = re.sub(r"\s+", " ", value).strip(" ,")
+    cleaned = cleaned.replace("\u200b", "").strip(" ,")
     if not cleaned or ":" not in cleaned and len(cleaned.split()) <= 1:
         return ""
     blocked = {
@@ -827,6 +1083,23 @@ def clean_digra_title_line(value: str) -> str:
         "gestellt",
     }
     return "" if cleaned.casefold() in blocked else cleaned
+
+
+def is_digra_reference_only_line(value: str) -> bool:
+    cleaned = re.sub(r"\s+", " ", str(value or "").replace("\u200b", "")).strip(" ,;")
+    if not cleaned:
+        return False
+    return bool(DIGRA_REFERENCE_ONLY_RE.fullmatch(cleaned))
+
+
+def strip_leading_digra_references(value: str) -> str:
+    title = value
+    while title:
+        match = DIGRA_REFERENCE_TOKEN_RE.match(title)
+        if match is None:
+            break
+        title = title[match.end() :].strip(" ,;:-")
+    return title
 
 
 def extract_split_votes(note_lines: list[str], raw_result_text: str) -> list[dict[str, object]]:
@@ -1068,7 +1341,97 @@ def extract_agenda_item_no(desc_lines: list[str], fallback: int) -> int:
     return fallback
 
 
+def parse_digra_list_metadata(desc_lines: list[str]) -> DigraListMetadata:
+    title_parts: list[str] = []
+    submitter = ""
+    reporter = ""
+    editor = ""
+    addressee = ""
+    index = 0
+    while index < len(desc_lines):
+        line = clean_digra_metadata_line(desc_lines[index])
+        if not line:
+            index += 1
+            continue
+        label, value = split_digra_metadata_label(line)
+        if label in {"betreff", "betr"}:
+            if value:
+                title_parts.append(value)
+            index += 1
+            while index < len(desc_lines):
+                next_line = clean_digra_metadata_line(desc_lines[index])
+                if not next_line:
+                    index += 1
+                    continue
+                if split_digra_metadata_label(next_line)[0] or is_digra_type_label(next_line):
+                    break
+                title_parts.append(next_line)
+                index += 1
+            continue
+        if label in {"antragsteller", "antragsteller:in", "antragsteller:in(nen)", "antragsteller:innen", "fragesteller", "fragesteller:in"}:
+            value, index = metadata_value_or_next(desc_lines, index, value)
+            submitter = submitter or clean_digra_person(value)
+            continue
+        if label in {"berichterstatter", "berichterstatterin", "berichterstatter:in", "berichterstatter:innen"}:
+            value, index = metadata_value_or_next(desc_lines, index, value)
+            reporter = reporter or format_digra_role_person("Berichterstatterin", value)
+            continue
+        if label in {"bearbeiter", "bearbeiterin", "bearbeiter:in"}:
+            value, index = metadata_value_or_next(desc_lines, index, value)
+            editor = editor or format_digra_role_person("Bearbeiterin", value)
+            continue
+        if label in {"regierungsmitglied", "regierungsmitglied(er)"}:
+            value, index = metadata_value_or_next(desc_lines, index, value)
+            addressee = addressee or clean_digra_person(value)
+            continue
+        index += 1
+    return DigraListMetadata(
+        title=clean_digra_display_title(" ".join(title_parts)),
+        submitter=submitter,
+        reporter=reporter,
+        editor=editor,
+        addressee=addressee,
+    )
+
+
+def clean_digra_metadata_line(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or "").replace("\u200b", "")).strip(" ,")
+
+
+def split_digra_metadata_label(line: str) -> tuple[str, str]:
+    normalized_line = re.sub(r"\s+", " ", line).casefold().strip()
+    for prefix in DIGRA_METADATA_PREFIXES:
+        if normalized_line == prefix:
+            return prefix, ""
+        if normalized_line.startswith(f"{prefix}:"):
+            return prefix, line[len(prefix) + 1 :].strip()
+    return "", ""
+
+
+def metadata_value_or_next(desc_lines: list[str], index: int, value: str) -> tuple[str, int]:
+    if value:
+        return value, index + 1
+    next_index = index + 1
+    while next_index < len(desc_lines):
+        next_line = clean_digra_metadata_line(desc_lines[next_index])
+        if not next_line:
+            next_index += 1
+            continue
+        if split_digra_metadata_label(next_line)[0] or is_digra_type_label(next_line):
+            return "", next_index
+        return next_line, next_index + 1
+    return "", next_index
+
+
+def format_digra_role_person(label: str, value: str) -> str:
+    person = clean_digra_person(value)
+    return f"{label}: {person}" if person else ""
+
+
 def extract_title_from_digra(desc_lines: list[str]) -> str:
+    metadata = parse_digra_list_metadata(desc_lines)
+    if metadata.title:
+        return metadata.title
     for index, line in enumerate(desc_lines):
         if line.casefold().startswith("betreff:"):
             value = line.split(":", 1)[1].strip()
@@ -1086,6 +1449,7 @@ def extract_title_from_digra(desc_lines: list[str]) -> str:
             and not re.fullmatch(r"\d{1,3}", cleaned)
             and not BUSINESS_NUMBER_RE.fullmatch(cleaned)
             and not is_digra_metadata_label(cleaned)
+            and not is_digra_type_label(cleaned)
             and not is_role_only_title(cleaned)
         ):
             return cleaned
@@ -1096,7 +1460,27 @@ def is_digra_metadata_label(value: str) -> bool:
     normalized = re.sub(r"\s+", " ", value).casefold().strip(" :")
     if normalized in METADATA_LABELS:
         return True
-    return bool(ROLE_TITLE_RE.match(normalized))
+    return bool(ROLE_TITLE_RE.match(normalized)) or bool(split_digra_metadata_label(value)[0] in {
+        "antragsteller",
+        "antragsteller:in",
+        "antragsteller:in(nen)",
+        "antragsteller:innen",
+        "bearbeiter",
+        "bearbeiterin",
+        "bearbeiter:in",
+        "berichterstatter",
+        "berichterstatterin",
+        "berichterstatter:in",
+        "berichterstatter:innen",
+        "betreff",
+        "betr",
+        "fragesteller",
+        "fragesteller:in",
+    })
+
+
+def is_digra_type_label(value: str) -> bool:
+    return bool(DIGRA_TYPE_LABEL_RE.match(re.sub(r"\s+", " ", str(value or "")).strip()))
 
 
 def is_role_only_title(value: str) -> bool:
@@ -1110,6 +1494,7 @@ def is_role_only_title(value: str) -> bool:
 
 def clean_digra_display_title(value: str) -> str:
     title = re.sub(r"\s+", " ", str(value or "")).strip(" ,;:-")
+    title = strip_leading_digra_references(title)
     title = re.sub(r"^(?:Frage|Antwort)\s*:\s*", "", title, flags=re.IGNORECASE).strip(" ,;:-")
     title = re.sub(r"\bvon deiner Seite\b", "von zuständiger Seite", title, flags=re.IGNORECASE)
     title = re.sub(r"\bdeinerseits\b", "von zuständiger Seite", title, flags=re.IGNORECASE)
@@ -1132,8 +1517,8 @@ def clean_digra_display_title(value: str) -> str:
         maxsplit=1,
         flags=re.IGNORECASE,
     )[0].strip(" ,;:-")
-    if len(title) > 220:
-        title = title[:220].rsplit(" ", 1)[0].strip(" ,;:-")
+    if len(title) > 360:
+        title = title[:360].rsplit(" ", 1)[0].strip(" ,;:-")
     return title
 
 

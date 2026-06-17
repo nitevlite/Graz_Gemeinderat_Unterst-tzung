@@ -110,6 +110,7 @@ def test_search_sqlite_finds_source_snippets_and_structured_fields(tmp_path):
             source_snippet="Die zuständigen Stellen sollen einen barrierefreien Umbau der Haltestelle prüfen.",
             parser_confidence=0.9,
             submitter="GR Beispiel, KPÖ",
+            addressee="Stadtrat Manfred Eber (KPÖ)",
             source_url="https://www.graz.at/beispiel",
         ),
         AgendaRecord(
@@ -136,11 +137,14 @@ def test_search_sqlite_finds_source_snippets_and_structured_fields(tmp_path):
 
     snippet_results = search_sqlite(db_path, "barrierefreier Umbau Haltestelle", limit=5)
     submitter_results = search_sqlite(db_path, "GR Beispiel KPÖ Waltendorf", limit=5)
+    addressee_results = search_sqlite(db_path, "Manfred Eber Stadtrat", limit=5)
     business_results = search_sqlite(db_path, "A10 BD 123", limit=5)
 
     assert snippet_results[0].record_id == "2026-haltestelle"
     assert "quellenausschnitt" in snippet_results[0].matched_fields
     assert submitter_results[0].record_id == "2026-haltestelle"
     assert {"einbringer", "orte"} & set(submitter_results[0].matched_fields)
+    assert addressee_results[0].record_id == "2026-haltestelle"
+    assert "adressat" in addressee_results[0].matched_fields
     assert business_results[0].record_id == "2026-haltestelle"
     assert "geschaeftszahlen" in business_results[0].matched_fields

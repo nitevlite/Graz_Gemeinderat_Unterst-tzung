@@ -9,6 +9,9 @@ from .question_pdf import NUMBERED_TOPIC_RE, clean_question_person, clean_questi
 
 
 INQUIRY_INTRO_RE = re.compile(r"^(?P<speaker>.+?)\s+stellt\s+folgende\s+Anfrage\s*:?\s*$", re.IGNORECASE)
+BETREFF_RE = re.compile(r"^(?:Betreff|Betrifft|Betr\.?)\s*:?\s*(?P<title>.+)$", re.IGNORECASE)
+QUESTION_AUTHOR_RE = re.compile(r"^von\s+(?P<speaker>.+)$", re.IGNORECASE)
+QUESTION_START_RE = re.compile(r"^(?:die\s+)?(?:Anfrage|A\s*n\s*f\s*r\s*a\s*g\s*e)\s*,?\s*$", re.IGNORECASE)
 MAYOR_ANSWER_RE = re.compile(r"^(?P<speaker>Bgm(?:\.|in)?[^:]{0,90}|Bürgermeister(?:in)?[^:]{0,90})\s*:\s*(?P<text>.*)$", re.IGNORECASE)
 SPEAKER_TURN_RE = re.compile(
     r"^(?P<speaker>(?:GR(?:in)?\.?|Bgm(?:\.|in)?|Bürgermeister(?:in)?|StR(?:in)?\.?|Stadtrat|Stadträtin)[^:]{0,90})\s*:\s*(?P<text>.*)$",
@@ -30,11 +33,28 @@ def parse_archive_question_pdf(path: Path, *, source_url: str = "") -> list[Agen
     return parse_archive_question_lines(extract_pdf_page_lines(path), path.name, source_url=source_url)
 
 
+def parse_archive_question_pdf_bytes(data: bytes, source_file: str, *, source_url: str = "") -> list[AgendaRecord]:
+    try:
+        pypdf = __import__("pypdf")
+    except ImportError as exc:
+        raise RuntimeError("PDF-Extraktion benötigt optional das Paket pypdf.") from exc
+    from io import BytesIO
+
+    reader = pypdf.PdfReader(BytesIO(data))
+    page_lines: list[tuple[int, str]] = []
+    for page_number, page in enumerate(reader.pages, start=1):
+        for raw_line in (page.extract_text() or "").replace("\r", "\n").splitlines():
+            line = normalize_question_lines(raw_line)
+            page_lines.extend((page_number, item) for item in line)
+    return parse_archive_question_lines(page_lines, source_file, source_url=source_url)
+
+
 def parse_archive_question_text(text: str, source_file: str, *, source_url: str = "") -> list[AgendaRecord]:
     return parse_archive_question_lines([(0, line) for line in normalize_question_lines(text)], source_file, source_url=source_url)
 
 
 def parse_archive_question_lines(page_lines: list[tuple[int, str]], source_file: str, *, source_url: str = "") -> list[AgendaRecord]:
+    page_lines = normalize_archive_question_page_lines(page_lines)
     lines = [line for _page, line in page_lines]
     meeting_date = extract_meeting_date(lines, source_file)
     blocks = split_archive_question_blocks(page_lines)
@@ -54,9 +74,9 @@ def parse_archive_question_lines(page_lines: list[tuple[int, str]], source_file:
                 agenda_item_no=item_no,
                 business_numbers=[],
                 title=title,
-                status="unknown",
-                status_text="",
-                result_text="Unbekannt",
+                status="source_available",
+                status_text="Quelle verfügbar",
+                result_text="",
                 raw_result_text="",
                 votes=[],
                 amounts=extract_amounts(title, body),
@@ -64,7 +84,7 @@ def parse_archive_question_lines(page_lines: list[tuple[int, str]], source_file:
                 location_details=extract_location_details(" ".join([title, *body])),
                 source_snippet=make_snippet("\n".join(part for part in body if part), limit=900),
                 parser_confidence=archive_question_confidence(block),
-                result_source="protokoll",
+                result_source="archiv",
                 source_url=source_url_with_page(source_url, block.page),
                 source_page=block.page,
                 submitter=block.speaker,
@@ -96,9 +116,34 @@ def split_archive_question_blocks(lines: list[tuple[int, str]]) -> list[ArchiveQ
             active = ""
             continue
 
+        betreff_match = BETREFF_RE.match(line)
+        if betreff_match:
+            if current.has_content():
+                blocks.append(current.freeze())
+            current = MutableArchiveQuestionBlock(
+                topic=betreff_match.group("title").strip(),
+                page=page,
+            )
+            active = ""
+            continue
+
         intro_match = INQUIRY_INTRO_RE.match(line)
         if intro_match:
             current.speaker = clean_question_person(intro_match.group("speaker"))
+            active = "question"
+            continue
+
+        author_match = QUESTION_AUTHOR_RE.match(line)
+        if author_match and current.topic and not active and plausible_archive_question_author(author_match.group("speaker")):
+            current.speaker = clean_question_person(author_match.group("speaker"))
+            continue
+
+        if QUESTION_START_RE.match(line):
+            if current.topic:
+                active = "question"
+            continue
+
+        if current.topic and not active and starts_archive_question_body(line):
             active = "question"
             continue
 
@@ -117,7 +162,7 @@ def split_archive_question_blocks(lines: list[tuple[int, str]]) -> list[ArchiveQ
             current.add(active, turn_match.group("text").strip())
             continue
 
-        if current.topic and not active:
+        if current.topic and not active and not is_archive_question_header_line(line):
             current.append_topic(line)
             continue
         if active:
@@ -126,6 +171,91 @@ def split_archive_question_blocks(lines: list[tuple[int, str]]) -> list[ArchiveQ
     if current.has_content():
         blocks.append(current.freeze())
     return [block for block in blocks if block.topic and (block.question or block.answer)]
+
+
+def is_archive_question_header_line(line: str) -> bool:
+    normalized = re.sub(r"\s+", " ", str(line or "")).strip().casefold()
+    if not normalized:
+        return True
+    if normalized in {"mündliche anfrage", "muendliche anfrage", "anfrage"}:
+        return True
+    if re.fullmatch(r"a\s*n\s*f\s*r\s*a\s*g\s*e", normalized):
+        return True
+    if normalized.startswith("gemäß ") or normalized.startswith("gemäss ") or normalized.startswith("gemaess "):
+        return True
+    if normalized.startswith("an bürgermeister") or normalized.startswith("an buergermeister"):
+        return True
+    if normalized.startswith("in der sitzung des gemeinderates"):
+        return True
+    if normalized.startswith("vom "):
+        return True
+    if re.match(r"^(?:sehr geehrter|sehr geehrte|sehr geehrtes)\b", normalized):
+        return True
+    return False
+
+
+def starts_archive_question_body(line: str) -> bool:
+    normalized = re.sub(r"\s+", " ", str(line or "")).strip().casefold()
+    return bool(
+        re.match(r"^(?:sehr geehrter|sehr geehrte|sehr geehrtes)\b", normalized)
+        or re.match(r"^(?:ich|in der|in diesem sinne|nach unserer|nachdem|dass|ebenso|ebensowenig|wer|was|wie|ob)\b", normalized)
+    )
+
+
+def plausible_archive_question_author(value: str) -> bool:
+    normalized = re.sub(r"\s+", " ", str(value or "")).strip().casefold()
+    return bool(re.search(r"\b(?:gemeinderat|gemeinderätin|gemeinderaetin|gr\.?|grin\.?|clubobmann|klubobmann|frau|herrn?)\b", normalized))
+
+
+def normalize_archive_question_page_lines(page_lines: list[tuple[int, str]]) -> list[tuple[int, str]]:
+    normalized: list[tuple[int, str]] = []
+    for page, line in page_lines:
+        for split_line in split_embedded_archive_question_starts(line):
+            normalized.append((page, split_line))
+    return normalized
+
+
+def split_embedded_archive_question_starts(line: str) -> list[str]:
+    text = re.sub(r"\s+", " ", str(line or "")).strip()
+    if not text:
+        return []
+    text = re.sub(
+        r"(?<=\?)\s+(?=(?:GR(?:in)?\.?|GR\s|[A-ZÄÖÜ][^:]{0,80}\s+\d{1,2}\.\d{1,2}\.\d{4}\s+)?A\s*N\s*F\s*R\s*A\s*G\s*E\b)",
+        "\n",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"(?<=\?)\s+(?=(?:Betreff|Betrifft|Betr\.?)\s*:)",
+        "\n",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"\s+(?=(?:Betreff|Betrifft|Betr\.?)\s*:)",
+        "\n",
+        text,
+        flags=re.IGNORECASE,
+    )
+    parts: list[str] = []
+    for part in text.splitlines():
+        cleaned = part.strip()
+        if not cleaned:
+            continue
+        header_match = re.match(
+            r"^(?P<prefix>(?:GR(?:in)?\.?|GR\s|[A-ZÄÖÜ][^:]{0,80}\s+\d{1,2}\.\d{1,2}\.\d{4}\s+)?)"
+            r"A\s*N\s*F\s*R\s*A\s*G\s*E\s+(?P<rest>(?:Betreff|Betrifft|Betr\.?)\s*:.*)$",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        if header_match:
+            prefix = header_match.group("prefix").strip()
+            if prefix:
+                parts.append(prefix)
+            parts.append(header_match.group("rest").strip())
+            continue
+        parts.append(cleaned)
+    return parts
 
 
 class MutableArchiveQuestionBlock:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -196,9 +196,34 @@ def read_city_archive_asset_index(input_path: Path) -> tuple[list[CityArchiveAss
     return assets, errors if isinstance(errors, list) else []
 
 
-def city_archive_assets_to_records(assets: list[CityArchiveAsset]) -> list[AgendaRecord]:
+def city_archive_assets_to_records(assets: list[CityArchiveAsset], *, extract_documents: bool = False) -> list[AgendaRecord]:
     records: list[AgendaRecord] = []
     for index, asset in enumerate(unique_assets(assets), start=1):
+        if extract_documents and is_extractable_archive_question_hour_asset(asset):
+            extracted = extract_archive_question_hour_asset_records(asset)
+            if extracted:
+                records.extend(extracted)
+                continue
+        if extract_documents and is_extractable_archive_agenda_asset(asset):
+            extracted = extract_archive_agenda_asset_records(asset)
+            if extracted:
+                records.extend(extracted)
+                continue
+        if extract_documents and is_extractable_archive_communication_asset(asset):
+            extracted = extract_archive_communication_asset_records(asset)
+            if extracted:
+                records.extend(extracted)
+                continue
+        if extract_documents and is_extractable_archive_motion_asset(asset):
+            extracted = extract_archive_motion_asset_records(asset)
+            if extracted:
+                records.extend(extracted)
+                continue
+        if extract_documents and is_extractable_archive_question_asset(asset):
+            extracted = extract_archive_question_asset_records(asset)
+            if extracted:
+                records.extend(extracted)
+                continue
         kind_label = archive_asset_kind_label(asset.kind)
         title = archive_asset_record_title(asset)
         records.append(
@@ -224,6 +249,115 @@ def city_archive_assets_to_records(assets: list[CityArchiveAsset]) -> list[Agend
                 source_url=asset.url,
             )
         )
+    return records
+
+
+def is_extractable_archive_motion_asset(asset: CityArchiveAsset) -> bool:
+    if not is_archive_pdf_asset(asset):
+        return False
+    normalized = f"{asset.title} {asset.url}".casefold()
+    return "dringliche" in normalized or "antraege" in normalized or "anträge" in normalized
+
+
+def is_extractable_archive_question_asset(asset: CityArchiveAsset) -> bool:
+    if not is_archive_pdf_asset(asset):
+        return False
+    normalized = f"{asset.title} {asset.url}".casefold()
+    return "anfragen" in normalized
+
+
+def is_extractable_archive_question_hour_asset(asset: CityArchiveAsset) -> bool:
+    if not is_archive_pdf_asset(asset):
+        return False
+    normalized = f"{asset.title} {asset.url}".casefold()
+    return "fragestunde" in normalized
+
+
+def is_extractable_archive_agenda_asset(asset: CityArchiveAsset) -> bool:
+    if not is_archive_pdf_asset(asset):
+        return False
+    normalized = f"{asset.title} {asset.url}".casefold()
+    return "tagesordnung" in normalized
+
+
+def is_extractable_archive_communication_asset(asset: CityArchiveAsset) -> bool:
+    if not is_archive_pdf_asset(asset):
+        return False
+    normalized = f"{asset.title} {asset.url}".casefold()
+    return "mitteilungen" in normalized
+
+
+def is_archive_pdf_asset(asset: CityArchiveAsset) -> bool:
+    path = asset.url.split("?", 1)[0].split("#", 1)[0].casefold()
+    return asset.kind in {"archive_document", "protocol_document"} and path.endswith(".pdf")
+
+
+def extract_archive_motion_asset_records(asset: CityArchiveAsset) -> list[AgendaRecord]:
+    from .archive_motion_pdf import parse_archive_motion_pdf_bytes
+
+    try:
+        response = requests.get(asset.url, timeout=30)
+        response.raise_for_status()
+        records = parse_archive_motion_pdf_bytes(response.content, Path(asset.url.split("?", 1)[0]).name, source_url=asset.url)
+    except Exception:  # pylint: disable=broad-except
+        return []
+    return records
+
+
+def extract_archive_question_asset_records(asset: CityArchiveAsset) -> list[AgendaRecord]:
+    from .archive_question_pdf import parse_archive_question_pdf_bytes
+
+    try:
+        response = requests.get(asset.url, timeout=30)
+        response.raise_for_status()
+        records = parse_archive_question_pdf_bytes(response.content, Path(asset.url.split("?", 1)[0]).name, source_url=asset.url)
+    except Exception:  # pylint: disable=broad-except
+        return []
+    return records
+
+
+def extract_archive_question_hour_asset_records(asset: CityArchiveAsset) -> list[AgendaRecord]:
+    from .question_pdf import parse_question_hour_pdf_bytes
+
+    try:
+        response = requests.get(asset.url, timeout=30)
+        response.raise_for_status()
+        source_file = Path(asset.url.split("?", 1)[0]).name
+        records = parse_question_hour_pdf_bytes(response.content, source_file)
+    except Exception:  # pylint: disable=broad-except
+        return []
+    return [replace(record, result_source="archiv", source_url=record.source_url or asset.url) for record in records]
+
+
+def extract_archive_agenda_asset_records(asset: CityArchiveAsset) -> list[AgendaRecord]:
+    from .archive_agenda_pdf import parse_archive_agenda_pdf
+
+    try:
+        response = requests.get(asset.url, timeout=30)
+        response.raise_for_status()
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as handle:
+            handle.write(response.content)
+            temp_path = Path(handle.name)
+        try:
+            records = parse_archive_agenda_pdf(temp_path, source_url=asset.url)
+        finally:
+            temp_path.unlink(missing_ok=True)
+    except Exception:  # pylint: disable=broad-except
+        return []
+    return records
+
+
+def extract_archive_communication_asset_records(asset: CityArchiveAsset) -> list[AgendaRecord]:
+    from .archive_communication_pdf import parse_archive_communication_pdf_bytes
+
+    try:
+        response = requests.get(asset.url, timeout=30)
+        response.raise_for_status()
+        records = parse_archive_communication_pdf_bytes(response.content, Path(asset.url.split("?", 1)[0]).name, source_url=asset.url)
+    except Exception:  # pylint: disable=broad-except
+        return []
     return records
 
 

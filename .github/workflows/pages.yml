@@ -57,6 +57,14 @@ jobs:
             --records public_work/records_ai.jsonl \
             --output public_work/topics.json
 
+      - name: Smoke-test local no-cost answer
+        run: |
+          python -m graz_protocols.cli answer \
+            "Was ist zu Anrainerparken beschlossen?" \
+            --sqlite public_work/eintraege.sqlite \
+            --limit 20 \
+            > public_work/answer_smoke.txt
+
       - name: Build static viewer
         run: |
           python -m graz_protocols.viewer \

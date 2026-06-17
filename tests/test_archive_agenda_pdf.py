@@ -40,3 +40,19 @@ def test_parse_archive_agenda_lines_adds_source_page_fragment():
     assert records[0].meeting_date == "2023-10-19"
     assert records[0].source_url == "https://example.test/tagesordnung.pdf#page=2"
     assert records[0].title == "Stadion Graz-Liebenau Projektgenehmigung"
+
+
+def test_parse_archive_agenda_lines_ignores_spoken_vote_lines_that_look_numbered():
+    lines = [
+        (1, "Gemeinderatssitzung vom 19. November 2009"),
+        (1, "11) gegen die Stimmen der Grünen und der KPÖ ist beschlossen"),
+        (2, "3) A 5 – 14207/2004-4 Mobilitätsangebote für ältere Menschen"),
+        (2, "Aktion „Taxifahrten“"),
+        (3, "2) des Gdst.Nr. 297, EZ 226"),
+        (4, "8) A 8/4-4649/2002-428 Grazer Bau- und Grünlandsicherungsges.m.b.H."),
+    ]
+
+    records = parse_archive_agenda_lines(lines, "091119_tagesordnung.pdf")
+
+    assert [record.agenda_item_no for record in records] == [3, 8]
+    assert records[0].title == "Mobilitätsangebote für ältere Menschen Aktion „Taxifahrten“"

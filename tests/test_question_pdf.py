@@ -1,8 +1,9 @@
 import json
 import hashlib
+from types import SimpleNamespace
 
 from graz_protocols.cli import main
-from graz_protocols.question_pdf import parse_question_hour_text
+from graz_protocols.question_pdf import parse_question_hour_pdf_bytes, parse_question_hour_text
 
 
 def test_parse_question_hour_text_splits_question_answer_and_followup():
@@ -160,3 +161,61 @@ def test_parse_question_hour_title_drops_inline_speaker_intro():
     assert records[0].title == "Aktionsprogramm gegen Armut"
     assert records[1].title == "Unterstützung des ÖH-Kindergartens in der Hochsteingasse 16"
     assert records[1].question_parts["speaker"] == "GRin. Maga Taberhofer"
+
+
+def test_parse_question_hour_text_reads_legacy_date_from_filename():
+    records = parse_question_hour_text(
+        """
+        1) Trainingszentrum Weinzödl
+        GRin. Jahn stellt an StR. Rüsch folgende Frage:
+        Frage: Wie ist der Stand?
+        Antwort: Dazu liegen Informationen vor.
+        """,
+        "091119_fragestunde2.pdf",
+    )
+
+    assert records[0].meeting_date == "2009-11-19"
+
+
+def test_parse_question_hour_pdf_bytes_splits_numbered_archive_fragestunde(monkeypatch):
+    class FakePage:
+        def __init__(self, text):
+            self.text = text
+
+        def extract_text(self):
+            return self.text
+
+    class FakePdfReader:
+        def __init__(self, _stream):
+            self.pages = [
+                FakePage(
+                    """
+                    Gemeinderatssitzung vom 7. Juli 2005 20
+                    F R A G E S T U N D E
+                    1) Weiterbestand der Beispielämter
+                    GR. Beispiel stellt an Bgm. Beispiel folgende Frage:
+                    GR. Beispiel: Bleiben die Beispielämter bestehen?
+                    Bgm. Beispiel: Die Frage wird geprüft.
+                    2) Finanzmittelbedarf der Beispielgesellschaft
+                    GR. Muster stellt an StR. Beispiel folgende Frage:
+                    GR. Muster: Wie hoch war der Finanzmittelbedarf?
+                    StR. Beispiel: Der Betrag wird bekanntgegeben.
+                    """
+                )
+            ]
+
+    def fake_import_module(name):
+        if name == "pypdf":
+            return SimpleNamespace(PdfReader=FakePdfReader)
+        raise ImportError(name)
+
+    monkeypatch.setattr("graz_protocols.question_pdf.importlib.import_module", fake_import_module)
+
+    records = parse_question_hour_pdf_bytes(b"%PDF-test", "050707_fragestunde2.pdf")
+
+    assert len(records) == 2
+    assert records[0].meeting_date == "2005-07-07"
+    assert records[0].agenda_item_no == 1
+    assert records[0].title == "Weiterbestand der Beispielämter"
+    assert records[1].agenda_item_no == 2
+    assert records[1].title == "Finanzmittelbedarf der Beispielgesellschaft"

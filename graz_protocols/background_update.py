@@ -22,6 +22,10 @@ class DataTarget:
 
 PREFERRED_TARGETS = [
     DataTarget(
+        Path("out") / "agenda_items_digra_sync_plus_city_protocols_and_archive_questions_clean.jsonl",
+        Path("out") / "summary_digra_sync_plus_city_protocols_and_archive_questions_clean.json",
+    ),
+    DataTarget(
         Path("out") / "agenda_items_digra_sync_plus_city_protocols_and_archive_questions.jsonl",
         Path("out") / "summary_digra_sync_plus_city_protocols_and_archive_questions.json",
     ),

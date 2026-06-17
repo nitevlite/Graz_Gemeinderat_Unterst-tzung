@@ -1,11 +1,73 @@
+from pathlib import Path
+
+import pytest
+
 from graz_protocols.viewer import (
     build_html,
     build_preloaded_location_cache,
     canonical_digra_url,
     clean_display_title,
     meaningful_ai_reason,
+    resolve_viewer_record_source,
     viewer_record,
 )
+
+
+@pytest.fixture(autouse=True)
+def no_default_street_names(monkeypatch):
+    monkeypatch.setattr("graz_protocols.viewer.load_default_street_names", lambda: None)
+
+
+def test_viewer_defaults_to_preferred_local_records_when_default_is_missing(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    preferred_records = tmp_path / "out" / "agenda_items_digra_sync_plus_city_protocols_and_archive_questions_clean.jsonl"
+    preferred_summary = tmp_path / "out" / "summary_digra_sync_plus_city_protocols_and_archive_questions_clean.json"
+    preferred_records.parent.mkdir()
+    preferred_records.write_text("", encoding="utf-8")
+    preferred_summary.write_text("{}", encoding="utf-8")
+
+    records, summary = resolve_viewer_record_source(
+        Path("out") / "agenda_items.jsonl",
+        Path("out") / "summary.json",
+        records_was_explicit=False,
+        summary_was_explicit=False,
+        allow_nonpreferred_records=False,
+    )
+
+    assert records == Path("out") / "agenda_items_digra_sync_plus_city_protocols_and_archive_questions_clean.jsonl"
+    assert summary == Path("out") / "summary_digra_sync_plus_city_protocols_and_archive_questions_clean.json"
+
+
+def test_viewer_rejects_known_nonpreferred_records_when_preferred_exists(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    preferred_records = tmp_path / "out" / "agenda_items_digra_sync_plus_city_protocols_and_archive_questions_clean.jsonl"
+    preferred_summary = tmp_path / "out" / "summary_digra_sync_plus_city_protocols_and_archive_questions_clean.json"
+    older_records = tmp_path / "out" / "agenda_items_digra_ai_plus_latest.jsonl"
+    older_summary = tmp_path / "out" / "summary_digra_plus_latest.json"
+    preferred_records.parent.mkdir()
+    for path in (preferred_records, older_records):
+        path.write_text("", encoding="utf-8")
+    for path in (preferred_summary, older_summary):
+        path.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(SystemExit):
+        resolve_viewer_record_source(
+            Path("out") / "agenda_items_digra_ai_plus_latest.jsonl",
+            Path("out") / "summary_digra_plus_latest.json",
+            records_was_explicit=True,
+            summary_was_explicit=True,
+            allow_nonpreferred_records=False,
+        )
+
+    records, summary = resolve_viewer_record_source(
+        Path("out") / "agenda_items_digra_ai_plus_latest.jsonl",
+        Path("out") / "summary_digra_plus_latest.json",
+        records_was_explicit=True,
+        summary_was_explicit=True,
+        allow_nonpreferred_records=True,
+    )
+    assert records == Path("out") / "agenda_items_digra_ai_plus_latest.jsonl"
+    assert summary == Path("out") / "summary_digra_plus_latest.json"
 
 
 def test_viewer_uses_german_labels_and_hides_raw_text():
@@ -109,11 +171,8 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert 'id="searchSummaryPanel" hidden' in html
     assert 'class="detail date-summary-detail" id="dateSummaryWrap" hidden' in html
     assert ".date-summary-detail .summary-text" in html
-    assert "max-height: none" in html
     assert "activateSearchSubtab" in html
     assert "searchSubtabScroll = { table: 0, details: 0, summary: 0 }" in html
-    assert "Gesamtzusammenfassung für" in html
-    assert "Gesamtzusammenfassung für die aktuelle Auswahl" in html
     assert "sessionSummaryHtml" in html
     assert "sessionExampleItems" in html
     assert "summaryListHtml" in html
@@ -213,7 +272,8 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "Baustellen/Veranstaltungen" not in html
     assert "Baustelle/Veranstaltung" not in html
     assert "Services & Ämter" in html
-    assert "Sitzverteilung und Stadtregierung" in html
+    assert "Sitzverteilung und Stadtregierungsmitglieder" in html
+    assert "Stadtregierungsmitglieder nach Fraktionen" in html
     assert "const civicCouncil" in html
     assert "renderCouncil()" in html
     assert "council-dot" in html
@@ -226,6 +286,11 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "${share.toLocaleString('de-AT')} %" in html
     assert "${seats} Sitze" in html
     assert "Mandate nach Fraktion" in html
+    assert 'id="senateDots"' in html
+    assert 'id="councilMandates"' in html
+    assert html.index('id="senateDots"') < html.index('id="councilMandates"') < html.index('id="councilLegend"')
+    assert "councilMandatesHtml(groups, totalSeats, senateGroups)" in html
+    assert "councilFactionListHtml(groups, totalSeats, senateGroups)" in html
     assert "member:" in html
     assert "councilHemicyclePositions(seats.length, kind)" in html
     assert "if (kind === 'senate') return" in html
@@ -399,7 +464,11 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "Wichtig sind vor allem:" not in html
     assert "answerThemeText" in html
     assert "answerExampleSummaryText" in html
-    assert "Beispiele mit Kurzbeschreibung:" in html
+    assert "Beispiele mit Kurzbeschreibung:" not in html
+    assert "Inhaltlich zeigen die jüngsten positiven Treffer:" not in html
+    assert "Die jüngsten positiven Treffer betreffen" in html
+    assert "Als Ergebnis ist erfasst:" not in html
+    assert "result.replace(/\\s*:\\s*/g, ' ')" in html
     assert "summaryText:" in html
     assert "border-top: 3px solid #cbd5e1" in html
     assert "Beschlossen oder angenommen" in html
@@ -425,9 +494,12 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "strasse|straße|gasse|platz|weg|kai|ring|allee|guertel|gürtel" in html
     assert "'bezirk', 'bezirke'" in html
     assert "allLocalQuestionSources()" in html
-    assert "candidateSet.scannedCount" in html
-    assert "candidateSet.candidateCount" in html
+    assert "candidateSet.scannedCount" not in html
+    assert "Ich habe keine belastbaren Treffer zur Frage gefunden." in html
+    assert "candidateCount: scored.length" in html
     assert "candidateSet.answerSources = answerSources" in html
+    assert "Quellen durchsucht" not in html
+    assert "Treffer gefunden" not in html
     assert "Beschlusslage:" in html
     assert "Beschlossen/angenommen" not in html
     assert "beschlossen/angenommen" in html
@@ -604,6 +676,39 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "raw_text" not in html
 
 
+def test_viewer_uses_question_hour_title_people_for_detail_fields():
+    display = viewer_record(
+        {
+            "record_id": "question-hour-title-people",
+            "record_type": "question_hour",
+            "meeting_date": "2026-04-23",
+            "section": "Fragestunde",
+            "agenda_item_no": 1,
+            "business_numbers": ["3128/1"],
+            "title": (
+                "Frage 1) Auszahlung. Zweckwidmung. Verzicht. Was wurde aus den Worten über die Nachzahlung "
+                "der seit 2013 nicht ausbezahlten Geldmittel aus dem Titel „Parteienförderung“? "
+                "(KO Dreisiebner, Grüne, an, StR Eber, KPÖ)"
+            ),
+            "status": "source_available",
+            "result_text": "Gemeinderat am 23.04.2026: mündlich beantwortet",
+            "raw_result_text": "Gemeinderat am 23.04.2026\nmündlich beantwortet",
+            "votes": [],
+        }
+    )
+
+    assert display["einbringer"] == "KO Dreisiebner (Grüne)"
+    assert display["adressat"] == "StR Eber (KPÖ)"
+    assert display["status"] == "mündlich beantwortet"
+
+
+def test_viewer_labels_question_hour_submitter_as_fragestellerin():
+    html = build_html([], {"records_by_status": {}})
+
+    assert "Fragestellerin" in html
+    assert "Fragesteller/in" not in html
+
+
 def test_viewer_contains_separate_civic_feedback_page_and_popup():
     html = build_html(
         [
@@ -631,12 +736,38 @@ def test_viewer_contains_separate_civic_feedback_page_and_popup():
     assert 'id="participationPanel"' in html
     assert 'id="civicFeedbackModal"' in html
     assert "Zur Mitreden-Seite" in html
-    assert "Dieses Meinungsbild ist nicht amtlich und nicht verbindlich" in html
+    assert "Dieses Meinungsbild ist zählbar" in html
     assert "grazViewerCivicFeedbackV1" in html
     assert "data-open-civic-feedback" in html
+    assert "Mitreden möglich" in html
+    assert "Lokale Rückmeldung zu diesem Stück" in html
+    assert "Rückmeldung geben" in html
+    assert "participation-card-title" in html
+    assert "participation-card-chip" in html
+    assert "participation-card-feedback" in html
+    assert "feedback?.stance" in html
+    assert "function participationTypeRank" in html
+    assert "type.includes('mitteilung')" in html
+    assert "type.includes('fragestunde')" in html
+    assert "type.includes('tagesordnung')" in html
+    assert "type.includes('dringlich')" in html
+    assert "type.includes('schriftlich')" in html
     assert "Dafür" in html
     assert "Dagegen" in html
     assert "Unsicher" in html
+    assert 'id="participationAffectedness"' in html
+    assert 'id="participationReasonText"' in html
+    assert 'id="participationReason"' not in html
+    assert 'id="participationChangeRequest"' in html
+    assert "Was ist der wichtigste Grund für deine Einschätzung?" in html
+    assert "Was müsste sich ändern?" in html
+    assert "mindestens 40 Zeichen" in html
+    assert "Pro Stück wird lokal nur eine Rückmeldung gespeichert" in html
+    assert "zählbar und sammelt qualitative Hinweise" in html
+    assert "affectedness" in html
+    assert "reason_text" in html
+    assert "change_request" in html
+    assert "created_at" in html
     assert "nicht an einen Server gesendet" in html
 
 
@@ -667,6 +798,8 @@ def test_civic_feedback_keeps_future_records_with_existing_digra_results():
     assert "return date >= todayIsoDate();" in html
     assert "Bereits sichtbare DIGRA-Ergebnisse können Vorberatung" in html
     assert "Zukünftiges Stück mit Vorberatung" in html
+    assert "participationStatusText(record)" in html
+    assert "Vorberatung im Ausschuss: ${decision}" in html
 
 
 def test_civic_feedback_does_not_keep_past_nonfinal_records():
@@ -790,6 +923,22 @@ def test_viewer_infers_locations_for_records_without_location_field():
 
     assert "Triester Straße" in record["orte"]
     assert "Straßgang" in record["orte"]
+
+
+def test_viewer_uses_default_street_names_as_location_allowlist(monkeypatch):
+    monkeypatch.setattr("graz_protocols.viewer.load_default_street_names", lambda: {"murradweg"})
+
+    record = viewer_record(
+        {
+            "meeting_date": "2026-01-22",
+            "record_type": "written_question",
+            "status": "unknown",
+            "title": "Ausbau Murradweg und Radweg",
+            "locations": [],
+        }
+    )
+
+    assert record["orte"] == ["Murradweg"]
 
 
 def test_viewer_filters_land_register_values_from_existing_locations():
@@ -931,6 +1080,7 @@ def test_viewer_renders_ai_record_summaries_as_expandable_details():
     )
 
     assert "Zusammenfassung" in html
+    assert "Das Stück behandelt die wichtigsten Punkte einer Maßnahme." in html
     assert "KI-Zusammenfassung" not in html
     assert "Einfache Sprache" not in html
     assert "summary-block" in html
@@ -962,6 +1112,44 @@ def test_viewer_normalizes_contradictory_unanimous_ai_summary_with_against_votes
     assert "mehrheitlich angenommen" in record["ki_zusammenfassung"]
     assert "einstimmig angenommen" not in record["ki_zusammenfassung"]
     assert "ki_einfache_sprache" not in record
+
+
+def test_viewer_replaces_ai_summary_that_contradicts_rejected_result():
+    record = viewer_record(
+        {
+            "meeting_date": "2026-01-16",
+            "record_type": "written_motion",
+            "status": "rejected",
+            "title": "Priorisierung des ÖV-Ausbaus in Graz",
+            "result_text": "Hauptantrag: mehrheitlich abgelehnt",
+            "ai_summary": (
+                "Der Gemeinderat hat einen Antrag zur Priorisierung des ÖV-Ausbaus in Graz angenommen, "
+                "aber den Hauptantrag abgelehnt. Die Mehrheit der Stimmen war dagegen."
+            ),
+        }
+    )
+
+    assert record["ki_zusammenfassung"] == "Der Punkt „Priorisierung des ÖV-Ausbaus in Graz“ wurde abgelehnt."
+    assert "angenommen" not in record["ki_zusammenfassung"]
+
+
+def test_viewer_replaces_ai_summary_that_contradicts_assigned_result():
+    record = viewer_record(
+        {
+            "meeting_date": "2026-01-16",
+            "record_type": "written_motion",
+            "status": "assigned",
+            "title": "Verkehrssicherheit Kalvarienbergstraße",
+            "result_text": "Verfahren: zugewiesen",
+            "ai_summary": (
+                "Ein Antrag wurde gestellt, um die Verkehrssicherheit für Fußgänger in der "
+                "Kalvarienbergstraße zu verbessern. Die Bürgermeisterin hat den Antrag angenommen."
+            ),
+        }
+    )
+
+    assert "ist als Verfahren zugewiesen" in record["ki_zusammenfassung"]
+    assert "angenommen" not in record["ki_zusammenfassung"]
 
 
 def test_viewer_replaces_bad_question_summary_display_text():
@@ -1255,6 +1443,19 @@ def test_viewer_does_not_guess_title_from_plain_document_body():
     assert record["titel"] == "Selbständiger Antrag (§ 17 GO-GR)"
 
 
+def test_viewer_does_not_guess_title_from_ai_summary():
+    record = viewer_record(
+        {
+            "record_type": "written_motion",
+            "status": "unknown",
+            "title": "Selbständiger Antrag (§ 17 GO-GR)",
+            "ai_summary": "Der Gemeinderat hat einen Antrag zur Priorisierung des ÖV-Ausbaus in Graz behandelt.",
+        }
+    )
+
+    assert record["titel"] == "Selbständiger Antrag (§ 17 GO-GR)"
+
+
 def test_viewer_uses_structured_betreff_when_record_title_is_only_generic_type():
     record = viewer_record(
         {
@@ -1289,8 +1490,12 @@ def test_start_answer_source_title_is_aligned_next_to_reference():
     html = build_html([], {})
 
     assert ".answer-item-title" in html
-    assert "align-items: baseline" in html
-    assert "flex-wrap: wrap" in html
+    assert ".answer-item-title {\n      display: block;" in html
+    assert ".answer-title-link:hover {\n      background: transparent;" in html
+    assert "white-space: nowrap" in html
+    assert 'const refHtml = `<${tag}${href} class="answer-ref answer-fact">${escapeHtml(ref)}</${tag}>`' in html
+    assert '<div class="answer-item-title">${titleHtml}</div>' in html
+    assert '<div class="answer-item-facts">${facts}</div>' in html
 
 
 def test_viewer_prefers_structured_topic_and_betreff_titles_for_archive_sources():

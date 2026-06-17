@@ -211,8 +211,9 @@ def suggest_record_summary_local(record: dict) -> dict:
         facts.append(f"{local_record_intro(record)} das Thema {title}. {content}")
     else:
         facts.append(f"{local_record_intro(record)} das Thema {title}.")
-    if submitter:
-        facts.append(f"Eingebracht oder bearbeitet wurde der Punkt von {submitter}.")
+    actor_sentence = summary_actor_sentence(submitter)
+    if actor_sentence:
+        facts.append(actor_sentence)
     if locations:
         facts.append(f"Räumlich genannt werden {', '.join(locations[:4])}.")
     if amounts:
@@ -231,8 +232,8 @@ def suggest_record_summary_local(record: dict) -> dict:
     easy.append(f"Es geht um {title}.")
     if content:
         easy.extend(easy_language_sentences(content))
-    if submitter:
-        easy.append(f"Eingebracht oder bearbeitet wurde der Punkt von {submitter}.")
+    if actor_sentence:
+        easy.append(actor_sentence)
     if locations:
         easy.append(f"Genannte Orte: {', '.join(locations[:3])}.")
     if has_meaningful_result(result):
@@ -312,6 +313,28 @@ def suggest_question_summary_local(
         "easy_language": " ".join(easy),
         **extras,
     }
+
+
+def summary_actor_sentence(submitter: str) -> str:
+    text = clean_text(submitter)
+    if not text:
+        return ""
+    role_match = re.match(
+        r"^(Berichterstatter(?:in|:in)?|Bearbeiter(?:in|:in)?|Einbringer(?:in|:in)?)\s*:?\s*(.+)$",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not role_match:
+        return f"Eingebracht wurde der Punkt von {text}."
+    role = role_match.group(1).casefold()
+    person = clean_text(role_match.group(2))
+    if not person:
+        return ""
+    if role.startswith("bearbeiter"):
+        return f"Bearbeitet wurde der Punkt von {person}."
+    if role.startswith("berichterstatter"):
+        return f"Berichtet wurde der Punkt von {person}."
+    return f"Eingebracht wurde der Punkt von {person}."
 
 
 def concise_question_result(record: dict, result: str) -> str:
@@ -611,10 +634,39 @@ def clean_summary_title(value: str) -> str:
 
 def summary_title_for_record(record: dict) -> str:
     raw_title = clean_summary_title(str(record.get("title", "")))
-    if raw_title and not role_only_summary_title(raw_title):
+    if raw_title and not role_only_summary_title(raw_title) and not generic_summary_title(raw_title):
         return raw_title
     snippet_title = clean_summary_snippet_title(str(record.get("source_snippet", "")))
     return snippet_title or raw_title or "Ohne Titel"
+
+
+def generic_summary_title(value: str) -> bool:
+    normalized = re.sub(r"\s+", " ", clean_text(value)).strip(" ,;:-").casefold()
+    if not normalized:
+        return True
+    generic = {
+        "antrag",
+        "anträge",
+        "antraege",
+        "selbständiger antrag",
+        "selbstaendiger antrag",
+        "selbständiger antrag (§ 17 go-gr)",
+        "selbstaendiger antrag (§ 17 go-gr)",
+        "schriftlicher antrag",
+        "schriftliche anfrage",
+        "dringlicher antrag",
+        "dringlichkeitsantrag",
+        "dringlichkeitsantrag (§ 18 go-gr)",
+        "frage für die fragestunde",
+        "frage fuer die fragestunde",
+        "frage für die fragestunde (§ 16a go-gr)",
+        "frage fuer die fragestunde (§ 16a go-gr)",
+        "mitteilung",
+        "mitteilung an den gemeinderat",
+        "mitteilung an den gemeinderat (§ 15 go-gr)",
+        "tagesordnungspunkt",
+    }
+    return normalized in generic
 
 
 def role_only_summary_title(value: str) -> bool:
@@ -635,6 +687,9 @@ def clean_summary_snippet_title(value: str) -> str:
         maxsplit=1,
         flags=re.IGNORECASE,
     )[0].strip(" ,;:-")
+    sentence_match = re.match(r"^(.{12,180}?[.!?])\s+(?:Der|Die|Das|Dieser|Diese|Dieses|Im|In|Es)\b", title)
+    if sentence_match:
+        title = sentence_match.group(1).strip(" ,;:-")
     if len(title) > 220:
         title = title[:220].rsplit(" ", 1)[0].strip(" ,;:-")
     if len(title.split()) < 2:

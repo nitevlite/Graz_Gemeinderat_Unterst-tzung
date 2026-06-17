@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from dataclasses import replace
+from difflib import SequenceMatcher
 import hashlib
 from pathlib import Path
 import json
@@ -30,7 +31,7 @@ from .parser import AgendaRecord, parse_protocol
 from .question_pdf import parse_question_hour_text, read_question_hour_source
 from .schema import SCHEMA_VERSION, validate_record
 from .sqlite_export import write_sqlite
-from .street_names import load_street_names
+from .street_names import load_default_street_names, load_street_names
 from .topics import write_topic_candidates
 from .update_sources import normalize_digra_meeting_date, update_records_with_latest_digra
 
@@ -61,6 +62,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_summaries(args)
     if args.command == "search":
         return run_search(args)
+    if args.command == "answer":
+        return run_answer(args)
     if args.command == "eval-search":
         return run_eval_search(args)
     if args.command == "city-index":
@@ -206,6 +209,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Assetindex aus city-assets. Standard: out/city_archive_assets.json.",
     )
     digra_sync_cmd.add_argument(
+        "--city-archive-extract-documents",
+        action="store_true",
+        help="Geeignete Stadt-Graz-Archiv-PDFs herunterladen und in einzelne Antrags-Einträge zerlegen.",
+    )
+    digra_sync_cmd.add_argument(
         "--city-protocols-dir",
         type=Path,
         default=None,
@@ -321,6 +329,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="SQLite-Datenbank mit Suchindex. Standard: out/eintraege.sqlite.",
     )
     search_cmd.add_argument("--limit", type=int, default=10, help="Maximale Trefferzahl. Standard: 10.")
+    answer_cmd = subparsers.add_parser("answer", help="Kostenfreie lokale Antwort aus dem SQLite-Suchindex erzeugen.")
+    answer_cmd.add_argument("query", help="Frage, die aus lokalen Quellen beantwortet werden soll.")
+    answer_cmd.add_argument(
+        "--sqlite",
+        type=Path,
+        default=Path("out") / "eintraege.sqlite",
+        help="SQLite-Datenbank mit Suchindex. Standard: out/eintraege.sqlite.",
+    )
+    answer_cmd.add_argument("--limit", type=int, default=30, help="Maximale Suchtreffer für die Antwort. Standard: 30.")
+    answer_cmd.add_argument("--per-group", type=int, default=5, help="Maximale Quellen pro Antwortgruppe. Standard: 5.")
     eval_search_cmd = subparsers.add_parser("eval-search", help="Lokale Suche gegen einen bereinigten Goldstandard messen.")
     eval_search_cmd.add_argument(
         "--sqlite",
@@ -374,7 +392,7 @@ def run_parse(args: argparse.Namespace) -> int:
 
     records: list[AgendaRecord] = []
     errors: list[dict[str, str]] = []
-    street_names = load_street_names(args.street_names) if args.street_names else None
+    street_names = load_street_names(args.street_names) if args.street_names else load_default_street_names()
     for path in docx_files:
         try:
             paragraphs = read_docx_paragraph_blocks(path)
@@ -486,21 +504,26 @@ def run_digra_sync(args: argparse.Namespace) -> int:
     if args.city_protocols_dir:
         protocol_types = parse_type_list(args.city_protocol_types)
         city_protocol_types = sorted(protocol_types)
-        street_names = load_street_names(args.street_names) if args.street_names else None
+        street_names = load_street_names(args.street_names) if args.street_names else load_default_street_names()
         all_protocol_records, city_protocol_files, protocol_errors = parse_city_protocol_records(
             args.city_protocols_dir,
             street_names=street_names,
         )
         records = inherit_locations_from_matching_records(records, all_protocol_records)
+        records = inherit_amounts_from_matching_records(records, all_protocol_records)
         protocol_records = [record for record in all_protocol_records if record.record_type in protocol_types]
         protocol_records = inherit_links_from_matching_records(records, protocol_records)
+        protocol_records = inherit_question_links_from_similar_records(records, protocol_records)
         city_protocol_records = len(protocol_records)
         records = merge_missing_records(records, protocol_records)
         errors.extend(protocol_errors)
     if args.city_archive_assets:
         try:
             assets, archive_asset_errors = read_city_archive_asset_index(args.city_archive_assets_index)
-            archive_records = city_archive_assets_to_records(assets)
+            archive_records = city_archive_assets_to_records(
+                assets,
+                extract_documents=getattr(args, "city_archive_extract_documents", False),
+            )
             archive_asset_records = len(archive_records)
             archive_asset_years = sorted({record.meeting_date[:4] for record in archive_records if record.meeting_date})
             records.extend(archive_records)
@@ -585,14 +608,38 @@ def parse_city_protocol_records(
 
 def merge_missing_records(base_records: list[AgendaRecord], supplemental_records: list[AgendaRecord]) -> list[AgendaRecord]:
     seen = {record_identity(record) for record in base_records}
+    seen_titles_by_type = {
+        (record.record_type, title_date_identity(record))
+        for record in base_records
+        if title_date_identity(record) != ("", "")
+    }
     merged = list(base_records)
     for record in supplemental_records:
         identity = record_identity(record)
-        if identity in seen:
+        title_identity = title_date_identity(record)
+        if identity in seen or supplemental_title_exists(record, title_identity, seen_titles_by_type):
             continue
         merged.append(record)
         seen.add(identity)
+        if title_identity != ("", ""):
+            seen_titles_by_type.add((record.record_type, title_identity))
     return merged
+
+
+def supplemental_title_exists(
+    record: AgendaRecord,
+    title_identity: tuple[str, str],
+    seen_titles_by_type: set[tuple[str, tuple[str, str]]],
+) -> bool:
+    if title_identity == ("", ""):
+        return False
+    if (record.record_type, title_identity) in seen_titles_by_type:
+        return True
+    if record.record_type == "question_hour":
+        return ("agenda_item", title_identity) in seen_titles_by_type
+    if record.record_type == "agenda_item":
+        return ("question_hour", title_identity) in seen_titles_by_type
+    return False
 
 
 def inherit_links_from_matching_records(
@@ -625,6 +672,69 @@ def inherit_links_from_matching_records(
     return enriched
 
 
+def inherit_question_links_from_similar_records(
+    base_records: list[AgendaRecord],
+    supplemental_records: list[AgendaRecord],
+) -> list[AgendaRecord]:
+    linked_records_by_date: dict[str, list[AgendaRecord]] = {}
+    for record in base_records:
+        if not record.meeting_date or not record.digra_url:
+            continue
+        linked_records_by_date.setdefault(record.meeting_date, []).append(record)
+
+    enriched: list[AgendaRecord] = []
+    for record in supplemental_records:
+        if record.digra_url or record.record_type not in {"question_hour", "written_question"}:
+            enriched.append(record)
+            continue
+        match = best_similar_question_record(record, linked_records_by_date.get(record.meeting_date, []))
+        if not match:
+            enriched.append(record)
+            continue
+        enriched.append(
+            replace(
+                record,
+                digra_url=match.digra_url,
+                digra_business_number=record.digra_business_number or match.digra_business_number,
+                digra_match_score=max(record.digra_match_score, 0.78),
+            )
+        )
+    return enriched
+
+
+def best_similar_question_record(record: AgendaRecord, candidates: list[AgendaRecord]) -> AgendaRecord | None:
+    source_title = comparable_question_title(record.title)
+    if not source_title:
+        return None
+    best_record: AgendaRecord | None = None
+    best_score = 0.0
+    for candidate in candidates:
+        candidate_title = comparable_question_title(candidate.title)
+        if not candidate_title:
+            continue
+        score = question_title_similarity(source_title, candidate_title)
+        if score > best_score:
+            best_score = score
+            best_record = candidate
+    return best_record if best_score >= 0.78 else None
+
+
+def question_title_similarity(left: str, right: str) -> float:
+    if left == right:
+        return 1.0
+    if len(left) >= 16 and left in right or len(right) >= 16 and right in left:
+        return 0.9
+    return SequenceMatcher(None, left, right).ratio()
+
+
+def comparable_question_title(value: str) -> str:
+    title = normalized_identity_title(value)
+    title = re.sub(r"\([^)]{0,180}\)", " ", title)
+    title = re.split(r"\bsehr geehrte\b", title, maxsplit=1)[0]
+    title = re.sub(r"\s+", " ", title).strip(" ,;:-")
+    return title
+
+
 def inherit_links_within_records(records: list[AgendaRecord]) -> list[AgendaRecord]:
     return inherit_links_from_matching_records(records, records)
 
@@ -652,10 +762,33 @@ def inherit_locations_from_matching_records(
     return enriched
 
 
+def inherit_amounts_from_matching_records(
+    base_records: list[AgendaRecord],
+    amount_source_records: list[AgendaRecord],
+) -> list[AgendaRecord]:
+    amounts_by_identity: dict[tuple[str, str], AgendaRecord] = {}
+    for record in amount_source_records:
+        identity = title_date_identity(record)
+        if identity and record.amounts:
+            amounts_by_identity.setdefault(identity, record)
+
+    enriched: list[AgendaRecord] = []
+    for record in base_records:
+        if record.amounts:
+            enriched.append(record)
+            continue
+        match = amounts_by_identity.get(title_date_identity(record))
+        if not match:
+            enriched.append(record)
+            continue
+        enriched.append(replace(record, amounts=match.amounts))
+    return enriched
+
+
 def title_date_identity(record: AgendaRecord) -> tuple[str, str]:
     if not record.meeting_date or not record.title:
         return ("", "")
-    return (record.meeting_date, record.title.casefold())
+    return (record.meeting_date, normalized_identity_title(record.title))
 
 
 def record_identity(record: AgendaRecord) -> tuple[str, str, str, str]:
@@ -663,8 +796,15 @@ def record_identity(record: AgendaRecord) -> tuple[str, str, str, str]:
         record.meeting_date,
         record.record_type,
         " ".join(record.business_numbers),
-        record.title.casefold(),
+        normalized_identity_title(record.title),
     )
+
+
+def normalized_identity_title(value: str) -> str:
+    title = re.sub(r"\s+", " ", str(value or "")).strip().casefold()
+    title = re.sub(r"^(?:frage|stk\.?|to)?\s*\d{1,3}\)\s*", "", title)
+    title = re.sub(r"^(?:frage|stk\.?|to)\s+\d{1,3}\s*[:.)-]\s*", "", title)
+    return title.strip(" ,;:-")
 
 
 def run_digra_update(args: argparse.Namespace) -> int:
@@ -878,6 +1018,16 @@ def run_search(args: argparse.Namespace) -> int:
         print(f"   Quelle: {source}")
         if result.snippets:
             print(f"   Kontext: {result.snippets[0]}")
+    return 0
+
+
+def run_answer(args: argparse.Namespace) -> int:
+    if not args.sqlite.exists():
+        print(f"SQLite-Datenbank nicht gefunden: {args.sqlite}", file=sys.stderr)
+        return 1
+    from .answers import answer_sqlite
+
+    print(answer_sqlite(args.sqlite, args.query, limit=args.limit, per_group=args.per_group))
     return 0
 
 

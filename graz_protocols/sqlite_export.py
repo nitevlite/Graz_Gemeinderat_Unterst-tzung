@@ -411,6 +411,7 @@ def search_chunks_for_record(record: dict) -> list[tuple[str, str, str, float, s
         ("orte", 4.0, " ".join(str(value) for value in record.get("locations", []))),
         ("betraege", 3.0, " ".join(str(value) for value in record.get("amounts", []))),
         ("einbringer", 3.0, str(record.get("submitter", ""))),
+        ("adressat", 3.0, str(record.get("addressee", ""))),
         ("quellenausschnitt", 1.5, str(record.get("source_snippet", ""))),
         ("abstimmungen", 2.5, votes_search_text(record.get("votes", []))),
         ("fragestunde", 3.0, question_parts_search_text(record.get("question_parts", {}))),

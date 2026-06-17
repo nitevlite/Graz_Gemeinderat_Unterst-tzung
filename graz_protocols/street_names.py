@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 from zipfile import ZipFile
 import re
@@ -7,6 +8,14 @@ import xml.etree.ElementTree as ET
 
 
 NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+DEFAULT_STREET_NAMES_PATH = Path(__file__).resolve().parents[1] / "Straßennamen_Graz.xlsx"
+
+
+@lru_cache(maxsize=1)
+def load_default_street_names() -> set[str] | None:
+    if not DEFAULT_STREET_NAMES_PATH.exists():
+        return None
+    return load_street_names(DEFAULT_STREET_NAMES_PATH)
 
 
 def load_street_names(path: Path) -> set[str]:

@@ -26,6 +26,7 @@ MEETING_DATE_IN_TEXT_RE = re.compile(
     re.IGNORECASE,
 )
 ISO_DATE_IN_FILENAME_RE = re.compile(r"(?<!\d)(?P<date>\d{4}-\d{2}-\d{2})(?!\d)")
+LEGACY_DATE_IN_FILENAME_RE = re.compile(r"(?<!\d)(?P<yy>\d{2})(?P<month>\d{2})(?P<day>\d{2})(?!\d)")
 BUSINESS_NO_RE = re.compile(
     r"\b(?:"
     r"Präs\.?|Praes\.?|"
@@ -59,6 +60,26 @@ LOCATION_TYPED_PATTERNS = [
     ("parcel", re.compile(r"\bGdst\.?\s*Nr\.?\s*[\d/]+", re.IGNORECASE)),
 ]
 NON_PUBLIC_LOCATION_TYPES = {"parcel", "land_register", "cadastral_municipality"}
+NON_LOCATION_TERMS = {
+    "arbeitsweg",
+    "carsharing",
+    "fluchtweg",
+    "fussweg",
+    "fußweg",
+    "gehsteig",
+    "gehweg",
+    "heimweg",
+    "hinweg",
+    "radweg",
+    "rueckweg",
+    "rückweg",
+    "schlichtweg",
+    "schulweg",
+    "schutzweg",
+    "umlaufweg",
+    "umweg",
+    "vorweg",
+}
 REPORTER_RE = re.compile(r"\((?:Berichterstatter(?:in)?|GR|KlObm|KlObf)[^)]+\)")
 REPORTER_DETAIL_RE = re.compile(r"\((?P<role>Berichterstatter(?:in)?|GR|KlObm|KlObf)\s*:?\s*(?P<name>[^)]+)\)")
 MOTION_AUTHOR_RE = re.compile(
@@ -173,8 +194,9 @@ class AgendaRecord:
     source_page: int = 0
     local_source_url: str = ""
     submitter: str = ""
-    attachment_titles: list[str] = field(default_factory=list)
+    addressee: str = ""
     question_parts: dict[str, str] = field(default_factory=dict)
+    attachment_titles: list[str] = field(default_factory=list)
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False, sort_keys=True)
@@ -399,6 +421,13 @@ def extract_meeting_date(paragraphs: Iterable[str], source_file: str) -> str:
     filename_match = ISO_DATE_IN_FILENAME_RE.search(source_file)
     if filename_match:
         return filename_match.group("date")
+    legacy_filename_match = LEGACY_DATE_IN_FILENAME_RE.search(source_file)
+    if legacy_filename_match:
+        year = 2000 + int(legacy_filename_match.group("yy"))
+        month = int(legacy_filename_match.group("month"))
+        day = int(legacy_filename_match.group("day"))
+        if 2000 <= year <= 2026 and 1 <= month <= 12 and 1 <= day <= 31:
+            return f"{year:04d}-{month:02d}-{day:02d}"
     for paragraph in paragraphs:
         match = MEETING_DATE_IN_TEXT_RE.search(paragraph)
         if match:
@@ -508,6 +537,7 @@ def extract_votes(result_text: str, status: str = "unknown") -> list[dict[str, o
             current["raw_text"] = f"{current['raw_text']}\n{line}"
     if current is not None:
         votes.append(current)
+    votes = collapse_conflicting_votes(votes, status)
     if not votes and status == "assigned":
         return [
             {
@@ -520,6 +550,50 @@ def extract_votes(result_text: str, status: str = "unknown") -> list[dict[str, o
             }
         ]
     return votes
+
+
+def collapse_conflicting_votes(votes: list[dict[str, object]], status: str) -> list[dict[str, object]]:
+    collapsed: list[dict[str, object]] = []
+    for vote in votes:
+        subject = str(vote.get("subject", ""))
+        previous_index = next(
+            (index for index in range(len(collapsed) - 1, -1, -1) if str(collapsed[index].get("subject", "")) == subject),
+            -1,
+        )
+        if previous_index < 0:
+            collapsed.append(vote)
+            continue
+        previous = collapsed[previous_index]
+        if vote_matches_status(vote, status) and not vote_matches_status(previous, status):
+            collapsed[previous_index] = vote
+            continue
+        if generic_vote(previous) and more_specific_vote(vote):
+            collapsed[previous_index] = vote
+            continue
+        if generic_vote(vote) and more_specific_vote(previous):
+            continue
+        collapsed.append(vote)
+    return collapsed
+
+
+def vote_matches_status(vote: dict[str, object], status: str) -> bool:
+    outcome = str(vote.get("outcome", ""))
+    if status.startswith("accepted"):
+        return outcome.startswith("accepted")
+    if status.startswith("rejected"):
+        return outcome.startswith("rejected")
+    return outcome == status
+
+
+def generic_vote(vote: dict[str, object]) -> bool:
+    return str(vote.get("outcome", "")) in {"accepted", "rejected"}
+
+
+def more_specific_vote(vote: dict[str, object]) -> bool:
+    outcome = str(vote.get("outcome", ""))
+    return outcome in {"accepted_unanimous", "accepted_majority", "rejected_majority"} or bool(vote.get("against")) or bool(
+        vote.get("approval")
+    )
 
 
 def format_result_text(votes: list[dict[str, object]], status: str, status_text: str) -> str:
@@ -660,6 +734,8 @@ def extract_location_details(text: str, street_names: set[str] | None = None) ->
             continue
         for match in pattern.finditer(text):
             value = match.group(0).strip()
+            if is_false_positive_location(value):
+                continue
             if street_names is not None and location_type not in {"street", "place", "park", "bridge"}:
                 continue
             if street_names is not None:
@@ -692,6 +768,10 @@ def extract_location_details(text: str, street_names: set[str] | None = None) ->
                 }
             )
     return details
+
+
+def is_false_positive_location(value: str) -> bool:
+    return normalize_street_name(value) in NON_LOCATION_TERMS
 
 
 def location_context_text(heading_body: str, body: list[str], limit: int = 1600) -> str:

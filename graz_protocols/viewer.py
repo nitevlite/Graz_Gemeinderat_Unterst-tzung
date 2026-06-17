@@ -8,10 +8,12 @@ import re
 import sys
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
+from .background_update import PREFERRED_TARGETS, select_target
 from .city_sources import archive_asset_title_from_url, is_attendance_asset
 from .civic_services import civic_service_summary, load_civic_council, load_civic_services
 from .mobility_sources import load_health_places, load_parking_garages, load_roadworks, mobility_source_summary
-from .parser import extract_location_details
+from .parser import extract_location_details, find_street_names_in_text
+from .street_names import load_default_street_names, normalize_street_name
 
 
 CATEGORY_RULES = [
@@ -199,6 +201,44 @@ KNOWN_GRAZ_LOCATION_ALIASES = {
 }
 
 
+def paths_equal(left: Path, right: Path) -> bool:
+    return left == right or left.resolve(strict=False) == right.resolve(strict=False)
+
+
+def resolve_viewer_record_source(
+    records: Path,
+    summary: Path,
+    *,
+    records_was_explicit: bool,
+    summary_was_explicit: bool,
+    allow_nonpreferred_records: bool,
+) -> tuple[Path, Path]:
+    preferred = select_target()
+    if preferred is None:
+        return records, summary
+
+    default_records = Path("out") / "agenda_items.jsonl"
+    default_summary = Path("out") / "summary.json"
+    if not records_was_explicit and paths_equal(records, default_records) and not records.exists():
+        resolved_summary = preferred.summary if not summary_was_explicit and paths_equal(summary, default_summary) else summary
+        return preferred.records, resolved_summary
+
+    known_records = [target.records for target in PREFERRED_TARGETS]
+    if (
+        records_was_explicit
+        and not allow_nonpreferred_records
+        and any(paths_equal(records, known) for known in known_records)
+        and not paths_equal(records, preferred.records)
+    ):
+        raise SystemExit(
+            "Nicht bevorzugte lokale Datenbasis angegeben: "
+            f"{records}. Bevorzugt ist aktuell {preferred.records}. "
+            "Wenn das absichtlich ein Debug-Lauf ist, nutze --allow-nonpreferred-records."
+        )
+
+    return records, summary
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="graz-protocols-viewer",
@@ -252,7 +292,20 @@ def main(argv: list[str] | None = None) -> int:
         default=Path("out") / "aerzte_graz_osm.json",
         help="Optionaler Cache für Ordinationen aus OpenStreetMap/Overpass.",
     )
+    parser.add_argument(
+        "--allow-nonpreferred-records",
+        action="store_true",
+        help="Erlaubt explizite Viewer-Builds aus älteren bekannten lokalen DIGRA-Exporten.",
+    )
+    raw_args = list(argv) if argv is not None else sys.argv[1:]
     args = parser.parse_args(argv)
+    args.records, args.summary = resolve_viewer_record_source(
+        args.records,
+        args.summary,
+        records_was_explicit="--records" in raw_args,
+        summary_was_explicit="--summary" in raw_args,
+        allow_nonpreferred_records=args.allow_nonpreferred_records,
+    )
 
     if not args.records.exists():
         print(f"Eintragsdatei nicht gefunden: {args.records}", file=sys.stderr)
@@ -808,12 +861,15 @@ def build_html(
       gap: 8px;
     }}
     .participation-card {{
-      padding: 10px;
+      padding: 10px 11px;
       text-align: left;
       background: white;
       color: var(--ink);
       border-color: var(--line);
-      font-weight: 500;
+      font-weight: 400;
+      display: grid;
+      gap: 7px;
+      line-height: 1.35;
     }}
     .participation-card:hover,
     .participation-card.active {{
@@ -821,15 +877,31 @@ def build_html(
       background: #eff6ff;
       color: var(--ink);
     }}
-    .participation-card strong {{
+    .participation-card-title {{
       display: block;
-      margin-bottom: 4px;
       font-size: 13px;
+      font-weight: 500;
+      overflow-wrap: anywhere;
     }}
-    .participation-card small {{
-      display: block;
+    .participation-card-meta {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      align-items: center;
+    }}
+    .participation-card-chip {{
+      border: 1px solid #e2e8f0;
+      border-radius: 999px;
+      background: #f8fafc;
+      color: #475569;
+      padding: 2px 6px;
+      font-size: 11px;
+      line-height: 1.2;
+    }}
+    .participation-card-feedback {{
       color: var(--muted);
-      line-height: 1.4;
+      font-size: 12px;
+      line-height: 1.3;
     }}
     .participation-detail {{
       padding: 12px;
@@ -875,17 +947,45 @@ def build_html(
     }}
     .participation-detail-cta {{
       margin-top: 12px;
-      padding: 10px;
+      padding: 12px;
       border: 1px solid #bfdbfe;
       border-radius: 8px;
-      background: #eff6ff;
-      display: grid;
-      gap: 7px;
+      background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
     }}
-    .participation-detail-cta p {{
-      margin: 0;
+    .participation-detail-copy {{
+      min-width: min(100%, 260px);
+      flex: 1 1 260px;
+      display: grid;
+      gap: 4px;
+    }}
+    .participation-detail-copy strong {{
       color: #1e3a8a;
+      font-size: 13px;
+    }}
+    .participation-detail-copy p {{
+      margin: 0;
+      color: #334155;
+      font-size: 12px;
       line-height: 1.4;
+    }}
+    .participation-detail-chip {{
+      width: fit-content;
+      border: 1px solid #bfdbfe;
+      border-radius: 999px;
+      background: #dbeafe;
+      color: #1e40af;
+      padding: 2px 7px;
+      font-size: 11px;
+      font-weight: 800;
+    }}
+    .participation-detail-cta button {{
+      width: auto;
+      white-space: nowrap;
     }}
     .civic-modal {{
       position: fixed;
@@ -1210,6 +1310,13 @@ def build_html(
       display: grid;
       grid-template-columns: minmax(0, 1fr) 136px;
       gap: 12px;
+      align-items: start;
+    }}
+    .question-input-wrap {{
+      position: relative;
+      display: grid;
+      gap: 8px;
+      min-width: 0;
     }}
     .question-row input {{
       min-height: 58px;
@@ -1223,6 +1330,38 @@ def build_html(
     .question-row[hidden] {{
       display: none;
     }}
+    .question-suggestions {{
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.11);
+      padding: 6px;
+      display: grid;
+      gap: 4px;
+    }}
+    .question-suggestions[hidden] {{
+      display: none;
+    }}
+    .question-suggestion {{
+      width: 100%;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--ink);
+      cursor: pointer;
+      font: inherit;
+      font-size: 14px;
+      line-height: 1.35;
+      padding: 9px 10px;
+      text-align: left;
+      overflow-wrap: anywhere;
+    }}
+    .question-suggestion:hover,
+    .question-suggestion:focus-visible {{
+      background: #eff6ff;
+      color: #1e3a8a;
+      outline: none;
+    }}
     .question-result {{
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -1230,6 +1369,43 @@ def build_html(
       padding: 14px;
       min-height: 58px;
       line-height: 1.45;
+    }}
+    .question-tabs {{
+      display: grid;
+      gap: 10px;
+    }}
+    .question-tabs[hidden] {{
+      display: none;
+    }}
+    .question-tab-buttons {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0;
+      border-bottom: 1px solid var(--line);
+    }}
+    .question-tab-button {{
+      width: auto;
+      min-height: 36px;
+      border: 0;
+      border-bottom: 3px solid transparent;
+      border-radius: 0;
+      background: transparent;
+      color: var(--muted);
+      padding: 7px 14px;
+      font-size: 13px;
+      font-weight: 750;
+    }}
+    .question-tab-button.active {{
+      border-bottom-color: var(--accent);
+      background: transparent;
+      color: var(--accent-dark);
+    }}
+    .question-tab-button:hover {{
+      background: #f8fafc;
+      color: var(--accent-dark);
+    }}
+    .question-tab-panel[hidden] {{
+      display: none;
     }}
     .answer-shell {{
       display: grid;
@@ -1293,10 +1469,7 @@ def build_html(
       border-top: 1px solid #e2e8f0;
     }}
     .answer-item-title {{
-      display: flex;
-      align-items: baseline;
-      flex-wrap: wrap;
-      gap: 0 6px;
+      display: block;
       font-size: 13px;
       font-weight: 600;
       line-height: 1.42;
@@ -1306,6 +1479,7 @@ def build_html(
       background: transparent;
       color: inherit;
       cursor: pointer;
+      display: inline;
       font: inherit;
       font-weight: 600;
       min-width: 0;
@@ -1316,6 +1490,7 @@ def build_html(
       text-underline-offset: 3px;
     }}
     .answer-title-link:hover {{
+      background: transparent;
       color: var(--accent-dark);
       text-decoration-color: var(--accent);
     }}
@@ -1363,6 +1538,7 @@ def build_html(
       color: var(--accent-dark);
       font-weight: 700;
       text-decoration: none;
+      white-space: nowrap;
     }}
     .answer-note {{
       color: var(--muted);
@@ -1595,9 +1771,36 @@ def build_html(
     }}
     .council-layout {{
       display: grid;
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr) minmax(240px, 340px);
       gap: 12px;
       align-items: start;
+    }}
+    .council-kpis {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }}
+    .council-kpi {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 11px 12px;
+      min-width: 0;
+    }}
+    .council-kpi strong {{
+      display: block;
+      color: #0f172a;
+      font-size: 22px;
+      line-height: 1.1;
+      margin-bottom: 4px;
+    }}
+    .council-kpi span {{
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0;
     }}
     .council-stage {{
       border: 1px solid var(--line);
@@ -1625,10 +1828,26 @@ def build_html(
     }}
     .council-dots {{
       position: relative;
-      height: clamp(250px, 38vw, 430px);
+      height: clamp(250px, 34vw, 390px);
       margin-bottom: 16px;
       border-bottom: 1px solid var(--line);
       overflow: visible;
+    }}
+    .council-majority-note {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: -4px 0 16px;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 750;
+    }}
+    .council-majority-note::before {{
+      content: "";
+      width: 34px;
+      height: 3px;
+      border-radius: 999px;
+      background: var(--accent);
     }}
     .council-seat {{
       position: absolute;
@@ -1732,22 +1951,27 @@ def build_html(
     .council-side {{
       display: grid;
       gap: 10px;
+      min-width: 0;
     }}
     .council-histogram {{
       border: 1px solid var(--line);
       border-radius: 8px;
       background: #fff;
       padding: 12px;
+      min-width: 0;
     }}
     .council-histogram h3 {{
       margin: 0 0 10px;
       font-size: 14px;
     }}
+    .council-stage .council-histogram {{
+      margin-top: 12px;
+    }}
     .council-histogram-grid {{
       min-height: 220px;
       display: grid;
-      grid-template-columns: repeat(8, minmax(44px, 1fr));
-      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(34px, 1fr));
+      gap: 8px;
       align-items: end;
       padding-top: 8px;
     }}
@@ -1772,7 +1996,7 @@ def build_html(
       background: color-mix(in srgb, var(--party-color) 10%, #ffffff);
     }}
     .council-column-track {{
-      width: min(42px, 80%);
+      width: min(34px, 80%);
       height: 100%;
       min-height: 110px;
       display: flex;
@@ -1803,6 +2027,65 @@ def build_html(
     }}
     .council-histogram-note {{
       margin-top: 10px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }}
+    .council-faction-list {{
+      display: grid;
+      gap: 8px;
+    }}
+    .council-faction-card {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 10px;
+      transition: background 120ms ease, border-color 120ms ease;
+    }}
+    .council-faction-card:hover,
+    .council-faction-card.is-focused {{
+      border-color: color-mix(in srgb, var(--party-color) 44%, var(--line-strong));
+      background: color-mix(in srgb, var(--party-color) 9%, #ffffff);
+    }}
+    .council-faction-top {{
+      display: grid;
+      grid-template-columns: 12px minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }}
+    .council-faction-swatch {{
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: var(--party-color);
+    }}
+    .council-faction-name {{
+      color: #0f172a;
+      font-size: 13px;
+      font-weight: 850;
+      overflow-wrap: anywhere;
+    }}
+    .council-faction-seats {{
+      color: #0f172a;
+      font-size: 12px;
+      font-weight: 850;
+      grid-column: 2;
+    }}
+    .council-faction-track {{
+      height: 7px;
+      border-radius: 999px;
+      background: #e2e8f0;
+      overflow: hidden;
+    }}
+    .council-faction-fill {{
+      width: var(--faction-share);
+      height: 100%;
+      border-radius: inherit;
+      background: var(--party-color);
+    }}
+    .council-faction-meta {{
+      margin-top: 6px;
       color: var(--muted);
       font-size: 11px;
       line-height: 1.35;
@@ -2332,6 +2615,8 @@ def build_html(
       header, main {{ padding-left: 16px; padding-right: 16px; }}
       .toolbar {{ grid-template-columns: 1fr; }}
       .map-layout {{ grid-template-columns: 1fr; }}
+      .council-layout {{ grid-template-columns: 1fr; }}
+      .council-kpis {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }}
       .council-dots {{ height: 320px; }}
       table {{ min-width: 0; }}
       .table-card {{
@@ -2453,6 +2738,7 @@ def build_html(
         min-height: 40px;
         padding: 9px 10px;
       }}
+      .council-kpis {{ grid-template-columns: 1fr; }}
       .council-dots {{ height: 280px; }}
       .council-seat {{ width: 58px; }}
       .council-seat-label {{ width: 58px; font-size: 7px; }}
@@ -2534,11 +2820,24 @@ def build_html(
           <div class="question-box">
             <h2>Wobei kann ich behilflich sein?</h2>
             <div class="question-row">
-              <input id="aiQuestion" type="search" list="globalSuggestions" placeholder="Welche Beschlüsse und Baustellen betreffen 2026 die Kärntner Straße?">
+              <div class="question-input-wrap">
+                <input id="aiQuestion" type="search" autocomplete="off" aria-autocomplete="list" aria-controls="aiQuestionSuggestions" aria-expanded="false" placeholder="Welche Beschlüsse und Baustellen betreffen 2026 die Kärntner Straße?">
+                <div class="question-suggestions" id="aiQuestionSuggestions" role="listbox" hidden></div>
+              </div>
               <button id="aiAsk" type="button">Fragen</button>
             </div>
-            <div class="question-result" id="aiAnswer" hidden></div>
-            <div class="question-sources" id="aiSources" hidden></div>
+            <div class="question-tabs" id="aiResultTabs" hidden>
+              <div class="question-tab-buttons" role="tablist" aria-label="Antwortbereich">
+                <button class="question-tab-button active" type="button" role="tab" aria-selected="true" data-question-result-tab="answer">Antwort</button>
+                <button class="question-tab-button" type="button" role="tab" aria-selected="false" data-question-result-tab="sources">Quellen</button>
+              </div>
+              <div class="question-tab-panel" id="aiAnswerPanel" role="tabpanel">
+                <div class="question-result" id="aiAnswer" hidden></div>
+              </div>
+              <div class="question-tab-panel" id="aiSourcesPanel" role="tabpanel" hidden>
+                <div class="question-sources" id="aiSources" hidden></div>
+              </div>
+            </div>
             <div class="ai-disclaimer">KI-generierte Antworten können Fehler enthalten. Bitte immer die Quellen prüfen.</div>
           </div>
         </section>
@@ -2605,25 +2904,28 @@ def build_html(
           <div class="map-head">
             <div class="map-head-main">
               <h2>Gemeinderat</h2>
-              <div class="map-status" id="councilStatus">Sitzverteilung und Stadtregierung laut offiziellen Stadt-Graz-Seiten.</div>
+              <div class="map-status" id="councilStatus">Sitzverteilung und Stadtregierungsmitglieder laut offiziellen Stadt-Graz-Seiten.</div>
             </div>
             <div class="map-actions">
               <a class="primary-link" href="https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html" target="_blank" rel="noopener noreferrer">Mitglieder öffnen</a>
-              <a class="primary-link" href="https://www.graz.at/cms/ziel/7765844/DE/" target="_blank" rel="noopener noreferrer">Stadtregierung öffnen</a>
+              <a class="primary-link" href="https://www.graz.at/cms/ziel/7765844/DE/" target="_blank" rel="noopener noreferrer">Stadtregierungsmitglieder öffnen</a>
             </div>
           </div>
           <div class="council-layout">
             <div class="council-stage">
+              <div class="council-kpis" id="councilKpis"></div>
               <div class="council-header">
-                <h3>Gemeinderat</h3>
+                <h3>Sitzverteilung</h3>
                 <div class="council-summary" id="councilSummary"></div>
               </div>
               <div class="council-dots" id="councilDots" aria-label="Sitzverteilung im Gemeinderat"></div>
+              <div class="council-majority-note" id="councilMajorityNote"></div>
               <div class="council-header">
-                <h3>Stadtregierung</h3>
+                <h3>Stadtregierungsmitglieder nach Fraktionen</h3>
                 <div class="council-summary" id="senateSummary"></div>
               </div>
-              <div class="council-senate" id="senateDots" aria-label="Mitglieder der Stadtregierung nach Fraktionen"></div>
+              <div class="council-senate" id="senateDots" aria-label="Stadtregierungsmitglieder nach Fraktionen"></div>
+              <div id="councilMandates"></div>
               <div class="council-links" id="councilLinks"></div>
             </div>
             <div class="council-side" id="councilLegend"></div>
@@ -2756,7 +3058,11 @@ def build_html(
     const civicFeedbackOpen = byId('civicFeedbackOpen');
     const civicFeedbackLater = byId('civicFeedbackLater');
     const aiQuestion = byId('aiQuestion');
+    const aiQuestionSuggestions = byId('aiQuestionSuggestions');
     const aiAsk = byId('aiAsk');
+    const aiResultTabs = byId('aiResultTabs');
+    const aiAnswerPanel = byId('aiAnswerPanel');
+    const aiSourcesPanel = byId('aiSourcesPanel');
     const aiAnswer = byId('aiAnswer');
     const aiSources = byId('aiSources');
     const mapStatus = byId('mapStatus');
@@ -2784,11 +3090,14 @@ def build_html(
     const doctorsList = byId('doctorsList');
     const doctorsProfessionFilter = byId('doctorsProfessionFilter');
     const councilStatus = byId('councilStatus');
+    const councilKpis = byId('councilKpis');
     const councilSummary = byId('councilSummary');
+    const councilMajorityNote = byId('councilMajorityNote');
     const senateSummary = byId('senateSummary');
     const councilDots = byId('councilDots');
     const senateDots = byId('senateDots');
     const councilLegend = byId('councilLegend');
+    const councilMandates = byId('councilMandates');
     const councilLinks = byId('councilLinks');
     const servicesStatus = byId('servicesStatus');
     const servicesSearch = byId('servicesSearch');
@@ -2876,6 +3185,7 @@ def build_html(
     let currentPharmacyPlaces = activePharmacies;
     let currentDoctorPlaces = activeDoctors;
     let currentCivicServices = civicServices;
+    let questionSuggestionValues = [];
     let councilRendered = false;
     const pharmacyFallbackPlaces = [
       {{ name: 'Adler Apotheke Graz', address: 'Hauptplatz 4, 8010 Graz', kind: 'Apotheke', profession: 'Apotheke', lat: 47.0707, lon: 15.4388, opening_hours: '', website: 'https://www.apothekerkammer.at/apothekensuche', source: 'lokaler Prüffallback', license: 'nur Standort-Hinweis' }},
@@ -3076,11 +3386,73 @@ def build_html(
     function fillDatalist(id, values, limit = 900) {{
       const list = byId(id);
       if (!list) return;
-      list.innerHTML = [...new Set(values.filter(Boolean))]
-        .sort((a, b) => String(a).localeCompare(String(b), 'de-AT'))
-        .slice(0, limit)
+      list.innerHTML = uniqueSuggestionValues(values, limit)
         .map((value) => `<option value="${{escapeHtml(value)}}"></option>`)
         .join('');
+    }}
+
+    function uniqueSuggestionValues(values, limit = 900) {{
+      return [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'de-AT'))
+        .slice(0, limit);
+    }}
+
+    function renderQuestionSuggestions() {{
+      if (!aiQuestionSuggestions) return;
+      const query = normalizeSearchText(aiQuestion.value);
+      if (query.length < 2) {{
+        hideQuestionSuggestions();
+        return;
+      }}
+      const tokens = query.split(/\\s+/).filter((token) => token.length >= 2);
+      const matches = questionSuggestionValues
+        .map((value) => {{
+          const normalized = normalizeSearchText(value);
+          let score = 0;
+          if (normalized === query) score += 100;
+          if (normalized.startsWith(query)) score += 80;
+          if (normalized.includes(query)) score += 55;
+          tokens.forEach((token) => {{
+            if (normalized.startsWith(token)) score += 18;
+            else if (normalized.includes(token)) score += 8;
+          }});
+          return {{ value, score }};
+        }})
+        .filter((item) => item.score > 0)
+        .sort((a, b) => b.score - a.score || a.value.length - b.value.length || a.value.localeCompare(b.value, 'de-AT'))
+        .slice(0, 7);
+      if (!matches.length) {{
+        hideQuestionSuggestions();
+        return;
+      }}
+      aiQuestionSuggestions.innerHTML = matches
+        .map((item) => `<button class="question-suggestion" type="button" role="option" data-question-suggestion="${{escapeHtml(item.value)}}">${{escapeHtml(item.value)}}</button>`)
+        .join('');
+      aiQuestionSuggestions.hidden = false;
+      aiQuestion.setAttribute('aria-expanded', 'true');
+    }}
+
+    function hideQuestionSuggestions() {{
+      if (!aiQuestionSuggestions) return;
+      aiQuestionSuggestions.hidden = true;
+      aiQuestionSuggestions.innerHTML = '';
+      aiQuestion?.setAttribute('aria-expanded', 'false');
+    }}
+
+    function activateQuestionResultTab(tabName = 'answer') {{
+      const normalized = tabName === 'sources' ? 'sources' : 'answer';
+      aiResultTabs?.querySelectorAll('[data-question-result-tab]').forEach((button) => {{
+        const active = button.dataset.questionResultTab === normalized;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-selected', String(active));
+      }});
+      if (aiAnswerPanel) aiAnswerPanel.hidden = normalized !== 'answer';
+      if (aiSourcesPanel) aiSourcesPanel.hidden = normalized !== 'sources';
+    }}
+
+    function showQuestionResultTabs(tabName = 'answer') {{
+      if (aiResultTabs) aiResultTabs.hidden = false;
+      activateQuestionResultTab(tabName);
     }}
 
     function recordHaystack(record) {{
@@ -3146,7 +3518,7 @@ def build_html(
     function civicFeedbackRecords() {{
       return records
         .filter(isCivicFeedbackEligible)
-        .sort((left, right) => String(left.datum || '').localeCompare(String(right.datum || '')) || String(left.titel || '').localeCompare(String(right.titel || ''), 'de-AT'));
+        .sort((left, right) => participationTypeRank(left) - participationTypeRank(right) || String(left.datum || '').localeCompare(String(right.datum || '')) || String(left.titel || '').localeCompare(String(right.titel || ''), 'de-AT'));
     }}
 
     function civicFeedbackStore() {{
@@ -3187,23 +3559,61 @@ def build_html(
       }}[value] || '';
     }}
 
-    function participationReasonOptions(selected = '') {{
+    function participationReasonText(feedback) {{
+      return String(feedback?.reason_text || feedback?.comment || participationReasonLabel(feedback?.reason) || '').trim();
+    }}
+
+    function participationAffectednessLabel(value) {{
+      return {{
+        resident: 'Ich wohne in der Nähe',
+        work: 'Ich arbeite in der Nähe',
+        commute: 'Ich pendle dort regelmäßig',
+        visitor: 'Ich nutze den Ort gelegentlich',
+        citywide: 'Betrifft mich als Grazer:in allgemein',
+        none: 'Kein direkter Bezug',
+        other: 'Anderer Bezug'
+      }}[value] || '';
+    }}
+
+    function participationAffectednessOptions(selected = '') {{
       const options = [
-        ['', 'Bitte wählen'],
-        ['safety', 'Sicherheit'],
-        ['climate', 'Klima und Umwelt'],
-        ['cost', 'Kosten'],
-        ['fairness', 'Fairness'],
-        ['accessibility', 'Barrierefreiheit'],
-        ['traffic', 'Verkehr'],
-        ['housing', 'Wohnen'],
-        ['other', 'Anderer Grund']
+        ['', 'Bitte wählen, falls zutreffend'],
+        ['resident', 'Ich wohne in der Nähe'],
+        ['work', 'Ich arbeite in der Nähe'],
+        ['commute', 'Ich pendle dort regelmäßig'],
+        ['visitor', 'Ich nutze den Ort gelegentlich'],
+        ['citywide', 'Betrifft mich als Grazer:in allgemein'],
+        ['none', 'Kein direkter Bezug'],
+        ['other', 'Anderer Bezug']
       ];
       return options.map(([value, label]) => `<option value="${{escapeHtml(value)}}"${{value === selected ? ' selected' : ''}}>${{escapeHtml(label)}}</option>`).join('');
     }}
 
     function participationRecordMeta(record) {{
-      return [record.datum, record.typ, record.status, record.kategorie].filter(Boolean).join(' · ');
+      return [record.datum, record.typ, participationStatusText(record), record.kategorie].filter(Boolean).join(' · ');
+    }}
+
+    function participationStatusText(record) {{
+      const result = String(record.ergebnis || '').trim();
+      const status = String(record.status || '').trim();
+      if (/^Ausschuss\\s+am\\s+/i.test(result)) {{
+        const decision = result.replace(/^Ausschuss\\s+am\\s+[^:]+:\\s*/i, '').trim();
+        return decision ? `Vorberatung im Ausschuss: ${{decision}}` : 'Vorberatung im Ausschuss';
+      }}
+      if (/Ausschuss/i.test(result) && /angenommen|abgelehnt|beschlossen/i.test(result)) {{
+        return `Vorberatung im Ausschuss: ${{result}}`;
+      }}
+      return status;
+    }}
+
+    function participationTypeRank(record) {{
+      const type = String(record.typ || '').toLocaleLowerCase('de-AT');
+      if (type.includes('mitteilung')) return 1;
+      if (type.includes('fragestunde')) return 2;
+      if (type.includes('tagesordnung')) return 3;
+      if (type.includes('dringlich')) return 4;
+      if (type.includes('schriftlich')) return 5;
+      return 99;
     }}
 
     function renderParticipationPage(recordId = selectedParticipationRecordId) {{
@@ -3222,11 +3632,15 @@ def build_html(
       selectedParticipationRecordId = selected.record_id;
       participationList.innerHTML = items.map((record) => {{
         const feedback = civicFeedbackFor(record.record_id);
+        const metaItems = [record.datum, record.typ, participationStatusText(record), record.kategorie].filter(Boolean);
+        const feedbackLine = feedback?.stance
+          ? `<span class="participation-card-feedback">Rückmeldung: ${{escapeHtml(civicFeedbackLabel(feedback.stance))}}</span>`
+          : '';
         return `
           <button class="participation-card${{record.record_id === selectedParticipationRecordId ? ' active' : ''}}" type="button" data-participation-record-id="${{escapeHtml(record.record_id)}}">
-            <strong>${{escapeHtml(record.titel || 'Unbenanntes Stück')}}</strong>
-            <small>${{escapeHtml(participationRecordMeta(record))}}</small>
-            <small>Deine Rückmeldung: ${{escapeHtml(civicFeedbackLabel(feedback?.stance))}}</small>
+            <span class="participation-card-title">${{escapeHtml(record.titel || 'Unbenanntes Stück')}}</span>
+            <span class="participation-card-meta">${{metaItems.map((item) => `<span class="participation-card-chip">${{escapeHtml(item)}}</span>`).join('')}}</span>
+            ${{feedbackLine}}
           </button>
         `;
       }}).join('');
@@ -3236,18 +3650,20 @@ def build_html(
     function renderParticipationDetail(record) {{
       const feedback = civicFeedbackFor(record.record_id) || {{}};
       const stance = feedback.stance || '';
+      const reasonText = participationReasonText(feedback);
+      const changeRequest = String(feedback.change_request || '').trim();
       participationDetail.innerHTML = `
         <h2>${{escapeHtml(record.titel || 'Unbenanntes Stück')}}</h2>
         <div class="detail-grid">
           ${{detailField('Datum', record.datum)}}
           ${{detailField('Typ', record.typ)}}
-          ${{detailField('Status', record.status)}}
+          ${{detailField('Status', participationStatusText(record))}}
           ${{detailLinkField('DIGRA-Link', record.digra_url)}}
           ${{detailField('Thema', record.kategorie)}}
           ${{detailField('Einbringer', record.einbringer)}}
         </div>
         <div class="participation-local-note">
-          <p>Dieses Meinungsbild ist nicht amtlich und nicht verbindlich. Bereits sichtbare DIGRA-Ergebnisse können Vorberatung oder vorbereitete Beschlussvermerke sein. Die Entscheidung trifft der Gemeinderat. Deine Eingabe bleibt in dieser Demo lokal in diesem Browser.</p>
+          <p>Dieses Meinungsbild ist zählbar und sammelt qualitative Hinweise, ist aber nicht repräsentativ, nicht amtlich und nicht verbindlich. Bereits sichtbare DIGRA-Ergebnisse können Vorberatung oder vorbereitete Beschlussvermerke sein. Die Entscheidung trifft der Gemeinderat. Pro Stück wird lokal nur eine Rückmeldung gespeichert; erneutes Speichern aktualisiert sie.</p>
         </div>
         <div class="participation-actions" role="group" aria-label="Meinung">
           <button class="participation-stance${{stance === 'support' ? ' active' : ''}}" type="button" data-civic-stance="support">Dafür</button>
@@ -3255,16 +3671,19 @@ def build_html(
           <button class="participation-stance${{stance === 'unsure' ? ' active' : ''}}" type="button" data-civic-stance="unsure">Unsicher</button>
         </div>
         <div class="participation-form">
-          <label>Warum?
-            <select id="participationReason">${{participationReasonOptions(feedback.reason || '')}}</select>
+          <label>Mein Bezug
+            <select id="participationAffectedness">${{participationAffectednessOptions(feedback.affectedness || '')}}</select>
           </label>
-          <label>Kurzer Hinweis, nur lokal
-            <textarea id="participationComment" maxlength="600" placeholder="Optionaler kurzer Hinweis">${{escapeHtml(feedback.comment || '')}}</textarea>
+          <label>Warum?
+            <textarea id="participationReasonText" maxlength="900" rows="6" placeholder="Was ist der wichtigste Grund für deine Einschätzung?">${{escapeHtml(reasonText)}}</textarea>
+          </label>
+          <label>Was müsste sich ändern?
+            <textarea id="participationChangeRequest" maxlength="900" rows="4" placeholder="Welche Änderung würde das Stück aus deiner Sicht besser machen?">${{escapeHtml(changeRequest)}}</textarea>
           </label>
           <button id="participationSave" type="button">Lokal speichern</button>
         </div>
         <div class="participation-local-note" id="participationSavedNote">
-          <p>${{feedback.updated_at ? `Gespeichert: ${{escapeHtml(civicFeedbackLabel(feedback.stance))}}${{feedback.reason ? ` · ${{escapeHtml(participationReasonLabel(feedback.reason))}}` : ''}} · ${{escapeHtml(formatDateTime(feedback.updated_at))}}` : 'Noch keine lokale Rückmeldung gespeichert.'}}</p>
+          <p>${{feedback.updated_at ? `Gespeichert: ${{escapeHtml(civicFeedbackLabel(feedback.stance))}}${{feedback.affectedness ? ` · ${{escapeHtml(participationAffectednessLabel(feedback.affectedness))}}` : ''}}${{reasonText ? ` · ${{escapeHtml(reasonText.slice(0, 90))}}${{reasonText.length > 90 ? '…' : ''}}` : ''}} · ${{escapeHtml(formatDateTime(feedback.updated_at))}}` : 'Noch keine lokale Rückmeldung gespeichert.'}}</p>
         </div>
       `;
     }}
@@ -3279,14 +3698,24 @@ def build_html(
         if (note) note.innerHTML = '<p>Bitte zuerst Dafür, Dagegen oder Unsicher wählen.</p>';
         return;
       }}
-      const reason = byId('participationReason')?.value || '';
-      const comment = (byId('participationComment')?.value || '').trim().slice(0, 600);
+      const reasonText = (byId('participationReasonText')?.value || '').trim().slice(0, 900);
+      if (reasonText.length < 40) {{
+        const note = byId('participationSavedNote');
+        if (note) note.innerHTML = '<p>Bitte begründe deine Rückmeldung mit mindestens 40 Zeichen.</p>';
+        return;
+      }}
+      const previous = civicFeedbackFor(record.record_id);
+      const now = new Date().toISOString();
+      const affectedness = byId('participationAffectedness')?.value || '';
+      const changeRequest = (byId('participationChangeRequest')?.value || '').trim().slice(0, 900);
       writeCivicFeedback(record.record_id, {{
         record_id: record.record_id,
         stance,
-        reason,
-        comment,
-        updated_at: new Date().toISOString()
+        affectedness,
+        reason_text: reasonText,
+        change_request: changeRequest,
+        created_at: previous?.created_at || now,
+        updated_at: now
       }});
       renderParticipationPage(record.record_id);
     }}
@@ -3303,8 +3732,12 @@ def build_html(
       if (!isCivicFeedbackEligible(record)) return '';
       return `
         <div class="participation-detail-cta">
-          <p>Dieses Stück liegt vor oder am Sitzungstag in DIGRA. Du kannst dazu lokal ein unverbindliches Meinungsbild speichern.</p>
-          <button type="button" data-open-civic-feedback="${{escapeHtml(record.record_id)}}">Auf der Mitreden-Seite Rückmeldung geben</button>
+          <div class="participation-detail-copy">
+            <span class="participation-detail-chip">Mitreden möglich</span>
+            <strong>Lokale Rückmeldung zu diesem Stück</strong>
+            <p>Dieses DIGRA-Stück liegt vor oder am Sitzungstag. Du kannst eine zählbare, qualitative Rückmeldung lokal in diesem Browser speichern.</p>
+          </div>
+          <button type="button" data-open-civic-feedback="${{escapeHtml(record.record_id)}}">Rückmeldung geben</button>
         </div>
       `;
     }}
@@ -3620,17 +4053,36 @@ def build_html(
       const senateGroups = civicCouncil.city_senate?.groups || [];
       const totalSeats = civicCouncil.total_seats || groups.reduce((sum, group) => sum + Number(group.seats || 0), 0);
       const senateSeats = civicCouncil.city_senate?.total_seats || senateGroups.reduce((sum, group) => sum + Number(group.seats || 0), 0);
-      if (councilSummary) {{
-        councilSummary.textContent = `${{totalSeats}} Mandate · Mehrheit ab ${{civicCouncil.majority_seats || Math.floor(totalSeats / 2) + 1}}`;
+      const majoritySeats = civicCouncil.majority_seats || Math.floor(totalSeats / 2) + 1;
+      if (councilKpis) {{
+        councilKpis.innerHTML = councilKpiHtml([
+          [totalSeats, 'Mandate'],
+          [groups.length, 'Parteien'],
+          [senateSeats, 'Stadtregierungsmitglieder'],
+        ]);
       }}
+      if (councilSummary) {{
+        councilSummary.textContent = `${{totalSeats}} Mandate · Mehrheit ab ${{majoritySeats}}`;
+      }}
+      if (councilMajorityNote) councilMajorityNote.textContent = `${{majoritySeats}} Sitze sind für eine Mehrheit erforderlich.`;
       if (senateSummary) senateSummary.textContent = `${{senateSeats}} Mitglieder`;
-      if (councilStatus) councilStatus.textContent = `${{groups.length}} Fraktionen/Gruppen · Stand: ${{escapePlain(civicCouncil.period || 'graz.at')}}`;
+      if (councilStatus) councilStatus.textContent = `${{groups.length}} Parteien · Stand: ${{escapePlain(civicCouncil.period || 'graz.at')}}`;
       if (councilDots) councilDots.innerHTML = councilSeatHtml(groups, totalSeats, 'council');
       if (senateDots) senateDots.innerHTML = councilSeatHtml(senateGroups, senateSeats, 'senate');
-      if (councilLegend) councilLegend.innerHTML = councilHistogramHtml(groups, totalSeats, senateGroups);
+      if (councilLegend) councilLegend.innerHTML = councilFactionListHtml(groups, totalSeats, senateGroups);
+      if (councilMandates) councilMandates.innerHTML = councilMandatesHtml(groups, totalSeats, senateGroups);
       if (councilLinks) councilLinks.innerHTML = councilLinksHtml(civicCouncil.sources || {{}});
       renderCouncilSourceNote();
       bindCouncilHover();
+    }}
+
+    function councilKpiHtml(items) {{
+      return items.map(([value, label]) => `
+        <div class="council-kpi">
+          <strong>${{escapeHtml(value)}}</strong>
+          <span>${{escapeHtml(label)}}</span>
+        </div>
+      `).join('');
     }}
 
     function councilSeatHtml(groups, totalSeats, kind) {{
@@ -3695,7 +4147,18 @@ def build_html(
       return positions.slice(0, total);
     }}
 
-    function councilHistogramHtml(groups, totalSeats, senateGroups) {{
+    function councilFactionListHtml(groups, totalSeats, senateGroups) {{
+      return `
+        <div class="council-histogram">
+          <h3>Fraktionen</h3>
+          <div class="council-faction-list">
+            ${{groups.map((group) => councilFactionCardHtml(group, totalSeats, senateGroups)).join('')}}
+          </div>
+        </div>
+      `;
+    }}
+
+    function councilMandatesHtml(groups, totalSeats, senateGroups) {{
       const maxSeats = Math.max(1, ...groups.map((group) => Number(group.seats || 0)));
       return `
         <div class="council-histogram">
@@ -3714,8 +4177,8 @@ def build_html(
       const shortName = group.short_name || group.name;
       const senateGroup = senateGroups.find((item) => item.short_name === group.short_name);
       const senateText = senateGroup
-        ? `${{senateGroup.seats}} in der Stadtregierung: ${{(senateGroup.members || []).join(', ')}}`
-        : 'nicht in der Stadtregierung vertreten';
+        ? `${{senateGroup.seats}} Stadtregierungsmitglieder: ${{(senateGroup.members || []).join(', ')}}`
+        : 'nicht mit Stadtregierungsmitgliedern vertreten';
       return `
         <div class="council-column"
           style="--party-color: ${{escapeHtml(group.color || '#64748b')}}; --column-height: ${{Math.max(5, Math.round((seats / maxSeats) * 100))}}%"
@@ -3730,11 +4193,35 @@ def build_html(
       `;
     }}
 
+    function councilFactionCardHtml(group, totalSeats, senateGroups) {{
+      const seats = Number(group.seats || 0);
+      const share = totalSeats ? Math.round((seats / totalSeats) * 1000) / 10 : 0;
+      const shortName = group.short_name || group.name;
+      const senateGroup = senateGroups.find((item) => item.short_name === group.short_name);
+      const senateSeats = Number(senateGroup?.seats || 0);
+      const senateText = senateSeats
+        ? `${{senateSeats}} Stadtregierungsmitglieder`
+        : 'keine Stadtregierungsmitglieder';
+      return `
+        <div class="council-faction-card"
+          style="--party-color: ${{escapeHtml(group.color || '#64748b')}}; --faction-share: ${{Math.max(3, share)}}%"
+          data-council-card="${{escapeHtml(shortName)}}">
+          <div class="council-faction-top">
+            <span class="council-faction-swatch" aria-hidden="true"></span>
+            <span class="council-faction-name">${{escapeHtml(group.name || shortName)}}</span>
+            <span class="council-faction-seats">${{seats}} Sitze</span>
+          </div>
+          <div class="council-faction-track" aria-hidden="true"><div class="council-faction-fill"></div></div>
+          <div class="council-faction-meta">${{share.toLocaleString('de-AT')}} % der Mandate · ${{escapeHtml(senateText)}}</div>
+        </div>
+      `;
+    }}
+
     function councilLinksHtml(sources) {{
       return [
         [sources.members_url, 'GR-Mitglieder'],
         [sources.seats_url, 'Sitzverteilung'],
-        [sources.city_government_url, 'Stadtregierung'],
+        [sources.city_government_url, 'Stadtregierungsmitglieder'],
       ].filter(([url]) => url).map(([url, label]) =>
         `<a href="${{escapeHtml(url)}}" target="_blank" rel="noopener noreferrer">${{escapeHtml(label)}}</a>`
       ).join('');
@@ -3761,7 +4248,7 @@ def build_html(
       const source = civicCouncil.sources || {{}};
       byId('councilSourceNote').innerHTML = `
         Quelle: ${{externalLink(source.members_url || '', 'Gemeinderat: Mitglieder')}} ·
-        ${{externalLink(source.city_government_url || '', 'Stadtregierung')}}.
+        ${{externalLink(source.city_government_url || '', 'Stadtregierungsmitglieder')}}.
         Lizenzhinweis: ${{escapeHtml(source.license || 'öffentliche Webseite, keine OGD-Lizenz gefunden')}}.
         ${{escapeHtml(source.reuse || 'Für Open Source werden nur kurze faktische Hinweise geführt; aktuelle Details offiziell prüfen.')}}
       `;
@@ -4641,7 +5128,8 @@ def build_html(
         .map((source) => scoreQuestionSource(source, query, tokens, focus))
         .filter((source) => source.score >= minimumQuestionScore(tokens, query));
       const focused = focus.terms.length ? scoredAll.filter((source) => source.focusMatch) : scoredAll;
-      const scored = (focused.length ? focused : scoredAll)
+      const scorePool = focus.terms.length && (focused.length || focus.strict) ? focused : scoredAll;
+      const scored = scorePool
         .sort((a, b) =>
           b.score - a.score ||
           b.coverage - a.coverage ||
@@ -4758,7 +5246,6 @@ def build_html(
           `Ergebnis: ${{userFacingResultForAi(record)}}`,
           voteSummary ? `Abstimmung: ${{voteSummary}}` : '',
           timeline ? `Verlauf/Folgebeschlüsse: ${{timeline}}` : '',
-          record.ki_zusammenfassung ? `Vorhandene Zusammenfassung: ${{record.ki_zusammenfassung}}` : '',
           record.ki_warum_interessant ? `Warum interessant: ${{record.ki_warum_interessant}}` : '',
           summaryPointsText(record) ? `Kernpunkte/offene Punkte: ${{summaryPointsText(record)}}` : '',
         ];
@@ -4774,7 +5261,7 @@ def build_html(
           recordId: record.record_id || '',
           places: record.orte || [],
           resultText: userFacingResultForAi(record),
-          summaryText: record.ki_zusammenfassung || '',
+          summaryText: '',
           detail: compactText(detailParts.join(' · '), 520),
           contextDetail: compactText(contextParts.filter(Boolean).join('\\\\n'), 1400),
           searchText: [
@@ -4997,13 +5484,13 @@ def build_html(
       return timeline.join(' | ');
     }}
 
-    function scoreQuestionSource(source, query, tokens, focus = {{ label: '', terms: [] }}) {{
+    function scoreQuestionSource(source, query, tokens, focus = {{ label: '', terms: [], strict: false }}) {{
       const haystack = normalizeSearchText(source.searchText || source.detail || '');
       const titleHaystack = normalizeSearchText(source.titleText || source.title || '');
       const matchedTokens = tokens.filter((token) => haystack.includes(token));
       const titleTokens = tokens.filter((token) => titleHaystack.includes(token));
       const focusMatch = questionFocusMatchesSource(focus, `${{titleHaystack}} ${{haystack}}`);
-      const exactScore = query.length >= 6 && haystack.includes(query) ? 8 : 0;
+      const exactScore = query.length >= 6 && (haystack.includes(query) || titleHaystack.includes(query)) ? 8 : 0;
       const titleScore = titleTokens.length * 3;
       const detailScore = matchedTokens.length;
       const coverageBonus = tokens.length && matchedTokens.length === tokens.length ? 4 : 0;
@@ -5049,13 +5536,13 @@ def build_html(
       const match = [...manualFocuses, ...dataFocuses]
         .sort((a, b) => b[1][0].length - a[1][0].length)
         .find(([, terms]) => terms.some((term) => query.includes(term)));
-      if (match) return {{ label: match[0], terms: match[1] }};
-      const street = query.match(/\\b([\\p{{L}}0-9.-]+(?:\\s+[\\p{{L}}0-9.-]+){{0,5}}\\s+(?:strasse|straße|gasse|platz|weg|kai|ring|allee|guertel|gürtel))\\b/u);
+      if (match) return {{ label: match[0], terms: match[1], strict: Boolean(match[2]) }};
+      const street = streetFocusMatch(query);
       if (street) {{
         const label = street[1].replace(/\\bstrasse\\b/g, 'straße');
-        return {{ label, terms: [label] }};
+        return {{ label, terms: [normalizeSearchText(street[1])], strict: true }};
       }}
-      return {{ label: '', terms: [] }};
+      return {{ label: '', terms: [], strict: false }};
     }}
 
     function questionDataFocuses() {{
@@ -5073,7 +5560,7 @@ def build_html(
         .filter((value) => value.length >= 5 && value.length <= 80)
         .map((value) => {{
           const terms = questionFocusTermsForValue(value);
-          return terms.length ? [value, terms] : null;
+          return terms.length ? [value, terms, questionFocusLooksSpecific(terms)] : null;
         }})
         .filter(Boolean);
     }}
@@ -5082,14 +5569,67 @@ def build_html(
       const normalized = normalizeSearchText(value);
       if (!normalized || normalized.length < 4) return [];
       const terms = [normalized];
-      const street = normalized.match(/\\b([\\p{{L}}0-9.-]+(?:\\s+[\\p{{L}}0-9.-]+){{0,5}}\\s+(?:strasse|straße|gasse|platz|weg|kai|ring|allee|guertel|gürtel))\\b/u);
+      const street = streetFocusMatch(normalized);
       if (street && street[1] !== normalized) terms.push(street[1]);
       return [...new Set(terms)];
     }}
 
     function questionFocusMatchesSource(focus, haystack) {{
       if (!focus.terms.length) return true;
-      return focus.terms.some((term) => haystack.includes(term));
+      if (focus.terms.some((term) => haystack.includes(term))) return true;
+      if (!focus.strict) return false;
+      const candidates = fuzzyFocusCandidates(haystack);
+      return focus.terms
+        .filter((term) => questionFocusLooksSpecific([term]))
+        .some((term) => candidates.some((candidate) => isNearFocusMatch(term, candidate)));
+    }}
+
+    function streetFocusMatch(value) {{
+      return String(value || '').match(/\\b((?:[\\p{{L}}0-9.-]+\\s+){{0,5}}[\\p{{L}}0-9.-]{{3,}}(?:strasse|straße|gasse|platz|weg|kai|ring|allee|guertel|gürtel)|[\\p{{L}}0-9.-]+(?:\\s+[\\p{{L}}0-9.-]+){{0,5}}\\s+(?:strasse|straße|gasse|platz|weg|kai|ring|allee|guertel|gürtel))\\b/u);
+    }}
+
+    function questionFocusLooksSpecific(terms) {{
+      return terms.some((term) => {{
+        const normalized = normalizeSearchText(term);
+        return normalized.length >= 12 || Boolean(streetFocusMatch(normalized));
+      }});
+    }}
+
+    function fuzzyFocusCandidates(haystack) {{
+      const words = haystack.split(/\\s+/).filter((word) => word.length >= 4);
+      const candidates = new Set(words);
+      for (let index = 0; index < words.length - 1; index += 1) {{
+        candidates.add(`${{words[index]}} ${{words[index + 1]}}`);
+      }}
+      return [...candidates].filter((candidate) => candidate.length >= 8);
+    }}
+
+    function isNearFocusMatch(term, candidate) {{
+      const normalizedTerm = normalizeSearchText(term);
+      const normalizedCandidate = normalizeSearchText(candidate);
+      if (!normalizedTerm || !normalizedCandidate) return false;
+      if (Math.abs(normalizedTerm.length - normalizedCandidate.length) > 2) return false;
+      const maxDistance = normalizedTerm.length >= 14 ? 2 : 1;
+      return boundedEditDistance(normalizedTerm, normalizedCandidate, maxDistance) <= maxDistance;
+    }}
+
+    function boundedEditDistance(left, right, maxDistance) {{
+      let previous = Array.from({{ length: right.length + 1 }}, (_, index) => index);
+      for (let i = 1; i <= left.length; i += 1) {{
+        const current = [i];
+        let rowMinimum = current[0];
+        for (let j = 1; j <= right.length; j += 1) {{
+          const substitution = previous[j - 1] + (left[i - 1] === right[j - 1] ? 0 : 1);
+          const insertion = current[j - 1] + 1;
+          const deletion = previous[j] + 1;
+          const value = Math.min(substitution, insertion, deletion);
+          current[j] = value;
+          rowMinimum = Math.min(rowMinimum, value);
+        }}
+        if (rowMinimum > maxDistance) return maxDistance + 1;
+        previous = current;
+      }}
+      return previous[right.length];
     }}
 
     function minimumQuestionScore(tokens, query) {{
@@ -5340,8 +5880,6 @@ def build_html(
       return `
         <div class="answer-shell">
           <div class="answer-meta">
-            <span class="answer-pill">${{candidateSet.scannedCount}} Quellen durchsucht</span>
-            <span class="answer-pill">${{candidateSet.candidateCount}} Treffer gefunden</span>
             ${{candidateSet.focusLabel ? `<span class="answer-pill">Fokus: ${{escapeHtml(candidateSet.focusLabel)}}</span>` : ''}}
           </div>
           ${{sections}}
@@ -5395,7 +5933,6 @@ def build_html(
       return `
         <div class="answer-shell">
           <div class="answer-meta">
-            <span class="answer-pill">${{candidateSet.scannedCount}} Quellen durchsucht</span>
             <span class="answer-pill">${{matching.length}} passende Personentreffer</span>
             <span class="answer-pill">Person: ${{escapeHtml(person)}}</span>
             ${{year ? `<span class="answer-pill">Jahr: ${{escapeHtml(year)}}</span>` : ''}}
@@ -5527,16 +6064,17 @@ def build_html(
       const title = cleanAnswerTitle(source.titleText || source.title || source.kind || 'Quelle');
       const role = conciseSourceRole(source);
       const detail = answerEvidenceDetail(source);
-      const facts = answerEvidenceFacts(source).map((fact) => `<span class="answer-fact">${{escapeHtml(fact)}}</span>`).join('');
       const href = source.url ? ` href="${{escapeHtml(source.url)}}" target="_blank" rel="noopener noreferrer"` : '';
       const tag = source.url ? 'a' : 'span';
+      const refHtml = `<${{tag}}${{href}} class="answer-ref answer-fact">${{escapeHtml(ref)}}</${{tag}}>`;
+      const facts = [...answerEvidenceFacts(source).map((fact) => `<span class="answer-fact">${{escapeHtml(fact)}}</span>`), refHtml].join('');
       const titleHtml = source.recordId
         ? `<button class="answer-title-link" type="button" data-source-record-id="${{escapeHtml(source.recordId)}}">${{escapeHtml(title)}}</button>`
         : escapeHtml(title);
       return `
         <li class="answer-item">
-          <div class="answer-item-title"><${{tag}}${{href}} class="answer-ref">${{escapeHtml(ref)}}</${{tag}}> ${{titleHtml}}</div>
-          ${{facts ? `<div class="answer-item-facts">${{facts}}</div>` : ''}}
+          <div class="answer-item-title">${{titleHtml}}</div>
+          <div class="answer-item-facts">${{facts}}</div>
           <div class="answer-item-meta">${{escapeHtml([role, detail].filter(Boolean).join(' '))}}</div>
         </li>
       `;
@@ -5575,13 +6113,14 @@ def build_html(
         .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || String(a.title || '').localeCompare(String(b.title || ''), 'de-AT'))
         .slice(0, 3)
         .map((source) => {{
-          const ref = source.sourceIndex ? `[${{source.sourceIndex}}] ` : '';
+          const ref = source.sourceIndex ? ` [${{source.sourceIndex}}]` : '';
           const title = cleanAnswerTitle(source.titleText || source.title || source.kind || 'Quelle');
           const summary = sourceShortSummary(source);
-          return summary ? `${{ref}}${{title}}: ${{summary}}` : '';
+          const titleText = compactAnswerText(title || 'ein Treffer', 150);
+          return summary ? `${{titleText}}${{ref}} - ${{compactAnswerText(summary, 220)}}` : `${{titleText}}${{ref}}`;
         }})
         .filter(Boolean);
-      return examples.length ? `Beispiele mit Kurzbeschreibung: ${{examples.join(' ')}}` : '';
+      return examples.length ? `Die jüngsten positiven Treffer betreffen ${{examples.join('; ')}}.` : '';
     }}
 
     function sourceShortSummary(source) {{
@@ -5589,7 +6128,7 @@ def build_html(
       if (summary) return compactAnswerText(summary, 210);
       const result = String(source.resultText || '').replace(/\\s+/g, ' ').trim();
       if (result && !/kein gesichertes Ergebnis|DIGRA-Ergebnis fehlt|Unbekannt/i.test(result)) {{
-        return `Als Ergebnis ist erfasst: ${{compactAnswerText(result, 170)}}`;
+        return `Ergebnis ${{compactAnswerText(result.replace(/\\s*:\\s*/g, ' '), 170)}}`;
       }}
       const role = conciseSourceRole(source);
       return role ? compactAnswerText(role, 170) : '';
@@ -5717,7 +6256,9 @@ def build_html(
     }}
 
     async function askLocalAi() {{
+      hideQuestionSuggestions();
       const question = aiQuestion.value.trim();
+      showQuestionResultTabs('answer');
       if (!question) {{
         aiAnswer.hidden = false;
         aiAnswer.textContent = 'Bitte zuerst eine Frage eingeben.';
@@ -5732,7 +6273,7 @@ def build_html(
       renderAiSources(answerSources);
       if (!answerSources.length) {{
         aiAnswer.hidden = false;
-        aiAnswer.innerHTML = `<div class="answer-shell"><section class="answer-section"><h3>Keine belastbaren Treffer</h3><p>Ich habe ${{candidateSet.scannedCount}} lokale Quellen durchsucht, aber keine belastbaren Treffer zur Frage gefunden. Ohne Quellen wird keine Antwort erzeugt.</p></section></div>`;
+        aiAnswer.innerHTML = `<div class="answer-shell"><section class="answer-section"><h3>Keine belastbaren Treffer</h3><p>Ich habe keine belastbaren Treffer zur Frage gefunden. Ohne Quellen wird keine Antwort erzeugt.</p></section></div>`;
         return;
       }}
       aiAnswer.hidden = false;
@@ -6440,7 +6981,7 @@ def build_html(
         return;
       }}
       const submitterLabel = record.typ === 'Fragestunde'
-        ? 'Fragesteller/in'
+        ? 'Fragestellerin'
         : (record.typ === 'Mitteilung' ? 'Bearbeiter/in' : 'Einbringer');
       detailWrap.innerHTML = `
         <h2>${{escapeHtml(record.titel || 'Eintrag')}}</h2>
@@ -6741,7 +7282,7 @@ def build_html(
     yearFilter.value = defaultYearValue();
     dateFilter.value = '';
     fillDatalist('locationSuggestions', records.flatMap((record) => record.orte || []));
-    fillDatalist('globalSuggestions', records.flatMap((record) => [
+    const globalSuggestionValues = records.flatMap((record) => [
       record.titel,
       record.einbringer,
       record.kategorie,
@@ -6753,16 +7294,37 @@ def build_html(
       service.category,
       service.address,
       ...(service.services || []),
-    ])));
+    ]));
+    questionSuggestionValues = uniqueSuggestionValues(globalSuggestionValues, 900);
+    fillDatalist('globalSuggestions', globalSuggestionValues);
     search.addEventListener('input', () => {{
       activeTopicRecordIds = null;
       activeTopicLabel = '';
       render();
     }});
     aiAsk.addEventListener('click', askLocalAi);
+    aiQuestion.addEventListener('input', renderQuestionSuggestions);
+    aiQuestion.addEventListener('focus', renderQuestionSuggestions);
+    aiQuestion.addEventListener('blur', () => window.setTimeout(hideQuestionSuggestions, 120));
+    aiQuestionSuggestions?.addEventListener('mousedown', (event) => {{
+      event.preventDefault();
+    }});
+    aiQuestionSuggestions?.addEventListener('click', (event) => {{
+      const suggestion = event.target.closest('[data-question-suggestion]');
+      if (!suggestion) return;
+      aiQuestion.value = suggestion.dataset.questionSuggestion || '';
+      hideQuestionSuggestions();
+      aiQuestion.focus();
+    }});
+    aiResultTabs?.addEventListener('click', (event) => {{
+      const tab = event.target.closest('[data-question-result-tab]');
+      if (!tab) return;
+      activateQuestionResultTab(tab.dataset.questionResultTab || 'answer');
+    }});
     aiQuestion.addEventListener('keydown', (event) => {{
       if (event.key !== 'Enter') return;
       event.preventDefault();
+      hideQuestionSuggestions();
       askLocalAi();
     }});
     yearFilter.addEventListener('input', () => {{
@@ -7001,6 +7563,10 @@ def viewer_record(record: dict) -> dict:
     locations = inferred_viewer_locations(record, result_text)
     record_type = viewer_record_type(record)
     digra_url = canonical_digra_url(str(record.get("digra_url", "")))
+    question_people = question_people_from_title(str(record.get("title", "") or ""))
+    submitter = str(record.get("submitter", "") or "").strip()
+    if record_type == "question_hour" and not submitter:
+        submitter = question_people[0]
     return {
         "record_id": record.get("record_id", ""),
         "datum": record.get("meeting_date", ""),
@@ -7012,8 +7578,8 @@ def viewer_record(record: dict) -> dict:
         "status": german_status(status),
         "status_filter": german_status_filter(status),
         "kategorie": category,
-        "einbringer": record.get("submitter", ""),
-        "adressat": question_recipient(record),
+        "einbringer": submitter,
+        "adressat": question_recipient(record) or (question_people[1] if record_type == "question_hour" else ""),
         "ergebnis": result_text,
         "ergebnisquelle": german_result_source(str(record.get("result_source", "")), digra_url),
         "digra_url": digra_url,
@@ -7039,19 +7605,78 @@ def viewer_ai_summary(record: dict, result_text: str) -> str:
     if not value and viewer_record_type(record) in {"question_hour", "written_question"}:
         return fallback_question_summary(record, result_text)
     if not question_summary_is_bad(record, value):
-        return normalize_summary_vote_consistency(value)
-    return normalize_summary_vote_consistency(fallback_question_summary(record, result_text))
+        return normalize_summary_vote_consistency(value, record, result_text)
+    return normalize_summary_vote_consistency(fallback_question_summary(record, result_text), record, result_text)
 
 
-def normalize_summary_vote_consistency(value: str) -> str:
+def normalize_summary_vote_consistency(value: str, record: dict | None = None, result_text: str = "") -> str:
     text = str(value or "")
     if not text:
         return ""
+    if record is not None and summary_contradicts_record_result(text, record, result_text):
+        return fallback_decision_summary(record, result_text)
     has_unanimous_accepted = re.search(r"\beinstimm\w*\s+angenommen\b", text, flags=re.IGNORECASE)
     has_against_votes = re.search(r"\b(?:gegen|dagegen|gegenstimmen?)\s*:", text, flags=re.IGNORECASE)
     if not (has_unanimous_accepted and has_against_votes):
         return text
     return re.sub(r"\beinstimm\w*\s+angenommen\b", "mehrheitlich angenommen", text, flags=re.IGNORECASE)
+
+
+def summary_contradicts_record_result(value: str, record: dict, result_text: str) -> bool:
+    text = re.sub(r"\s+", " ", value).strip().casefold()
+    if not text or not summary_claims_decision_acceptance(text):
+        return False
+    status = normalized_viewer_status(record)
+    result = re.sub(
+        r"\s+",
+        " ",
+        " ".join(
+            str(part or "")
+            for part in (
+                status,
+                result_text,
+                record.get("result_text", ""),
+                record.get("raw_result_text", ""),
+            )
+        ),
+    ).casefold()
+    if status == "assigned" or re.search(r"\b(?:verfahren\s*:\s*)?zugewiesen\b", result):
+        return True
+    if status in {"rejected", "rejected_majority"}:
+        return True
+    return bool(
+        re.search(r"\b(?:haupt)?antrag\s*:?\s*(?:mehrheitlich\s*)?abgelehnt\b", result)
+        or re.search(r"\b(?:mehrheitlich\s+)?abgelehnt\b", result)
+        or re.search(r"\bnicht\s+beschlossen\b", result)
+    )
+
+
+def summary_claims_decision_acceptance(value: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(?:angenommen|beschlossen|genehmigt|zugestimmt|akzeptiert)\b",
+            value,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def fallback_decision_summary(record: dict, result_text: str) -> str:
+    record_type = german_record_type(viewer_record_type(record)).lower()
+    title = viewer_display_title(record)
+    if title and title not in {"Ohne Titel", "Frage in der Gemeinderatssitzung"}:
+        subject = f"Der Punkt „{title}“"
+    else:
+        subject = f"Der Punkt {record_type}"
+    status = normalized_viewer_status(record)
+    if status == "assigned" or re.search(r"\bzugewiesen\b", result_text, flags=re.IGNORECASE):
+        return f"{subject} ist als Verfahren zugewiesen; ein Beschluss ist in den lokalen Daten nicht erfasst."
+    if status in {"rejected", "rejected_majority"} or re.search(r"\babgelehnt\b|\bnicht\s+beschlossen\b", result_text, flags=re.IGNORECASE):
+        return f"{subject} wurde abgelehnt."
+    cleaned_result = clean_viewer_text(result_text)
+    if cleaned_result and cleaned_result != "Unbekannt":
+        return f"Zum Punkt „{title or record_type}“ ist als Ergebnis erfasst: {cleaned_result}."
+    return f"Zum Punkt „{title or record_type}“ ist keine belastbare KI-Zusammenfassung erfasst."
 
 
 def viewer_ai_key_points(value: object) -> list[dict[str, str]]:
@@ -7280,7 +7905,7 @@ def structured_title_from_record(record: dict, allow_snippet: bool = False) -> s
 
 def title_candidate_texts(record: dict) -> list[str]:
     candidates: list[str] = []
-    for key in ("source_snippet", "ai_summary", "ai_easy_language", "result_text", "raw_result_text"):
+    for key in ("source_snippet",):
         value = str(record.get(key, "") or "").strip()
         if value:
             candidates.append(value)
@@ -7401,10 +8026,11 @@ def clean_vote_names(values: object) -> list[str]:
 
 
 def inferred_viewer_locations(record: dict, result_text: str = "") -> list[str]:
+    street_names = load_default_street_names()
     existing = [
         str(value).strip()
         for value in record.get("locations", [])
-        if str(value).strip() and public_viewer_location(str(value))
+        if str(value).strip() and public_viewer_location(str(value)) and allowed_viewer_location(str(value), street_names)
     ]
     if broad_location_context(record, existing):
         direct_text = direct_location_text(record, result_text)
@@ -7412,18 +8038,25 @@ def inferred_viewer_locations(record: dict, result_text: str = "") -> list[str]:
     text = direct_location_text(record, result_text)
     inferred = [
         str(detail.get("value", "")).strip()
-        for detail in extract_location_details(text)
+        for detail in extract_location_details(text, street_names=street_names)
         if public_viewer_location(str(detail.get("value", "")))
     ]
-    inferred.extend(infer_street_locations_from_text(text))
+    inferred.extend(infer_street_locations_from_text(text, street_names=street_names))
     normalized_text = normalize_location_match_text(text)
-    for label, aliases in KNOWN_GRAZ_LOCATION_ALIASES.items():
-        if any(
-            re.search(rf"(?<!\w){re.escape(normalize_location_match_text(alias))}(?!\w)", normalized_text)
-            for alias in aliases
-        ):
-            inferred.append(label)
+    if street_names is None:
+        for label, aliases in KNOWN_GRAZ_LOCATION_ALIASES.items():
+            if any(
+                re.search(rf"(?<!\w){re.escape(normalize_location_match_text(alias))}(?!\w)", normalized_text)
+                for alias in aliases
+            ):
+                inferred.append(label)
     return unique_location_values([*existing, *inferred])
+
+
+def allowed_viewer_location(value: str, street_names: set[str] | None = None) -> bool:
+    if street_names is None:
+        return True
+    return normalize_street_name(value) in street_names
 
 
 def direct_location_text(record: dict, result_text: str = "") -> str:
@@ -7435,9 +8068,9 @@ def direct_location_text(record: dict, result_text: str = "") -> str:
         for value in [
             record.get("title", ""),
             result_text,
-            *attachment_titles,
             record.get("result_text", ""),
             record.get("section", ""),
+            *attachment_titles,
         ]
     )
 
@@ -7490,7 +8123,9 @@ def normalize_location_match_text(value: str) -> str:
     )
 
 
-def infer_street_locations_from_text(text: str) -> list[str]:
+def infer_street_locations_from_text(text: str, street_names: set[str] | None = None) -> list[str]:
+    if street_names is not None:
+        return unique_location_values([value for value, _start, _end in find_street_names_in_text(text, street_names)])
     suffixes = r"(?:Straße|Strasse|Gasse|Weg|Platz|Park|Brücke|Bruecke|Allee|Kai|Ufer|Ring|Gürtel|Guertel|Graben|Lände|Laende|Steig|Steg|Zeile)"
     patterns = [
         re.compile(rf"\b[A-ZÄÖÜ][\wÄÖÜäöüß.-]+(?:\s+[A-ZÄÖÜ][\wÄÖÜäöüß.-]+){{0,3}}\s+{suffixes}\b"),
@@ -7522,6 +8157,9 @@ def unique_location_values(values: list[str], limit: int = 8) -> list[str]:
 
 
 def question_recipient(record: dict) -> str:
+    addressee = str(record.get("addressee", "") or "").strip()
+    if plausible_question_recipient(addressee):
+        return clean_question_recipient(addressee)
     question_parts = record.get("question_parts", {})
     if isinstance(question_parts, dict):
         respondent = str(question_parts.get("respondent", "")).strip()
@@ -7540,6 +8178,40 @@ def question_recipient(record: dict) -> str:
     if inferred:
         return inferred
     return ""
+
+
+QUESTION_TITLE_PARTY_RE = re.compile(
+    r"^(?:KPÖ|KPOE|Grüne|Gruene|ÖVP|OEVP|SPÖ|SPOE|FPÖ|FPOE|NEOS|KFG|Eustacchio|Reininghaus)$",
+    re.IGNORECASE,
+)
+
+
+def question_people_from_title(title: str) -> tuple[str, str]:
+    match = re.search(r"\(([^()]+)\)\s*$", str(title or ""))
+    if not match:
+        return "", ""
+    parts = [re.sub(r"\s+", " ", part).strip(" ,.;:") for part in match.group(1).split(",")]
+    lowered = [part.casefold() for part in parts]
+    if "an" not in lowered:
+        return "", ""
+    an_index = lowered.index("an")
+    submitter = question_person_from_parts(parts[:an_index])
+    recipient = question_person_from_parts(parts[an_index + 1 :])
+    return submitter, recipient
+
+
+def question_person_from_parts(parts: list[str]) -> str:
+    values = [part for part in parts if part]
+    if len(values) < 2:
+        return ""
+    party_index = next((index for index, part in enumerate(values) if QUESTION_TITLE_PARTY_RE.fullmatch(part)), -1)
+    if party_index <= 0:
+        return ""
+    name = ", ".join(values[:party_index]).strip()
+    party = values[party_index].strip()
+    if not name or not party:
+        return ""
+    return f"{name} ({party})"
 
 
 def infer_question_recipient_from_text(value: str) -> str:

@@ -4,21 +4,23 @@ import argparse
 from graz_protocols import background_update
 
 
-def test_select_target_prefers_final_combined_output(tmp_path, monkeypatch):
+def test_select_target_prefers_clean_final_combined_output(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     out = tmp_path / "out"
     out.mkdir()
+    clean_records = out / "agenda_items_digra_sync_plus_city_protocols_and_archive_questions_clean.jsonl"
+    clean_summary = out / "summary_digra_sync_plus_city_protocols_and_archive_questions_clean.json"
     final_records = out / "agenda_items_digra_sync_plus_city_protocols_and_archive_questions.jsonl"
     final_summary = out / "summary_digra_sync_plus_city_protocols_and_archive_questions.json"
     fallback_records = out / "agenda_items_digra_ai.jsonl"
     fallback_summary = out / "summary_digra.json"
-    for path in [final_records, final_summary, fallback_records, fallback_summary]:
+    for path in [clean_records, clean_summary, final_records, final_summary, fallback_records, fallback_summary]:
         path.write_text("{}", encoding="utf-8")
 
     target = background_update.select_target()
 
     assert target is not None
-    assert target.records == Path("out") / "agenda_items_digra_sync_plus_city_protocols_and_archive_questions.jsonl"
+    assert target.records == Path("out") / "agenda_items_digra_sync_plus_city_protocols_and_archive_questions_clean.jsonl"
 
 
 def test_lock_file_prevents_second_background_process(tmp_path, monkeypatch):

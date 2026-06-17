@@ -216,6 +216,48 @@ def test_local_summary_provider_fills_missing_without_http_client():
     assert not client.calls
 
 
+def test_local_summary_formats_bearbeiter_role_without_role_prefix_in_text():
+    records = [
+        {
+            "meeting_date": "2026-06-18",
+            "title": "Mitteilung an den Gemeinderat (§ 15 GO-GR)",
+            "record_type": "communication",
+            "submitter": "Bearbeiterin: Sieglinde Braun",
+            "result_text": "zur Kenntnis genommen",
+            "source_snippet": (
+                "Die Zuweisung vom Land Steiermark an die Stadt Graz endet mit Ablauf des 30.6.2026. "
+                "Die Abteilungsleitung bzw. Geschäftsführung ist bereits zur Neubesetzung ausgeschrieben."
+            ),
+        }
+    ]
+
+    enriched = annotate_record_summaries(records, provider="local")
+
+    assert "Bearbeiterin:" not in enriched[0]["ai_summary"]
+    assert "Bearbeitet wurde der Punkt von Sieglinde Braun." in enriched[0]["ai_summary"]
+    assert enriched[0]["ai_summary"].startswith("Die Mitteilung behandelt das Thema Die Zuweisung vom Land Steiermark an die Stadt Graz endet")
+
+
+def test_local_summary_uses_snippet_title_when_raw_title_is_generic_type():
+    records = [
+        {
+            "meeting_date": "2026-06-18",
+            "title": "Selbständiger Antrag (§ 17 GO-GR)",
+            "record_type": "written_motion",
+            "submitter": "GR Beispiel (KPÖ)",
+            "source_snippet": (
+                "Druckknopfampel in der Eckertstraße Höhe Nummer 115. "
+                "Der Antrag betrifft die Verkehrssicherheit beim Queren der Straße."
+            ),
+        }
+    ]
+
+    enriched = annotate_record_summaries(records, provider="local")
+
+    assert enriched[0]["ai_summary"].startswith("Der schriftliche Antrag behandelt das Thema Druckknopfampel")
+    assert "Selbständiger Antrag" not in enriched[0]["ai_summary"]
+
+
 def test_local_summary_avoids_direct_quote_blocks():
     records = [
         {

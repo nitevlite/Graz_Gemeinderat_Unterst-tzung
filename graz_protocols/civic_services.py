@@ -275,8 +275,67 @@ def fallback_council_group_meta(party: str) -> dict[str, str]:
     return {"name": party, "short_name": party, "color": "#64748b", "text_color": "#ffffff"}
 
 
+COUNCIL_MEMBER_PROFILE_URLS = {
+    "Thomas Alic": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379824",
+    "Christine Braunersreuther": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379826",
+    "Metin Deveci": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379839",
+    "Christopher Fröch": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10453823",
+    "Daniela Gamsjäger-Katzensteiner": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379835",
+    "Elke Heinrichs": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379827",
+    "Miriam Herlicska": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379841",
+    "Amrei Läßer": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10415288",
+    "Kurt Luttenberger": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379829",
+    "Sahar Mohsenzada": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379830",
+    "Mina Naghibi": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379843",
+    "Nenad Savić": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10445381",
+    "Christian Sikora": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379831",
+    "Ulrike Taberhofer": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379832",
+    "Philipp Ulrich": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379840",
+    "Eva Derler": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379865",
+    "Barbara Gartner-Hofbauer": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10440913",
+    "Anna Hopper": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379867",
+    "Markus Huber": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379876",
+    "Daisy Kopera": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10286529",
+    "Marion Kreiner": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379869",
+    "Cornelia Leban-Ibrakovic": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379870",
+    "Peter Piffl-Percevic": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379871",
+    "Sabine Pogner": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379875",
+    "Elisabeth Potzinger": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10382140",
+    "Gerhard Spath": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10286555",
+    "Stefan Stücklschweiger": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379872",
+    "Georg Topf": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379873",
+    "Tristan Ammerer": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379795",
+    "Zeynep Aygan-Romaner": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379802",
+    "Karl Dreisiebner": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379811",
+    "Gerhard Hackenberger": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10382158",
+    "Christian Kozina-Voit": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379803",
+    "Anna-Sophie Slama": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379806",
+    "Hannah Vogel": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10422477",
+    "Alexandra Würz-Stalder": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379810",
+    "Manuela Wutte": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379813",
+    "Arsim Gjergji": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10420908",
+    "Manuel Lenartitsch": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379778",
+    "Anna Robosch": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10286674",
+    "Daniela Schlüsselberger": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379789",
+    "Alexis Pascuttini": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379886",
+    "Astrid Schleicher": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379890",
+    "Michael Winter": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379888",
+    "Philipp Pointner": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379880",
+    "Günter Wagner": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379891",
+    "Mario Eustacchio": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10427384",
+    "Sabine Reininghaus": "https://www.graz.at/cms/beitrag/10379731/7768104/Gemeinderat_Mitglieder.html?cms_nearest=10379877",
+    "Elke Kahr": "https://www.graz.at/cms/beitrag/10041230/7766538/Buergermeisterin_Elke_Kahr_KPOe.html",
+    "Manfred Eber": "https://www.graz.at/cms/beitrag/10380010/11583104/Stadtrat_Manfred_Eber_KPOe.html",
+    "Robert Krotzer": "https://www.graz.at/cms/beitrag/10154353/7766674/Stadtrat_Mag_Robert_Krotzer_KPOe.html",
+    "Kurt Hohensinner": "https://www.graz.at/cms/beitrag/10017658/7766106/Stadtrat_Kurt_Hohensinner_MBA_OeVP.html",
+    "Claudia Unger": "https://www.graz.at/cms/beitrag/10453804/7766756/Stadtraetin_Drin_Claudia_Unger_OeVP.html",
+    "Judith Schwentner": "https://www.graz.at/cms/beitrag/10015169/7766841/Buergermeisterin_Stellvertreterin_Mag_Judith.html",
+    "Claudia Schönbacher": "https://www.graz.at/cms/beitrag/10380313/11583355/Stadtraetin_Claudia_Schoenbacher_Korruptions.html",
+}
+
+
 def council_member(name: str, url: str = "") -> dict[str, str]:
-    return {"name": name, "url": url}
+    return {"name": name, "url": url or COUNCIL_MEMBER_PROFILE_URLS.get(name, "")}
 
 
 def civic_service_summary(records: int | None = None) -> dict:

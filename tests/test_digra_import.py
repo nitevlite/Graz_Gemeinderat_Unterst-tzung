@@ -10,8 +10,11 @@ from graz_protocols.digra_import import (
     fetch_digra_result,
     find_best_digra_entry,
     import_exporter,
+    extract_digra_record_type,
+    parse_digra_list_metadata,
 )
 from graz_protocols.parser import AgendaRecord
+from graz_protocols.viewer import viewer_record
 
 
 class FakeExporter:
@@ -46,6 +49,29 @@ def test_digra_written_motion_without_result_is_assigned():
     assert records[0].raw_result_text == "Der geschäftsordnungsmäßigen Behandlung zugewiesen."
 
 
+def test_digra_entries_extract_amounts_from_title_and_snippet():
+    entry = DigraEntry(
+        meeting_date="2026-05-21",
+        meeting_number="58",
+        record_type="agenda_item",
+        section="Tagesordnung",
+        order_in_type=1,
+        agenda_item_no=1,
+        business_number="123/2026",
+        title="Projektgenehmigung über € 125.000,-",
+        url="https://digra.graz.at/document?ref=test",
+        status="accepted_unanimous",
+        result_text="Antrag: einstimmig angenommen",
+        raw_result_text="einstimmig angenommen",
+        votes=[],
+        source_snippet="Im Motivenbericht ist ein Finanzmittelbedarf von € 75.000,- angeführt.",
+    )
+
+    records = digra_entries_to_records([entry])
+
+    assert records[0].amounts == ["€ 125.000,-", "€ 75.000,-"]
+
+
 def test_digra_entries_keep_attachment_titles():
     entry = DigraEntry(
         meeting_date="2026-05-21",
@@ -67,6 +93,93 @@ def test_digra_entries_keep_attachment_titles():
     records = digra_entries_to_records([entry])
 
     assert records[0].attachment_titles == ["2 - Mitterstraße - Entwicklungsplan"]
+
+
+def test_digra_list_metadata_uses_betreff_instead_of_document_type():
+    lines = [
+        "2299/1",
+        "Anfrage an Bürgermeister:in (§ 16 GO-GR)",
+        "Betreff: Kosten- und Nutzenbewertung neuer Ampelanlagen in Graz",
+        "Antragsteller:in(nen): Clubobfrau Anna Hopper (ÖVP)",
+        "Regierungsmitglied(er): Bürgermeisterin Elke Kahr (KPÖ)",
+    ]
+
+    metadata = parse_digra_list_metadata(lines)
+    result = fetch_digra_result(
+        FakeExporter(
+            """
+            <html><body><div class="preview">
+              <p>Anfrage an Bürgermeister:in (§ 16 GO-GR)</p>
+              <p>Datum:</p>
+              <p>11.12.2025</p>
+              <p>Kosten- und Nutzenbewertung neuer Ampelanlagen in Graz</p>
+            </div></body></html>
+            """
+        ),
+        session=None,
+        url="https://digra.graz.at/document?ref=test",
+    )
+
+    assert metadata.title == "Kosten- und Nutzenbewertung neuer Ampelanlagen in Graz"
+    assert metadata.submitter == "Clubobfrau Anna Hopper (ÖVP)"
+    assert metadata.addressee == "Bürgermeisterin Elke Kahr (KPÖ)"
+    assert best_digra_title(lines, result, metadata) == "Kosten- und Nutzenbewertung neuer Ampelanlagen in Graz"
+
+
+def test_digra_record_type_uses_detail_document_heading_like_export_tool():
+    assert extract_digra_record_type(["Frage für die Fragestunde (§ 16a GO-GR)"]) == "question_hour"
+    assert extract_digra_record_type(["Mitteilung von Bürgermeister:in"]) == "communication"
+    assert extract_digra_record_type(["Anfrage an Bürgermeister:in (§ 16 GO-GR)"]) == "written_question"
+    assert extract_digra_record_type(["Selbständiger Antrag (§ 17 GO-GR)"]) == "written_motion"
+    assert extract_digra_record_type(["Dringlicher Antrag (§ 18 GO-GR)"]) == "urgent_motion"
+    assert extract_digra_record_type(["Abänderungsantrag"]) == "amendment_motion"
+    assert extract_digra_record_type(["Zusatzantrag"]) == "additional_motion"
+    assert extract_digra_record_type(["Bericht an den Gemeinderat"]) == "agenda_item"
+
+
+def test_digra_entries_preserve_addressee_for_viewer():
+    entry = DigraEntry(
+        meeting_date="2025-12-11",
+        meeting_number="55",
+        record_type="written_question",
+        section="Anfragen an Bürgermeister:in",
+        order_in_type=1,
+        agenda_item_no=1,
+        business_number="2299/1",
+        title="Kosten- und Nutzenbewertung neuer Ampelanlagen in Graz",
+        url="https://digra.graz.at/document?ref=test",
+        status="unknown",
+        result_text="",
+        raw_result_text="",
+        votes=[],
+        submitter="Clubobfrau Anna Hopper (ÖVP)",
+        addressee="Bürgermeisterin Elke Kahr (KPÖ)",
+    )
+
+    record = digra_entries_to_records([entry])[0]
+    display = viewer_record(record.__dict__)
+
+    assert record.addressee == "Bürgermeisterin Elke Kahr (KPÖ)"
+    assert display["titel"] == "Kosten- und Nutzenbewertung neuer Ampelanlagen in Graz"
+    assert display["einbringer"] == "Clubobfrau Anna Hopper (ÖVP)"
+    assert display["adressat"] == "Bürgermeisterin Elke Kahr (KPÖ)"
+
+
+def test_digra_list_metadata_handles_multiline_betreff_and_reporter():
+    metadata = parse_digra_list_metadata(
+        [
+            "Bericht an den Gemeinderat",
+            "Betreff:",
+            "Holding Graz- Kommunale Dienstleistungen GmbH;",
+            "Jahresabschluss 2025",
+            "Regierungsmitglied(er): Stadtrat Manfred Eber (KPÖ)",
+            "Berichterstatter:in: Klubobfrau Dipl.-Ing. (FH) Daniela Schlüsselberger (SPÖ)",
+        ]
+    )
+
+    assert metadata.title == "Holding Graz- Kommunale Dienstleistungen GmbH; Jahresabschluss 2025"
+    assert metadata.reporter == "Berichterstatterin: Klubobfrau Dipl.-Ing. (FH) Daniela Schlüsselberger (SPÖ)"
+    assert metadata.addressee == "Stadtrat Manfred Eber (KPÖ)"
 
 
 def test_extracts_result_only_from_digra_decision_note():
@@ -155,6 +268,309 @@ def test_detects_question_hour_with_oral_answer_from_digra():
     assert result.status == "source_available"
     assert result.result_text == "Gemeinderat am 21.05.2026: mündlich beantwortet"
     assert result.votes[0]["outcome_text"] == "mündlich beantwortet"
+
+
+def test_detects_question_hour_with_oral_answer_from_real_digra_document_layout():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 3402/1</title></head>
+      <body>
+        <div class="preview">
+          <h1>Frage für die Fragestunde (§ 16a GO-GR)</h1>
+          <div><b>Antragsteller:in(nen): </b>Clubobfrau Anna Hopper (ÖVP)</div>
+          <div><b>Regierungsmitglied(er): </b>Stadtrat Manfred Eber (KPÖ)</div>
+          <div>EZ/OZ: 3402/1</div>
+          <div><b>Fraktion:</b></div>
+          <div>ÖVP</div>
+          <div><b>Datum:</b></div>
+          <div>21.05.2026</div>
+          <div><b>Park and Ride Murpark</b></div>
+          <p>Es wird folgende<br /><strong>ANFRAGE</strong><br />gestellt:</p>
+          <p>Wann wird der angekündigte Planungsbeschluss für den Ausbau der Park-&amp;-Ride-Anlage Murpark dem Gemeinderat vorgelegt?</p>
+          <p><b>Beschlussvermerk</b></p>
+          <div>
+            <p>Gemeinderat am 21.05.2026</p>
+            <p>mündlich beantwortet</p>
+            <p>Schriftführer:in: Lidija Fink</p>
+          </div>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+    record = digra_entries_to_records(
+        [
+            DigraEntry(
+                meeting_date="2026-05-21",
+                meeting_number="58",
+                record_type=result.record_type_override or "agenda_item",
+                section="Fragestunde",
+                order_in_type=15,
+                agenda_item_no=15,
+                business_number="3402/1",
+                title=best_digra_title([], result),
+                url="https://digra.graz.at/document?ref=test",
+                status=result.status,
+                result_text=result.result_text,
+                raw_result_text=result.raw_result_text,
+                votes=result.votes,
+                submitter=result.submitter,
+                source_snippet=result.source_snippet,
+            )
+        ]
+    )[0]
+
+    assert result.record_type_override == "question_hour"
+    assert result.subject_title == "Park and Ride Murpark"
+    assert result.status == "source_available"
+    assert result.result_text == "Gemeinderat am 21.05.2026: mündlich beantwortet"
+    assert result.votes[0]["outcome_text"] == "mündlich beantwortet"
+    assert record.record_type == "question_hour"
+    assert viewer_record(record.__dict__)["titel"] == "Park and Ride Murpark"
+    assert viewer_record(record.__dict__)["status"] == "mündlich beantwortet"
+
+
+def test_detects_parkleitsystem_question_hour_with_oral_answer_from_real_digra_document_layout():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 3401/1</title></head>
+      <body>
+        <div class="preview">
+          <h1>Frage für die Fragestunde (§ 16a GO-GR)</h1>
+          <div><b>Antragsteller:in(nen): </b>GR Tristan Ammerer (Grüne)</div>
+          <div><b>Regierungsmitglied(er): </b>Stadtrat Kurt Hohensinner, MBA (ÖVP)</div>
+          <div>EZ/OZ: 3401/1</div>
+          <div><b>Fraktion:</b></div>
+          <div>Grüne</div>
+          <div><b>Datum:</b></div>
+          <div>21.05.2026</div>
+          <div><b style="white-space: pre-line;">Parkleitsystem</b></div>
+          <p>Deshalb stelle ich dir folgende Frage:</p>
+          <p>Wie und wann willst du einen Entwurf zur Diskussion vorlegen?</p>
+          <p><b>Beschlussvermerk</b></p>
+          <div>
+            <p>Gemeinderat am 21.05.2026</p>
+            <p>mündlich beantwortet</p>
+            <p>Schriftführer:in: Lidija Fink</p>
+          </div>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+    record = digra_entries_to_records(
+        [
+            DigraEntry(
+                meeting_date="2026-05-21",
+                meeting_number="58",
+                record_type=result.record_type_override or "agenda_item",
+                section="Fragestunde",
+                order_in_type=10,
+                agenda_item_no=10,
+                business_number="3401/1",
+                title=best_digra_title([], result),
+                url="https://digra.graz.at/document?ref=test",
+                status=result.status,
+                result_text=result.result_text,
+                raw_result_text=result.raw_result_text,
+                votes=result.votes,
+                submitter=result.submitter,
+                source_snippet=result.source_snippet,
+            )
+        ]
+    )[0]
+
+    assert result.record_type_override == "question_hour"
+    assert result.subject_title == "Parkleitsystem"
+    assert result.status == "source_available"
+    assert result.result_text == "Gemeinderat am 21.05.2026: mündlich beantwortet"
+    assert record.record_type == "question_hour"
+    assert viewer_record(record.__dict__)["status"] == "mündlich beantwortet"
+
+
+def test_detects_question_hour_addressee_and_oral_answer_from_april_2026_layout():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 3128/1</title></head>
+      <body>
+        <div class="preview">
+          <h1>Frage für die Fragestunde (§ 16a GO-GR)</h1>
+          <div><b>Antragsteller:in(nen): </b>Klubobmann Karl Dreisiebner (Grüne)</div>
+          <div><b>Regierungsmitglied(er): </b>Stadtrat Manfred Eber (KPÖ)</div>
+          <div>EZ/OZ: 3128/1</div>
+          <div><b>Datum:</b></div>
+          <div>23.04.2026</div>
+          <div><b>Auszahlung. Zweckwidmung. Verzicht. Was wurde aus den Worten über die Nachzahlung der seit 2013 nicht ausbezahlten Geldmittel aus dem Titel „Parteienförderung“?</b></div>
+          <p>Es wird folgende Anfrage gestellt.</p>
+          <p><b>Beschlussvermerk</b></p>
+          <div>
+            <p>Gemeinderat am 23.04.2026</p>
+            <p>mündlich beantwortet</p>
+            <p>Schriftführer:in: Lidija Fink</p>
+          </div>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(
+        FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=6edccaa0-f82c-4d14-99cb-c9757023cdb1"
+    )
+    record = digra_entries_to_records(
+        [
+            DigraEntry(
+                meeting_date="2026-04-23",
+                meeting_number="57",
+                record_type=result.record_type_override or "agenda_item",
+                section="Fragestunde",
+                order_in_type=1,
+                agenda_item_no=1,
+                business_number="3128/1",
+                title=best_digra_title([], result),
+                url="https://digra.graz.at/document?ref=6edccaa0-f82c-4d14-99cb-c9757023cdb1",
+                status=result.status,
+                result_text=result.result_text,
+                raw_result_text=result.raw_result_text,
+                votes=result.votes,
+                submitter=result.submitter,
+                addressee=result.addressee,
+                source_snippet=result.source_snippet,
+            )
+        ]
+    )[0]
+    display = viewer_record(record.__dict__)
+
+    assert result.record_type_override == "question_hour"
+    assert result.subject_title.startswith("Auszahlung. Zweckwidmung. Verzicht.")
+    assert result.status == "source_available"
+    assert result.result_text == "Gemeinderat am 23.04.2026: mündlich beantwortet"
+    assert result.submitter == "Klubobmann Karl Dreisiebner (Grüne)"
+    assert result.addressee == "Stadtrat Manfred Eber (KPÖ)"
+    assert display["status"] == "mündlich beantwortet"
+    assert display["einbringer"] == "Klubobmann Karl Dreisiebner (Grüne)"
+    assert display["adressat"] == "Stadtrat Manfred Eber (KPÖ)"
+
+
+def test_extracts_long_title_from_real_digra_report_layout():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 1887/1</title></head>
+      <body>
+        <div class="preview">
+          <h1>Bericht an den Gemeinderat</h1>
+          <div><b>Geschäftszahl(en): </b>A 8 - 021515/2006-0361, A 8 - 020081/2006-390</div>
+          <div><b>Vorberatendes Organ: </b>Ausschuss für Finanzen, Beteiligungen und Immobilien</div>
+          <div><b>Regierungsmitglied(er): </b>Stadtrat Manfred Eber (KPÖ)</div>
+          <div>EZ/OZ: 1887/1</div>
+          <div><b>Datum:</b></div>
+          <div>13.11.2025</div>
+          <div><b>Berichterstatter:in:</b></div>
+          <div>Dipl.-Ing. Nenad Savic, BSc (KPÖ)</div>
+          <div><b style="white-space: pre-line;">GBG Gebäude- u. Baumanagement Graz GmbH (kurz: GBG)
+          Festlegung des Prozederes des Auswahlverfahrens zur Bestellung der Geschäftsführung;
+          Stimmrechtsermächtigung für den Vertreter der Stadt Graz gem § 87 Abs 4 des Statutes der Landstadt Graz 1967; Umlaufbeschluss</b></div>
+          <p>Die Gesellschafterstruktur der GBG stellt sich wie folgt dar:</p>
+          <p><b>Beschlussvermerk</b></p>
+          <div>
+            <p>Ausschuss für Finanzen, Beteiligungen und Immobilien am 05.11.2025</p>
+            <p>einstimmig angenommen</p>
+          </div>
+          <div>
+            <p>Gemeinderat am 13.11.2025</p>
+            <p>mehrheitlich angenommen</p>
+          </div>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+
+    assert result.subject_title == (
+        "GBG Gebäude- u. Baumanagement Graz GmbH (kurz: GBG) "
+        "Festlegung des Prozederes des Auswahlverfahrens zur Bestellung der Geschäftsführung; "
+        "Stimmrechtsermächtigung für den Vertreter der Stadt Graz gem § 87 Abs 4 des Statutes der Landstadt Graz 1967; Umlaufbeschluss"
+    )
+    assert best_digra_title([], result) == result.subject_title
+    assert "Gemeinderat am 13.11.2025: mehrheitlich angenommen" in result.result_text
+    assert "Ausschuss für Finanzen, Beteiligungen und Immobilien am 05.11.2025: einstimmig angenommen" in result.result_text
+
+
+def test_digra_subject_title_skips_leading_pres_reference_lines():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 3365/1</title></head>
+      <body>
+        <div class="preview">
+          <h1>Mitteilung von Bürgermeister:in</h1>
+          <div>EZ/OZ: 3365/1</div>
+          <div><b>Datum:</b></div>
+          <div>21.05.2026</div>
+          <div><b style="white-space: pre-line;">Präs-038781/2026
+          Präs-007862/2026
+          Präs-007863/2026
+          Genehmigung der Protokolle:
+          Protokolle der öffentlichen und nichtöffentlichen Sitzung vom 12. Februar 2026</b></div>
+          <p>Die Protokolle der öffentlichen und nichtöffentlichen Sitzung vom 12. Februar 2026 wurden überprüft.</p>
+          <p><b>Beschlussvermerk</b></p>
+          <div>
+            <p>Gemeinderat am 21.05.2026</p>
+            <p>einstimmig angenommen</p>
+          </div>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+
+    assert result.subject_title == (
+        "Genehmigung der Protokolle: "
+        "Protokolle der öffentlichen und nichtöffentlichen Sitzung vom 12. Februar 2026"
+    )
+    assert best_digra_title([], result) == result.subject_title
+    assert not result.subject_title.startswith("Präs-")
+    assert result.source_snippet.startswith("Die Protokolle der öffentlichen")
+    assert "Gemeinderat am 21.05.2026: einstimmig angenommen" in result.result_text
+
+
+def test_digra_protocol_approval_from_may_2026_is_communication_with_clean_title():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 3364/1</title></head>
+      <body>
+        <div class="preview">
+          <h1>Mitteilung von Bürgermeister:in</h1>
+          <div>EZ/OZ: 3364/1</div>
+          <div><b>Datum:</b></div>
+          <div>21.05.2026</div>
+          <div><b style="white-space: pre-line;">Präs-038781/2026
+          Präs-002482/2026
+          Präs-002484/2026
+          Genehmigung der Protokolle:
+          Protokolle der öffentlichen und nichtöffentlichen Sitzung vom 22. Jänner 2026</b></div>
+          <p>Die Protokolle der öffentlichen und nichtöffentlichen Sitzung vom 22. Jänner 2026 wurden überprüft.</p>
+          <p><b>Beschlussvermerk</b></p>
+          <div>
+            <p>Gemeinderat am 21.05.2026</p>
+            <p>einstimmig angenommen</p>
+          </div>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+
+    assert result.record_type_override == "communication"
+    assert result.subject_title == (
+        "Genehmigung der Protokolle: "
+        "Protokolle der öffentlichen und nichtöffentlichen Sitzung vom 22. Jänner 2026"
+    )
+    assert not result.subject_title.startswith("Präs-")
+    assert "Gemeinderat am 21.05.2026: einstimmig angenommen" in result.result_text
 
 
 def test_extracts_digra_submitter_from_document_preview():
@@ -317,6 +733,112 @@ def test_extracts_multiline_digra_subject_and_document_snippet():
     )
     assert "Gamsjäger-Katzensteiner" in result.source_snippet
     assert "erst kurzfristig geklärt" in result.source_snippet
+
+
+def test_digra_subject_title_stops_before_body_intro():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 100/1</title></head>
+      <body>
+        <div class="preview">
+          <p>Anfrage an Bürgermeister:in (§ 16 GO-GR)</p>
+          <p>Antragsteller:in(nen):</p>
+          <p>Sabine Reininghaus (NEOS)</p>
+          <p>EZ/OZ: 100/1</p>
+          <p>Fraktion:</p>
+          <p>NEOS</p>
+          <p>Datum:</p>
+          <p>13.02.2025</p>
+          <p>Areal der Rösselmühle in seiner Einzigartigkeit bewahren</p>
+          <p>Seit mehreren Jahren</p>
+          <p>beobachten viele Anrainer:innen und Grazer:innen mit großem Interesse, was mit dem Areal der Rösselmühle geschehen soll.</p>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+
+    assert result.subject_title == "Areal der Rösselmühle in seiner Einzigartigkeit bewahren"
+    assert result.source_snippet.startswith("Seit mehreren Jahren beobachten")
+
+
+def test_digra_subject_title_does_not_use_body_text_when_heading_is_missing():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 100/1</title></head>
+      <body>
+        <div class="preview">
+          <p>Bericht an den Gemeinderat</p>
+          <p>Datum:</p>
+          <p>13.02.2025</p>
+          <p>Die Abteilung für Verkehrsplanung bringt einen Antrag im Gemeinderat ein.</p>
+          <p>Beschlussvermerk</p>
+          <p>Gemeinderat am 13.02.2025</p>
+          <p>mehrheitlich angenommen</p>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+
+    assert result.subject_title == ""
+    assert result.source_snippet.startswith("Die Abteilung für Verkehrsplanung bringt")
+
+
+def test_digra_subject_title_skips_reporter_lines_after_date():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 3301/1</title></head>
+      <body>
+        <div class="preview">
+          <p>Bericht an den Gemeinderat</p>
+          <p>Datum:</p>
+          <p>21.05.2026</p>
+          <p>Berichterstatter:in:</p>
+          <p>GR Tristan Ammerer (Grüne)</p>
+          <p>Zuzahlung zum Grundstücksankauf Land Steiermark zum Zwecke der Errichtung der P+R Anlage Steinberg</p>
+          <p>Budgetvorsorge iHv. € 150.000,- für 2026 im ICF der Abteilung für Verkehrsplanung</p>
+          <p>Die Abteilung für Verkehrsplanung bringt mit EZ/OZ: 3232/1 bzw. GZ: A10/8-24390/2026/0001 am 21.05.2026 einen Antrag im Gemeinderat ein.</p>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+
+    assert result.subject_title == (
+        "Zuzahlung zum Grundstücksankauf Land Steiermark zum Zwecke der Errichtung der P+R Anlage Steinberg "
+        "Budgetvorsorge iHv. € 150.000,- für 2026 im ICF der Abteilung für Verkehrsplanung"
+    )
+    assert result.source_snippet.startswith("Die Abteilung für Verkehrsplanung bringt")
+
+
+def test_digra_subject_title_stops_at_background_heading():
+    html = """
+    <html>
+      <head><title>Digitales Grazer Rathaus - 3232/1</title></head>
+      <body>
+        <div class="preview">
+          <p>Bericht an den Gemeinderat</p>
+          <p>Datum:</p>
+          <p>21.05.2026</p>
+          <p>Berichterstatter:in:</p>
+          <p>GR Christian Sikora (KPÖ)</p>
+          <p>Zuzahlung zum Grundstücksankauf Land Steiermark zum Zwecke der Errichtung der P+R Anlage Steinberg</p>
+          <p>Ausgangslage:</p>
+          <p>Mit Gemeinderatsitzung am 21.05.2026 bringt die Finanz- und Vermögensdirektion das Stück</p>
+          <p>mit identischem Betreff mit GZ: A8- 067137/2025-70 ein.</p>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+
+    assert result.subject_title == "Zuzahlung zum Grundstücksankauf Land Steiermark zum Zwecke der Errichtung der P+R Anlage Steinberg"
+    assert result.source_snippet.startswith("Ausgangslage: Mit Gemeinderatsitzung")
 
 
 def test_fetch_digra_result_extracts_attachment_titles():

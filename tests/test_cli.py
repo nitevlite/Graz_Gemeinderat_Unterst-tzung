@@ -2,13 +2,63 @@ from argparse import Namespace
 import json
 from pathlib import Path
 
-from graz_protocols.cli import run_digra_sync
+from graz_protocols.cli import inherit_question_links_from_similar_records, run_digra_sync
 from graz_protocols.digra_import import DigraEntry
 
 
 class FakeMeeting:
     def __init__(self, date: str):
         self.date = date
+
+
+def test_question_protocol_record_inherits_similar_digra_question_link():
+    from graz_protocols.parser import AgendaRecord
+
+    digra_question = AgendaRecord(
+        record_id="digra-question",
+        record_type="agenda_item",
+        source_file="DIGRA",
+        meeting_date="2025-04-24",
+        section="Anfragen",
+        agenda_item_no=1,
+        business_numbers=["653/1"],
+        title="Der Eigenbetrieb Wohnen Graz im finanziellen Minus",
+        status="source_available",
+        status_text="",
+        result_text="mündlich beantwortet",
+        raw_result_text="mündlich beantwortet",
+        votes=[],
+        amounts=[],
+        locations=[],
+        source_snippet="",
+        parser_confidence=0.8,
+        digra_url="https://digra.graz.at/document?ref=f136ed43-954f-4454-b41b-1cd4645926c4",
+        digra_business_number="653/1",
+    )
+    protocol_question = AgendaRecord(
+        record_id="protocol-question",
+        record_type="question_hour",
+        source_file="2025-04-24_Protokoll.docx",
+        meeting_date="2025-04-24",
+        section="Fragestunde",
+        agenda_item_no=1,
+        business_numbers=[],
+        title="Frage 1) Der Eigenbetrieb Wohnen Graz im finanziellen Minus",
+        status="source_available",
+        status_text="",
+        result_text="mündlich beantwortet",
+        raw_result_text="",
+        votes=[],
+        amounts=[],
+        locations=[],
+        source_snippet="",
+        parser_confidence=0.7,
+    )
+
+    enriched = inherit_question_links_from_similar_records([digra_question], [protocol_question])
+
+    assert enriched[0].digra_url == digra_question.digra_url
+    assert enriched[0].digra_business_number == "653/1"
 
 
 def test_digra_sync_writes_records_without_docx_input(monkeypatch, tmp_path):
@@ -170,7 +220,7 @@ def test_digra_sync_can_include_city_protocol_supplements(monkeypatch, tmp_path)
                 result_text="zur Kenntnis genommen",
                 raw_result_text="Mitteilung ohne Beschluss.",
                 votes=[],
-                amounts=[],
+                amounts=["€ 12.300,-"],
                 locations=[],
                 source_snippet="Bericht des Bürgermeisters",
                 parser_confidence=0.7,
@@ -226,8 +276,94 @@ def test_digra_sync_can_include_city_protocol_supplements(monkeypatch, tmp_path)
     communication = next(row for row in rows if row["record_type"] == "communication")
     agenda_item = next(row for row in rows if row["record_type"] == "agenda_item")
     assert agenda_item["locations"] == ["Hauptplatz"]
+    assert agenda_item["amounts"] == ["€ 12.300,-"]
     assert communication["digra_url"] == "https://digra.graz.at/document?ref=matching"
     assert communication["digra_business_number"] == "2985/1"
     assert payload["city_protocol_files"] == 1
     assert payload["city_protocol_records"] == 1
     assert payload["city_protocol_types"] == ["communication", "question_hour"]
+
+
+def test_digra_sync_skips_city_protocol_duplicate_when_digra_title_matches(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "graz_protocols.cli.list_digra_meetings",
+        lambda tool_path, limit: [FakeMeeting("24.04.2025")],
+    )
+    monkeypatch.setattr(
+        "graz_protocols.cli.fetch_digra_entries",
+        lambda dates, tool_path: [
+            DigraEntry(
+                meeting_date="2025-04-24",
+                meeting_number="51",
+                record_type="question_hour",
+                section="Fragestunde",
+                order_in_type=1,
+                agenda_item_no=6,
+                business_number="653/1",
+                title="Der Eigenbetrieb Wohnen Graz im finanziellen Minus",
+                url="https://digra.graz.at/document?ref=f136ed43-954f-4454-b41b-1cd4645926c4",
+                status="source_available",
+                result_text="Gemeinderat am 24.04.2025: mündlich beantwortet",
+                raw_result_text="mündlich beantwortet",
+                votes=[],
+                submitter="GR Markus Huber (ÖVP)",
+            )
+        ],
+    )
+    protocol_dir = tmp_path / "protocols"
+    protocol_dir.mkdir()
+    (protocol_dir / "2025-04-24_Protokoll.docx").write_bytes(b"placeholder")
+
+    def fake_parse_protocol(paragraphs, source_file, street_names=None):
+        from graz_protocols.parser import AgendaRecord
+
+        return [
+            AgendaRecord(
+                record_id="2025-04-24-question-hour-1-local",
+                record_type="question_hour",
+                source_file=source_file,
+                meeting_date="2025-04-24",
+                section="Fragestunde",
+                agenda_item_no=1,
+                business_numbers=[],
+                title="1) Der Eigenbetrieb Wohnen Graz im finanziellen Minus",
+                status="unknown",
+                status_text="",
+                result_text="Unbekannt",
+                raw_result_text="",
+                votes=[],
+                amounts=[],
+                locations=[],
+                source_snippet="Frage 1) Der Eigenbetrieb Wohnen Graz im finanziellen Minus",
+                parser_confidence=0.6,
+                submitter="GR: Huber, ÖVP, an Bgm.in Kahr, KPÖ",
+            )
+        ]
+
+    monkeypatch.setattr("graz_protocols.cli.read_docx_paragraph_blocks", lambda path: ["unused"])
+    monkeypatch.setattr("graz_protocols.cli.parse_protocol", fake_parse_protocol)
+    output = tmp_path / "records.jsonl"
+    summary = tmp_path / "summary.json"
+
+    exit_code = run_digra_sync(
+        Namespace(
+            city_archive_cache=tmp_path / "city.json",
+            city_archive_assets=False,
+            city_archive_assets_index=tmp_path / "city_assets.json",
+            city_archive_links=False,
+            city_protocols_dir=protocol_dir,
+            city_protocol_types="communication,question_hour",
+            digra_tool_path=Path("unused"),
+            limit=30,
+            output=output,
+            sqlite=None,
+            street_names=None,
+            summary=summary,
+        )
+    )
+
+    rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    assert exit_code == 0
+    assert len(rows) == 1
+    assert rows[0]["source_file"] == "DIGRA"
+    assert rows[0]["digra_url"] == "https://digra.graz.at/document?ref=f136ed43-954f-4454-b41b-1cd4645926c4"
