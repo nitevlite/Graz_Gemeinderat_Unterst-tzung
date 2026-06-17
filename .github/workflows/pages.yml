@@ -22,7 +22,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,12 +38,16 @@ jobs:
       - name: Build public data from DIGRA
         run: |
           mkdir -p public_work public
+          python -m graz_protocols.cli city-assets \
+            --output public_work/city_archive_assets.json
           python -m graz_protocols.cli digra-sync \
             --limit 60 \
             --output public_work/records.jsonl \
             --summary public_work/summary.json \
             --sqlite public_work/eintraege.sqlite \
-            --city-archive-links
+            --city-archive-links \
+            --city-archive-assets \
+            --city-archive-assets-index public_work/city_archive_assets.json
 
       - name: Add local summaries
         run: |

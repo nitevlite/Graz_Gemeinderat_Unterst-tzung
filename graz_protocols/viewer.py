@@ -3396,13 +3396,14 @@ def build_html(
     }}
 
     function fillSourceSelect() {{
+      const availableSources = new Set(records.map((record) => record.ergebnisquelle).filter(Boolean));
       const preferredSources = [
         'DIGRA',
         'DIGRA fehlt',
         'Stadt-Graz-Archiv',
         'Stadt-Graz-Protokoll'
-      ];
-      fillSelect(sourceFilter, [...preferredSources, ...records.map((record) => record.ergebnisquelle)]);
+      ].filter((source) => availableSources.has(source));
+      fillSelect(sourceFilter, [...preferredSources, ...availableSources]);
     }}
 
     function recordsMatchingNonTemporalFilters() {{

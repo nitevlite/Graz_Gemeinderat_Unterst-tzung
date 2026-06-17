@@ -1515,6 +1515,8 @@ def test_viewer_exposes_archive_source_filter_and_warning():
     assert "Stadt-Graz-Archiv" in html
     assert "Stadt-Graz-Protokoll" in html
     assert "function fillSourceSelect()" in html
+    assert "const availableSources = new Set(records.map((record) => record.ergebnisquelle).filter(Boolean));" in html
+    assert "].filter((source) => availableSources.has(source));" in html
     assert "records.filter((r) => r.ergebnisquelle === 'Stadt-Graz-Protokoll').length" in html
     assert "'Stadt-Graz-Archiv'" in html
     assert "'Stadt-Graz-Protokoll'" in html
