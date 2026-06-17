@@ -745,10 +745,13 @@ def build_html(
       display: none;
     }}
     .title {{ min-width: 190px; max-width: 300px; font-weight: 600; }}
+    .type-col {{ width: 78px; min-width: 68px; max-width: 100px; }}
+    .type-col .badge {{ white-space: normal; line-height: 1.18; }}
     .business-col {{ width: 124px; min-width: 112px; max-width: 150px; overflow-wrap: anywhere; word-break: break-word; }}
     .amount-col,
     .places-col {{ width: 180px; min-width: 165px; max-width: 250px; overflow-wrap: anywhere; word-break: break-word; }}
-    .status-col {{ width: 96px; min-width: 88px; max-width: 112px; overflow-wrap: anywhere; }}
+    .status-col {{ width: 168px; min-width: 148px; max-width: 210px; overflow-wrap: normal; }}
+    .status-col .badge {{ white-space: nowrap; }}
     .status-col .source-link {{
       display: inline-block;
       margin-top: 5px;
@@ -2816,6 +2819,9 @@ def build_html(
           <span id="topicFilterText">Themenfilter aktiv.</span>
           <button id="clearTopicFilter" type="button">Zurücksetzen</button>
         </div>
+        <div class="active-filter archive-notice" id="archiveNotice">
+          <span>Ältere Archivtreffer stammen nicht aus DIGRA. Die automatische Erkennung kann unvollständig sein, besonders wenn ein Archiv-PDF mehrere Stücke enthält. Bitte die verlinkte Originalquelle prüfen.</span>
+        </div>
         <section class="tab-panel active start-panel" id="startPanel">
           <div class="question-box">
             <h2>Wobei kann ich behilflich sein?</h2>
@@ -3106,6 +3112,7 @@ def build_html(
     const topicFilterNotice = byId('topicFilterNotice');
     const topicFilterText = byId('topicFilterText');
     const clearTopicFilter = byId('clearTopicFilter');
+    const archiveNotice = byId('archiveNotice');
     const viewTitle = byId('viewTitle');
     const sidebar = document.querySelector('.sidebar');
     const mobileNavToggle = byId('mobileNavToggle');
@@ -6615,10 +6622,7 @@ def build_html(
     }}
 
     function tableStatusLabelHtml(value) {{
-      return escapeHtml(value)
-        .replace(/\\s+\\(([^)]+)\\)$/u, '<br>($1)')
-        .replace(/^zur\\s+Kenntnis\\s+genommen$/iu, 'zur Kenntnis<br>genommen')
-        .replace(/^mehrheitlich\\s+abgelehnt$/iu, 'mehrheitlich<br>abgelehnt');
+      return escapeHtml(value);
     }}
 
     function tableMobileSummaryHtml(record) {{
@@ -7198,6 +7202,19 @@ def build_html(
         : 'Themenfilter aktiv.';
     }}
 
+    function updateArchiveNotice() {{
+      if (!archiveNotice) return;
+      const hasArchiveRecords = sichtbareEintraege.some((record) => isArchiveRecord(record));
+      archiveNotice.classList.toggle('is-active', hasArchiveRecords);
+    }}
+
+    function isArchiveRecord(record) {{
+      const source = String(record.ergebnisquelle || '').toLocaleLowerCase('de-AT');
+      const type = String(record.typ || '').toLocaleLowerCase('de-AT');
+      const date = String(record.datum || '');
+      return source.includes('archiv') || type.includes('archiv') || (!record.digra_url && date && date < '2025-02-01');
+    }}
+
     function render() {{
       sichtbareEintraege = sortRecordsForTable(filteredRecords());
       if (ausgewaehlterEintrag && !sichtbareEintraege.includes(ausgewaehlterEintrag)) {{
@@ -7213,6 +7230,7 @@ def build_html(
       if (digraMissingCount) digraMissingCount.textContent = records.filter((r) => !r.ergebnis || r.status_filter === 'Unbekannt').length;
       currentLocationIndex = buildLocationIndex(sichtbareEintraege);
       updateTopicFilterNotice();
+      updateArchiveNotice();
       renderMapPlaces();
       renderMapLegend();
       refreshMapMarkersIfNeeded();
@@ -7230,7 +7248,7 @@ def build_html(
         <tr data-index="${{index}}" class="${{ausgewaehlterEintrag && record.record_id === ausgewaehlterEintrag.record_id ? 'selected-record' : ''}}">
           <td data-label="Statuspunkt" class="status-dot-col"><span class="status-dot ${{statusDotClass(record)}}" title="${{escapeHtml(statusDotLabel(record))}}"></span></td>
           <td data-label="Datum">${{escapeHtml(record.datum)}}</td>
-          <td data-label="Typ"><span class="badge">${{escapeHtml(record.typ || '')}}</span></td>
+          <td data-label="Typ" class="type-col"><span class="badge">${{escapeHtml(record.typ || '')}}</span></td>
           <td data-label="Stk.">${{escapeHtml(record.stueck_nr)}}</td>
           <td data-label="Status" class="status-col">${{tableStatusHtml(record)}}</td>
           <td data-label="Geschäftszahl" class="business-col">${{escapeHtml((record.geschaeftszahlen || []).join(', '))}}</td>
@@ -8276,6 +8294,8 @@ def normalized_viewer_result_text(record: dict, status: str) -> str:
         return "mündlich beantwortet"
     if status == "answered_written":
         return "schriftlich beantwortet"
+    if status == "answer_pending_written":
+        return "wird schriftlich beantwortet"
     if status == "assigned" and result_text in {"", "Unbekannt", "DIGRA-Ergebnis fehlt"}:
         return "Verfahren: zugewiesen"
     return result_text
@@ -8290,11 +8310,15 @@ def normalized_question_hour_answer_status(record: dict) -> str:
             text = str(vote.get("outcome_text", "") or vote.get("raw_text", "") or vote.get("outcome", "")).casefold()
             if "mündlich beantwortet" in text or "muendlich beantwortet" in text:
                 return "answered_oral"
+            if "wird schriftlich beantwortet" in text or "werden schriftlich beantwortet" in text:
+                return "answer_pending_written"
             if "schriftlich beantwortet" in text:
                 return "answered_written"
     combined = f"{record.get('result_text', '')} {record.get('raw_result_text', '')}".casefold()
     if "mündlich beantwortet" in combined or "muendlich beantwortet" in combined:
         return "answered_oral"
+    if "wird schriftlich beantwortet" in combined or "werden schriftlich beantwortet" in combined:
+        return "answer_pending_written"
     if "schriftlich beantwortet" in combined:
         return "answered_written"
     return ""
@@ -8467,6 +8491,7 @@ def german_status(value: str) -> str:
         "source_available": "Quelle verfügbar",
         "answered_oral": "mündlich beantwortet",
         "answered_written": "schriftlich beantwortet",
+        "answer_pending_written": "wird schriftlich beantwortet",
         "assigned": "zugewiesen",
         "postponed": "vertagt",
         "unknown": "unklar",
@@ -8482,7 +8507,7 @@ def german_status_filter(value: str) -> str:
         return "Zur Kenntnis genommen"
     if value == "source_available":
         return "Quelle verfügbar"
-    if value in {"answered_oral", "answered_written"}:
+    if value in {"answered_oral", "answered_written", "answer_pending_written"}:
         return "Beantwortet"
     return german_status(value).capitalize()
 
@@ -8491,7 +8516,7 @@ def german_result_source(value: str, digra_url: str = "") -> str:
     if value == "digra_fehlt" and digra_url:
         return "DIGRA"
     return {
-        "archiv": "Stadt-Graz-Protokoll",
+        "archiv": "Stadt-Graz-Archiv",
         "digra": "DIGRA",
         "digra_fehlt": "DIGRA fehlt",
         "protokoll": "Stadt-Graz-Protokoll",

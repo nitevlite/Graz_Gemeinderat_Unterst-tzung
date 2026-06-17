@@ -84,7 +84,10 @@ OUTCOME_LINE_RE = re.compile(
 )
 NO_MAJORITY_RE = re.compile(r"^(?:keine\s+mehrheit|dringlichkeit\s+bekam\s+keine\s+mehrheit)\.?$", re.IGNORECASE)
 NOTED_RE = re.compile(r"^zur\s+kenntnis\s+gebracht\.?$", re.IGNORECASE)
-ANSWERED_RE = re.compile(r"^(?:mündlich|muendlich|schriftlich)?\s*beantwortet\.?$", re.IGNORECASE)
+ANSWERED_RE = re.compile(
+    r"^(?:(?:wird|werden)\s+)?(?:mündlich|muendlich|schriftlich)?\s*beantwortet\.?$",
+    re.IGNORECASE,
+)
 DECISION_ORGAN_RE = re.compile(r"^(?:Gemeinderat|Ausschuss\b.+)$", re.IGNORECASE)
 DIGRA_BODY_START_RE = re.compile(
     r"^(?:ausgangslage|der|die|das|frau|herr|ich|wir|es|gemäß|gemaess|seit|sehr\s+geehrte|am\s+vergangenen|kurz\s+vor)\b|.*[.!?]$",
@@ -756,7 +759,14 @@ def clean_digra_person(value: str) -> str:
 
 def extract_digra_record_type(lines: list[str]) -> str:
     head = " ".join(lines[:14]).casefold()
-    if "fragestunde" in head or "fragesteller" in head or re.search(r"\bstellt\s+an\s+.+folgende\s+frage\b", head):
+    document_context = " ".join(lines[:40]).casefold()
+    pre_decision_context = " ".join(lines[: next((index for index, line in enumerate(lines) if line.casefold() == "beschlussvermerk"), 40)]).casefold()
+    type_context = f"{head} {pre_decision_context}"
+    if "abänderungsantrag" in type_context or "abaenderungsantrag" in type_context:
+        return "amendment_motion"
+    if "zusatzantrag" in type_context:
+        return "additional_motion"
+    if "fragestunde" in head or "fragesteller" in head or re.search(r"\bstellt\s+an\s+.+folgende\s+frage\b", document_context):
         return "question_hour"
     if "mitteilung an den gemeinderat" in head or "mitteilung von bürgermeister:in" in head:
         return "communication"
@@ -766,10 +776,6 @@ def extract_digra_record_type(lines: list[str]) -> str:
         return "written_motion"
     if "dringlicher antrag" in head:
         return "urgent_motion"
-    if "abänderungsantrag" in head or "abaenderungsantrag" in head:
-        return "amendment_motion"
-    if "zusatzantrag" in head:
-        return "additional_motion"
     if "bericht an den gemeinderat" in head:
         return "agenda_item"
     return ""

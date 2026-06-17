@@ -905,8 +905,8 @@ def test_viewer_marks_question_hour_with_oral_vote_as_oral_answered():
     assert record["ergebnis"] == "mündlich beantwortet"
 
 
-def test_viewer_labels_city_protocol_result_sources():
-    assert viewer_record({"record_type": "archive_source", "result_source": "archiv"})["ergebnisquelle"] == "Stadt-Graz-Protokoll"
+def test_viewer_labels_city_archive_and_protocol_result_sources_separately():
+    assert viewer_record({"record_type": "archive_source", "result_source": "archiv"})["ergebnisquelle"] == "Stadt-Graz-Archiv"
     assert viewer_record({"record_type": "agenda_item", "result_source": "protokoll"})["ergebnisquelle"] == "Stadt-Graz-Protokoll"
 
 
@@ -1484,6 +1484,34 @@ def test_viewer_labels_missing_digra_result_with_link_as_digra_source():
     )
 
     assert record["ergebnisquelle"] == "DIGRA"
+
+
+def test_viewer_exposes_archive_source_filter_and_warning():
+    raw_record = {
+        "meeting_date": "2011-06-09",
+        "record_type": "question_hour",
+        "result_source": "archiv",
+        "source_url": "https://www.graz.at/cms/dokumente/test/fragestunde.pdf",
+        "status": "source_available",
+        "title": "Fragestunde Archiv",
+    }
+    record = viewer_record(raw_record)
+    html = build_html([raw_record], {})
+
+    assert record["ergebnisquelle"] == "Stadt-Graz-Archiv"
+    assert "Ältere Archivtreffer stammen nicht aus DIGRA" in html
+    assert "archiveNotice" in html
+    assert "isArchiveRecord(record)" in html
+    assert "Stadt-Graz-Archiv" in html
+
+
+def test_viewer_keeps_status_column_wide_and_type_column_narrow():
+    html = build_html([], {})
+
+    assert ".type-col { width: 78px;" in html
+    assert ".status-col { width: 168px;" in html
+    assert ".status-col .badge { white-space: nowrap; }" in html
+    assert 'data-label="Typ" class="type-col"' in html
 
 
 def test_start_answer_source_title_is_aligned_next_to_reference():

@@ -957,6 +957,68 @@ def test_detects_digra_amendment_and_additional_motion_types():
     assert additional.subject_title == "Ergänzung Budget"
 
 
+def test_detects_digra_motion_subtypes_when_heading_is_not_first_line():
+    amendment_html = """
+    <html><body><div class="preview">
+      <p>EZ/OZ: 402/2</p>
+      <p>Datum:</p>
+      <p>21.05.2026</p>
+      <p>Abänderungsantrag</p>
+      <p>Budgetpunkt ändern</p>
+      <p>Beschlussvermerk</p>
+      <p>Gemeinderat am 21.05.2026</p>
+      <p>mehrheitlich angenommen</p>
+    </div></body></html>
+    """
+    additional_html = amendment_html.replace("Abänderungsantrag", "Zusatzantrag").replace("Budgetpunkt ändern", "Ergänzung Budget")
+
+    amendment = fetch_digra_result(FakeExporter(amendment_html), session=None, url="https://digra.graz.at/document?ref=a")
+    additional = fetch_digra_result(FakeExporter(additional_html), session=None, url="https://digra.graz.at/document?ref=b")
+
+    assert amendment.record_type_override == "amendment_motion"
+    assert additional.record_type_override == "additional_motion"
+
+
+def test_detects_question_hour_that_will_be_answered_in_writing():
+    html = """
+    <html><body><div class="preview">
+      <p>Frage für die Fragestunde (§ 16a GO-GR)</p>
+      <p>Datum:</p>
+      <p>21.05.2026</p>
+      <p>Parkraumüberwachung</p>
+      <p>Beschlussvermerk</p>
+      <p>Gemeinderat am 21.05.2026</p>
+      <p>wird schriftlich beantwortet</p>
+    </div></body></html>
+    """
+
+    result = fetch_digra_result(FakeExporter(html), session=None, url="https://digra.graz.at/document?ref=test")
+    record = digra_entries_to_records(
+        [
+            DigraEntry(
+                meeting_date="2026-05-21",
+                meeting_number="58",
+                record_type=result.record_type_override or "agenda_item",
+                section="Fragestunde",
+                order_in_type=1,
+                agenda_item_no=1,
+                business_number="2757/1",
+                title=best_digra_title([], result),
+                url="https://digra.graz.at/document?ref=test",
+                status=result.status,
+                result_text=result.result_text,
+                raw_result_text=result.raw_result_text,
+                votes=result.votes,
+            )
+        ]
+    )[0]
+
+    assert result.record_type_override == "question_hour"
+    assert result.status == "source_available"
+    assert "wird schriftlich beantwortet" in result.result_text
+    assert viewer_record(record.__dict__)["status"] == "wird schriftlich beantwortet"
+
+
 def test_does_not_parse_gegenstaendlich_as_against_vote():
     html = """
     <html>
