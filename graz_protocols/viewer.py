@@ -3237,6 +3237,7 @@ def build_html(
       [/puntigamer straße.*herrgottwiesgasse|puntigamer brücke/i, [47.0318, 15.4265], 'Puntigamer Straße zwischen Puntigamer Brücke und Herrgottwiesgasse'],
       [/radegunder straße.*hans-auer-gasse|hans-auer-gasse/i, [47.106, 15.455], 'Radegunder Straße / Hans-Auer-Gasse'],
       [/rudersdorfer straße 58/i, [47.021, 15.426], 'Rudersdorfer Straße 58'],
+      [/straßganger straße.*ankerstraße|ankerstraße.*hermann-?\\s*aust-?\\s*gasse/i, [47.046, 15.407], 'Straßganger Straße bei Ankerstraße/Hermann-Aust-Gasse'],
       [/triester straße 25|triester straße.*30/i, [47.058, 15.433], 'Triester Straße 25 bis 30, ÖBB-Unterführung'],
       [/ulrich-lichtenstein-gasse.*ivica|ivica-osim-platz/i, [47.0437, 15.4547], 'Ulrich-Lichtenstein-Gasse bei Ivica-Osim-Platz'],
       [/ulrich-lichtenstein-gasse.*eisenbahnkreuzung|eisenbahnkreuzung öbb/i, [47.0424, 15.4548], 'Ulrich-Lichtenstein-Gasse, Eisenbahnkreuzung ÖBB'],
@@ -5116,6 +5117,14 @@ def build_html(
     function cleanRoadworkLocationForGeocoding(title, description = '') {{
       let value = String(title || '').trim();
       const streetSuffix = '(?:straße|strasse|gasse|weg|platz|ring|gürtel|guertel|kai|allee)';
+      const parentheticalCrossing = value.match(new RegExp(`^(.+?${{streetSuffix}})\\\\s*\\\\(([^)]*?${{streetSuffix}})[^)]*\\\\)`, 'i'));
+      if (parentheticalCrossing) {{
+        const sideStreet = parentheticalCrossing[2]
+          .replace(/\\bhermann\\s+aus\\s*gasse\\b/i, 'Hermann-Aust-Gasse')
+          .split(/\\s*[-–]\\s*/)[0]
+          .trim();
+        if (sideStreet) return `${{parentheticalCrossing[1]}} / ${{sideStreet}}`;
+      }}
       const opposite = value.match(new RegExp(`^(.+?${{streetSuffix}})\\\\s+gegenüber\\\\s+(?:Nr\\\\.\\\\s*)?(\\\\d+[a-z]?)`, 'i'));
       if (opposite) return `${{opposite[1]}} ${{opposite[2]}}`;
       const streetRange = value.match(new RegExp(`^(.+?${{streetSuffix}})\\\\s+(\\\\d+[a-z]?)\\\\s*(?:bis|-|–)\\\\s*(\\\\d+[a-z]?)`, 'i'));

@@ -344,6 +344,9 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "const query = cleanRoadworkLocationForGeocoding(title, description)" in html
     assert "Positioniert nach:" in html
     assert "Triester Straße 25 bis 30, ÖBB-Unterführung" in html
+    assert "Straßganger Straße bei Ankerstraße/Hermann-Aust-Gasse" in html
+    assert "parentheticalCrossing" in html
+    assert "Hermann-Aust-Gasse" in html
     assert "Hilmteichstraße zwischen Mariatroster Straße und Hilmgasse" in html
     assert "spreadRoadworkCoords" in html
     assert "Tiefgaragen" in html

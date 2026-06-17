@@ -130,7 +130,7 @@ ROADWORK_LOCATION_RE = re.compile(
 )
 ROADWORK_PERIOD_RE = re.compile(r"\b(?:Termin|Zeitraum)\s*:?\s*(?P<value>.+)", re.IGNORECASE)
 ROADWORK_CURRENT_UNTIL_RE = re.compile(
-    r"\b(?P<value>derzeit\s*[-–]\s*(?:0?[1-9]|[12]\d|3[01])\.(?:0?[1-9]|1[0-2])\.?\s*\d{4})",
+    r"\b(?P<value>derzeit\s*(?:[-–]|bis)\s*(?:0?[1-9]|[12]\d|3[01])\.(?:0?[1-9]|1[0-2])\.?\s*\d{4})",
     re.IGNORECASE,
 )
 ROADWORK_DATE_RE = re.compile(

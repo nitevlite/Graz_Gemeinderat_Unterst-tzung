@@ -186,6 +186,25 @@ def test_parses_current_until_roadwork_period_from_description():
     assert roadworks[0].time_status == "aktuell"
 
 
+def test_parses_current_until_roadwork_period_with_bis_from_description():
+    html = """
+    <div class="txtblock-wrapper vorlesen clearfix">
+      <h2>Triester Straße 25 bis 30 - Höhe ÖBB Unterführung</h2>
+      <div class="txtblock-content wichtig">
+        <p>Sperre der ÖBB Unterführung (entlang der Mauer der Justizanstalt "Karlau");
+        derzeit bis 13.09.2026<br>Österreichische Bundesbahnen HOTLINE +43 664 88 17 20 53</p>
+      </div>
+    </div>
+    """
+
+    roadworks = parse_roadworks_html(html)
+
+    assert len(roadworks) == 1
+    assert roadworks[0].period == "derzeit bis 13.09.2026"
+    assert roadworks[0].end_date == "2026-09-13"
+    assert roadworks[0].time_status == "aktuell"
+
+
 def test_normalizes_roadwork_period_and_status():
     assert normalize_roadwork_period("01.06. - 19.06.2026") == ("2026-06-01", "2026-06-19")
     assert normalize_roadwork_period("01.06 - 30.06.2026 (08.00 - 16.00 Uhr)") == ("2026-06-01", "2026-06-30")
@@ -195,6 +214,8 @@ def test_normalizes_roadwork_period_and_status():
     assert roadwork_time_status("08.06. - 31.07.2026 (08.30 - 14.00 Uhr)", today=date(2026, 6, 9)) == "aktuell"
     assert roadwork_time_status("derzeit - 20.06.2026", today=date(2026, 6, 9)) == "aktuell"
     assert roadwork_time_status("derzeit - 20.06.2026", today=date(2026, 6, 21)) == "abgeschlossen"
+    assert roadwork_time_status("derzeit bis 13.09.2026", today=date(2026, 6, 17)) == "aktuell"
+    assert roadwork_time_status("derzeit bis 13.09.2026", today=date(2026, 9, 14)) == "abgeschlossen"
     assert roadwork_time_status("20.06.2026 - 21.06.2026", today=date(2026, 6, 9)) == "kuenftig"
     assert roadwork_time_status("01.05.2026 - 02.05.2026", today=date(2026, 6, 9)) == "abgeschlossen"
     assert roadwork_time_status("nach Bedarf", today=date(2026, 6, 9)) == "unklar"
