@@ -620,6 +620,7 @@ def fetch_digra_result(exporter, session, url: str) -> DigraResult:
         vote = {
             "subject": "urgency",
             "outcome": "rejected_majority",
+            "outcome_text": "mehrstimmig abgelehnt",
             "approval": [],
             "against": [],
             "abstention": [],
@@ -1117,14 +1118,17 @@ def extract_split_votes(note_lines: list[str], raw_result_text: str) -> list[dic
         decision = match.group("decision")
         modifier = match.group("modifier") or ""
         outcome = "rejected_majority" if decision.casefold() == "keine mehrheit" else normalize_vote_outcome(modifier, decision)
+        subject = split_vote_subject(match.group("label"))
         vote = {
-            "subject": split_vote_subject(match.group("label")),
+            "subject": subject,
             "outcome": outcome,
             "approval": [],
             "against": [],
             "abstention": [],
             "raw_text": line,
         }
+        if subject == "urgency" and decision.casefold() == "keine mehrheit":
+            vote["outcome_text"] = "mehrstimmig abgelehnt"
         for party_match in PARTY_NOTE_RE.finditer(line):
             apply_vote_parties(vote, party_match.group("label"), party_match.group("parties"))
         votes.append(vote)

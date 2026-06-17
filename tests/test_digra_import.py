@@ -969,7 +969,7 @@ def test_extracts_urgent_motion_no_majority_as_rejected_urgency():
 
     assert result.submitter == "Clubobfrau Anna Hopper (ÖVP)"
     assert result.status == "rejected_majority"
-    assert result.result_text == "Dringlichkeit: mehrheitlich abgelehnt"
+    assert result.result_text == "Dringlichkeit: mehrstimmig abgelehnt"
     assert result.votes[0]["subject"] == "urgency"
 
 
