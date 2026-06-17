@@ -745,8 +745,10 @@ def build_html(
       display: none;
     }}
     .title {{ min-width: 190px; max-width: 300px; font-weight: 600; }}
-    .type-col {{ width: 78px; min-width: 68px; max-width: 100px; }}
+    .date-col {{ width: 82px; min-width: 78px; max-width: 90px; white-space: nowrap; }}
+    .type-col {{ width: 84px; min-width: 78px; max-width: 110px; }}
     .type-col .badge {{ white-space: normal; line-height: 1.18; }}
+    .item-col {{ width: 46px; min-width: 42px; max-width: 54px; text-align: right; white-space: nowrap; }}
     .business-col {{ width: 124px; min-width: 112px; max-width: 150px; overflow-wrap: anywhere; word-break: break-word; }}
     .amount-col,
     .places-col {{ width: 180px; min-width: 165px; max-width: 250px; overflow-wrap: anywhere; word-break: break-word; }}
@@ -3388,6 +3390,16 @@ def build_html(
         'Anwesenheitsliste'
       ];
       fillSelect(typeFilter, [...preferredTypes, ...records.map((record) => record.typ)]);
+    }}
+
+    function fillSourceSelect() {{
+      const preferredSources = [
+        'DIGRA',
+        'DIGRA fehlt',
+        'Stadt-Graz-Archiv',
+        'Stadt-Graz-Protokoll'
+      ];
+      fillSelect(sourceFilter, [...preferredSources, ...records.map((record) => record.ergebnisquelle)]);
     }}
 
     function fillDatalist(id, values, limit = 900) {{
@@ -7247,9 +7259,9 @@ def build_html(
       const rows = tableRecords.map((record, index) => `
         <tr data-index="${{index}}" class="${{ausgewaehlterEintrag && record.record_id === ausgewaehlterEintrag.record_id ? 'selected-record' : ''}}">
           <td data-label="Statuspunkt" class="status-dot-col"><span class="status-dot ${{statusDotClass(record)}}" title="${{escapeHtml(statusDotLabel(record))}}"></span></td>
-          <td data-label="Datum">${{escapeHtml(record.datum)}}</td>
+          <td data-label="Datum" class="date-col">${{escapeHtml(record.datum)}}</td>
           <td data-label="Typ" class="type-col"><span class="badge">${{escapeHtml(record.typ || '')}}</span></td>
-          <td data-label="Stk.">${{escapeHtml(record.stueck_nr)}}</td>
+          <td data-label="Stk." class="item-col">${{escapeHtml(record.stueck_nr)}}</td>
           <td data-label="Status" class="status-col">${{tableStatusHtml(record)}}</td>
           <td data-label="Geschäftszahl" class="business-col">${{escapeHtml((record.geschaeftszahlen || []).join(', '))}}</td>
           <td data-label="Titel" class="title">${{escapeHtml(record.titel)}}<br><span class="badge">${{escapeHtml(record.kategorie || '')}}</span></td>
@@ -7296,7 +7308,7 @@ def build_html(
     fillTypeSelect();
     fillSelect(statusFilter, records.map((record) => record.status_filter));
     fillSelect(categoryFilter, records.map((record) => record.kategorie));
-    fillSelect(sourceFilter, records.map((record) => record.ergebnisquelle));
+    fillSourceSelect();
     yearFilter.value = defaultYearValue();
     dateFilter.value = '';
     fillDatalist('locationSuggestions', records.flatMap((record) => record.orte || []));

@@ -1503,15 +1503,22 @@ def test_viewer_exposes_archive_source_filter_and_warning():
     assert "archiveNotice" in html
     assert "isArchiveRecord(record)" in html
     assert "Stadt-Graz-Archiv" in html
+    assert "function fillSourceSelect()" in html
+    assert "'Stadt-Graz-Archiv'" in html
+    assert "'Stadt-Graz-Protokoll'" in html
 
 
 def test_viewer_keeps_status_column_wide_and_type_column_narrow():
     html = build_html([], {})
 
-    assert ".type-col { width: 78px;" in html
+    assert ".date-col { width: 82px;" in html
+    assert ".type-col { width: 84px;" in html
+    assert ".item-col { width: 46px;" in html
     assert ".status-col { width: 168px;" in html
     assert ".status-col .badge { white-space: nowrap; }" in html
+    assert 'data-label="Datum" class="date-col"' in html
     assert 'data-label="Typ" class="type-col"' in html
+    assert 'data-label="Stk." class="item-col"' in html
 
 
 def test_start_answer_source_title_is_aligned_next_to_reference():
