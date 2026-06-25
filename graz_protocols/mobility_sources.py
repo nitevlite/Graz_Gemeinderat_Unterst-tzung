@@ -540,7 +540,7 @@ def load_roadworks(cache_path: Path | None = None, url: str = ROADWORKS_OFFICE_U
     return [asdict(roadwork) for roadwork in roadworks], summary
 
 
-def parse_roadworks_html(text: str) -> list[RoadworkInfo]:
+def parse_roadworks_html(text: str, today: date | None = None) -> list[RoadworkInfo]:
     if not text.strip():
         return []
     soup = BeautifulSoup(text, "html.parser")
@@ -591,7 +591,7 @@ def parse_roadworks_html(text: str) -> list[RoadworkInfo]:
                 period=period,
                 start_date=start_date,
                 end_date=end_date,
-                time_status=roadwork_time_status(period),
+                time_status=roadwork_time_status(period, today=today),
                 project=project,
             )
         )

@@ -403,6 +403,17 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "parking-card" in html
     assert "parking-card-actions" in html
     assert "data-parking-link=\"detail\"" in html
+    assert "parkingRouteStart" in html
+    assert "parkingUseLocation" in html
+    assert "parkingClearRoute" in html
+    assert "parkingRouteStatus" in html
+    assert "Route planen" in html
+    assert "data-parking-route" in html
+    assert "planParkingRoute" in html
+    assert "router.project-osrm.org/route/v1/driving" in html
+    assert "fossgis_osrm_car" in html
+    assert "Standort nutzen" in html
+    assert "OpenStreetMap/Nominatim und OSRM" in html
     assert "Betreiberseite öffnen" in html
     assert "Detailquelle öffnen" in html
     assert "supplementalParkingGarages" in html
@@ -619,7 +630,8 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert "selectRecord(ausgewaehlterEintrag, true)" not in html
     assert "selectRecord(findRecordById(step.dataset.recordId), true)" not in html
     assert "focusLocation(locationButton.dataset.location" in html
-    assert "L.polyline(points" not in html
+    assert "L.polyline(points" in html
+    assert "parkingRouteLayer" in html
     assert "record-route" not in html
     assert "record.typ" in html
     assert "Einbringer" in html

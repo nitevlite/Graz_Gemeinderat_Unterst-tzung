@@ -2255,7 +2255,8 @@ def build_html(
       min-width: 0;
       margin-top: 6px;
     }}
-    .parking-card-actions a {{
+    .parking-card-actions a,
+    .parking-card-actions button {{
       width: auto;
       display: inline-flex;
       align-items: center;
@@ -2277,8 +2278,57 @@ def build_html(
       text-align: center;
       line-height: 1.2;
     }}
-    .parking-card-actions a:hover {{
+    .parking-card-actions button {{
+      cursor: pointer;
+    }}
+    .parking-card-actions a:hover,
+    .parking-card-actions button:hover {{
       background: #ccfbf1;
+    }}
+    .parking-route-panel {{
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto auto;
+      gap: 8px;
+      align-items: end;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fafc;
+      padding: 10px;
+      margin-bottom: 10px;
+    }}
+    .parking-route-field {{
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }}
+    .parking-route-field span,
+    .parking-route-status {{
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }}
+    .parking-route-actions {{
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      min-width: 0;
+    }}
+    .parking-route-actions button {{
+      width: auto;
+      min-width: 118px;
+      white-space: normal;
+    }}
+    .parking-route-status {{
+      grid-column: 1 / -1;
+      min-height: 16px;
+    }}
+    .parking-route-summary {{
+      display: block;
+      color: #0f766e;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.35;
+      margin-top: 4px;
     }}
     .split-form {{
       display: grid;
@@ -2945,6 +2995,17 @@ def build_html(
             <h2>Tiefgaragen</h2>
             <div class="map-status" id="parkingStatus">Verfügbarkeit: unbekannt.</div>
           </div>
+          <section class="parking-route-panel" aria-label="Route zur Parkgarage planen">
+            <label class="parking-route-field">
+              <span>Startadresse oder aktueller Standort</span>
+              <input id="parkingRouteStart" type="search" placeholder="z. B. Jakominiplatz 1, Graz" autocomplete="street-address">
+            </label>
+            <div class="parking-route-actions">
+              <button id="parkingUseLocation" type="button">Standort nutzen</button>
+              <button id="parkingClearRoute" class="secondary-button" type="button">Route löschen</button>
+            </div>
+            <div class="parking-route-status" id="parkingRouteStatus">Garage auswählen und Startpunkt eingeben oder Standort freigeben.</div>
+          </section>
           <div class="map-progress" id="parkingProgress" aria-hidden="true">
             <div class="map-progress-bar" id="parkingProgressBar"></div>
           </div>
@@ -3092,6 +3153,10 @@ def build_html(
     const parkingProgress = byId('parkingProgress');
     const parkingProgressBar = byId('parkingProgressBar');
     const parkingList = byId('parkingList');
+    const parkingRouteStart = byId('parkingRouteStart');
+    const parkingUseLocation = byId('parkingUseLocation');
+    const parkingClearRoute = byId('parkingClearRoute');
+    const parkingRouteStatus = byId('parkingRouteStatus');
     const pharmacyStatus = byId('pharmacyStatus');
     const pharmacyProgress = byId('pharmacyProgress');
     const pharmacyProgressBar = byId('pharmacyProgressBar');
@@ -3151,6 +3216,8 @@ def build_html(
     let roadworksLayer = null;
     let parkingMap = null;
     let parkingLayer = null;
+    let parkingRouteLayer = null;
+    let parkingStartLayer = null;
     let pharmacyMap = null;
     let pharmacyLayer = null;
     let doctorsMap = null;
@@ -3193,6 +3260,10 @@ def build_html(
     let selectedParticipationRecordId = '';
     const searchSubtabScroll = {{ table: 0, details: 0, summary: 0 }};
     let currentParkingGarages = [];
+    let selectedParkingGarage = null;
+    let selectedParkingDestination = null;
+    let selectedParkingRoute = null;
+    let parkingStartCoords = null;
     let currentRoadworks = [];
     let activePharmacies = pharmacies;
     let activeDoctors = doctors;
@@ -4043,6 +4114,8 @@ def build_html(
       parkingMap = L.map('parkingMap').setView([47.0707, 15.4395], 12);
       addBaseLayer(parkingMap);
       parkingLayer = L.layerGroup().addTo(parkingMap);
+      parkingRouteLayer = L.layerGroup().addTo(parkingMap);
+      parkingStartLayer = L.layerGroup().addTo(parkingMap);
       renderParkingGarages();
     }}
 
@@ -4828,8 +4901,8 @@ def build_html(
       const sourceGarages = parkingGarages.length
         ? mergeParkingGarages(parkingGarages, supplementalParkingGarages)
         : mergeParkingGarages(parkingFallbackGarages, supplementalParkingGarages);
-      currentParkingGarages = sourceGarages;
       const usable = sourceGarages.map((garage, index) => ({{ ...garage, _index: index }}));
+      currentParkingGarages = usable;
       parkingStatus.textContent = `${{usable.length}} Garagen/Parkhäuser · Verfügbarkeit unbekannt`;
       updateProgress(parkingProgress, parkingProgressBar, 0, usable.length, true);
       parkingList.classList.toggle('parking-list', usable.length > 0);
@@ -4842,6 +4915,8 @@ def build_html(
           ? {{ lat: garage.lat, lon: garage.lon }}
           : await geocodeLocation(garage.address || garage.name);
         if (!coords) continue;
+        garage.lat = coords.lat;
+        garage.lon = coords.lon;
         drawn += 1;
         const marker = L.circleMarker([coords.lat, coords.lon], {{
           radius: 7,
@@ -4858,9 +4933,10 @@ def build_html(
           <div>${{escapeHtml(parkingAvailabilityInfo(garage).text)}}</div>
           <div>${{externalLink(parkingDetailLink(garage).url, parkingDetailLink(garage).label)}}</div>
           <div>${{parkingAvailabilityInfo(garage).url ? externalLink(parkingAvailabilityInfo(garage).url, 'Live-Verfügbarkeit prüfen') : ''}}</div>
+          <div>${{parkingRouteLink(garage, 'Route in OSM öffnen')}}</div>
           <div>Quelle: ${{escapeHtml(garage.source || '')}} · ${{escapeHtml(garage.license || '')}}</div>
         `);
-        marker.on('click', () => highlightParkingList(garage._index));
+        marker.on('click', () => selectParkingGarage(garage, coords));
         parkingStatus.textContent = `${{drawn}}/${{usable.length}} Standorte eingezeichnet · Verfügbarkeit unbekannt`;
         updateProgress(parkingProgress, parkingProgressBar, drawn, usable.length, drawn < usable.length);
         if (drawn % 15 === 0) await nextFrame();
@@ -4886,10 +4962,186 @@ def build_html(
           <span class="parking-note">${{escapeHtml(availability.text)}}</span>
           <span class="parking-card-actions">
             <a href="${{escapeHtml(detailLink.url)}}" target="_blank" rel="noopener noreferrer" data-parking-link="detail">${{escapeHtml(detailLink.label)}}</a>
+            <button type="button" data-parking-route="${{garage._index}}">Route planen</button>
             ${{availability.url && availability.url !== detailLink.url ? `<a href="${{escapeHtml(availability.url)}}" target="_blank" rel="noopener noreferrer" data-parking-link="availability">Live prüfen</a>` : ''}}
           </span>
+          <span class="parking-route-summary" data-parking-route-summary="${{garage._index}}"></span>
         </div>
       `;
+    }}
+
+    function parkingRouteLink(garage, label = 'Route öffnen') {{
+      const lat = Number(garage.lat);
+      const lon = Number(garage.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return '';
+      const destination = `${{lat.toFixed(6)}},${{lon.toFixed(6)}}`;
+      const route = parkingStartCoords
+        ? `&route=${{parkingStartCoords.lat.toFixed(6)}},${{parkingStartCoords.lon.toFixed(6)}};${{destination}}`
+        : `&mlat=${{lat.toFixed(6)}}&mlon=${{lon.toFixed(6)}}`;
+      const url = `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car${{route}}#map=16/${{lat.toFixed(6)}}/${{lon.toFixed(6)}}`;
+      return externalLink(url, label);
+    }}
+
+    function selectParkingGarage(garage, coords = null) {{
+      selectedParkingGarage = garage;
+      selectedParkingDestination = coords || parkingGarageCoords(garage);
+      highlightParkingList(garage._index);
+      if (parkingMap && selectedParkingDestination) {{
+        parkingMap.setView([selectedParkingDestination.lat, selectedParkingDestination.lon], 16);
+      }}
+      parkingRouteStatus.textContent = `${{garage.name || 'Parkgarage'}} ausgewählt. Startpunkt eingeben oder Standort nutzen.`;
+      refreshParkingRouteSummaries();
+      if (parkingStartCoords && selectedParkingDestination) {{
+        planParkingRoute().catch(() => {{
+          parkingRouteStatus.textContent = 'Route konnte nicht berechnet werden. OpenStreetMap-Link nutzen.';
+        }});
+      }}
+    }}
+
+    function parkingGarageCoords(garage) {{
+      const lat = Number(garage?.lat);
+      const lon = Number(garage?.lon);
+      return Number.isFinite(lat) && Number.isFinite(lon) ? {{ lat, lon }} : null;
+    }}
+
+    async function resolveSelectedParkingDestination() {{
+      if (selectedParkingDestination) return selectedParkingDestination;
+      if (!selectedParkingGarage) return null;
+      const embedded = parkingGarageCoords(selectedParkingGarage);
+      if (embedded) {{
+        selectedParkingDestination = embedded;
+        return embedded;
+      }}
+      const coords = await geocodeLocation(selectedParkingGarage.address || selectedParkingGarage.name || '');
+      if (!coords) return null;
+      selectedParkingGarage.lat = coords.lat;
+      selectedParkingGarage.lon = coords.lon;
+      selectedParkingDestination = coords;
+      return coords;
+    }}
+
+    async function resolveParkingStartFromInput() {{
+      const value = parkingRouteStart.value.trim();
+      if (value === 'Aktueller Standort' && parkingStartCoords) return parkingStartCoords;
+      if (!value) return parkingStartCoords;
+      parkingRouteStatus.textContent = 'Startadresse wird gesucht...';
+      const coords = await geocodeParkingStart(value);
+      if (!coords) {{
+        parkingRouteStatus.textContent = 'Startadresse nicht gefunden. Bitte genauer eingeben, z. B. Straße und Ort.';
+        return null;
+      }}
+      parkingStartCoords = coords;
+      return coords;
+    }}
+
+    async function geocodeParkingStart(value) {{
+      const query = /graz|österreich|austria/i.test(value) ? value : `${{value}}, Graz, Österreich`;
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=at&q=${{encodeURIComponent(query)}}`;
+      try {{
+        const response = await fetch(url);
+        if (!response.ok) return null;
+        const results = await response.json();
+        const first = results[0];
+        const coords = {{ lat: Number(first?.lat), lon: Number(first?.lon) }};
+        return Number.isFinite(coords.lat) && Number.isFinite(coords.lon) ? coords : null;
+      }} catch {{
+        return null;
+      }}
+    }}
+
+    async function planParkingRoute() {{
+      if (!selectedParkingGarage) {{
+        parkingRouteStatus.textContent = 'Bitte zuerst eine Parkgarage auswählen.';
+        return;
+      }}
+      const start = await resolveParkingStartFromInput();
+      const destination = await resolveSelectedParkingDestination();
+      if (!start) {{
+        parkingRouteStatus.textContent = 'Bitte Startadresse eingeben oder Standort freigeben.';
+        return;
+      }}
+      if (!destination) {{
+        parkingRouteStatus.textContent = 'Zielgarage konnte nicht auf der Karte gefunden werden.';
+        return;
+      }}
+      if (!parkingRouteLayer || !parkingStartLayer || !parkingMap) return;
+      parkingRouteStatus.textContent = 'Route wird über OSRM berechnet...';
+      const url = `https://router.project-osrm.org/route/v1/driving/${{start.lon}},${{start.lat}};${{destination.lon}},${{destination.lat}}?overview=full&geometries=geojson&steps=false`;
+      try {{
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('OSRM nicht verfügbar');
+        const data = await response.json();
+        const route = data.routes?.[0];
+        const line = route?.geometry?.coordinates;
+        if (!Array.isArray(line) || !line.length) throw new Error('Keine Route');
+        selectedParkingRoute = route;
+        drawParkingRoute(start, destination, line);
+        updateParkingRouteStatus(route);
+        refreshParkingRouteSummaries();
+      }} catch {{
+        selectedParkingRoute = null;
+        parkingRouteStatus.innerHTML = `Route konnte online nicht berechnet werden. ${{parkingRouteLink(selectedParkingGarage, 'Route in OpenStreetMap öffnen')}}`;
+        refreshParkingRouteSummaries();
+      }}
+    }}
+
+    function drawParkingRoute(start, destination, coordinates) {{
+      parkingRouteLayer.clearLayers();
+      parkingStartLayer.clearLayers();
+      const points = coordinates
+        .map((point) => [Number(point[1]), Number(point[0])])
+        .filter((point) => Number.isFinite(point[0]) && Number.isFinite(point[1]));
+      if (!points.length) return;
+      L.polyline(points, {{ color: '#0f766e', weight: 5, opacity: 0.86 }}).addTo(parkingRouteLayer);
+      L.circleMarker([start.lat, start.lon], {{
+        radius: 6,
+        color: '#2563eb',
+        fillColor: '#60a5fa',
+        fillOpacity: 0.9,
+        weight: 2,
+      }}).bindTooltip('Start', {{ direction: 'top' }}).addTo(parkingStartLayer);
+      L.circleMarker([destination.lat, destination.lon], {{
+        radius: 7,
+        color: '#0f766e',
+        fillColor: '#14b8a6',
+        fillOpacity: 0.9,
+        weight: 2,
+      }}).bindTooltip('Zielgarage', {{ direction: 'top' }}).addTo(parkingStartLayer);
+      parkingMap.fitBounds(L.latLngBounds(points), {{ padding: [28, 28] }});
+    }}
+
+    function updateParkingRouteStatus(route) {{
+      const distanceKm = route.distance ? (route.distance / 1000).toLocaleString('de-AT', {{ maximumFractionDigits: 1 }}) : '';
+      const minutes = route.duration ? Math.round(route.duration / 60) : '';
+      parkingRouteStatus.innerHTML = [
+        distanceKm ? `${{distanceKm}} km` : '',
+        minutes ? `${{minutes}} min mit dem Auto` : '',
+        parkingRouteLink(selectedParkingGarage, 'Route in OpenStreetMap öffnen')
+      ].filter(Boolean).join(' · ');
+    }}
+
+    function clearParkingRoute() {{
+      selectedParkingRoute = null;
+      parkingStartCoords = null;
+      parkingRouteStart.value = '';
+      parkingRouteLayer?.clearLayers();
+      parkingStartLayer?.clearLayers();
+      parkingRouteStatus.textContent = selectedParkingGarage
+        ? `${{selectedParkingGarage.name || 'Parkgarage'}} ausgewählt. Startpunkt eingeben oder Standort nutzen.`
+        : 'Garage auswählen und Startpunkt eingeben oder Standort freigeben.';
+      refreshParkingRouteSummaries();
+    }}
+
+    function refreshParkingRouteSummaries() {{
+      parkingList.querySelectorAll('[data-parking-route-summary]').forEach((item) => {{
+        item.textContent = '';
+      }});
+      if (!selectedParkingGarage || !selectedParkingRoute) return;
+      const item = parkingList.querySelector(`[data-parking-route-summary="${{selectedParkingGarage._index}}"]`);
+      if (!item) return;
+      const distanceKm = selectedParkingRoute.distance ? (selectedParkingRoute.distance / 1000).toLocaleString('de-AT', {{ maximumFractionDigits: 1 }}) : '';
+      const minutes = selectedParkingRoute.duration ? Math.round(selectedParkingRoute.duration / 60) : '';
+      item.textContent = [distanceKm ? `${{distanceKm}} km` : '', minutes ? `${{minutes}} min` : ''].filter(Boolean).join(' · ');
     }}
 
     function mergeParkingGarages(primary, supplemental) {{
@@ -4948,6 +5200,7 @@ def build_html(
         Quelle: ${{externalLink(source.dataset_url || '', 'Parkgaragen Graz / data.gv.at')}} ·
         Lizenz: ${{escapeHtml(source.license || 'unbekannt')}} ·
         Namensnennung: ${{escapeHtml(source.attribution || '-') }}.
+        Routing: OpenStreetMap/Nominatim und OSRM, ohne Google-Maps-API und ohne API-Schlüssel.
         Parken.at wird nur verlinkt; Verfügbarkeit, Preise und Standortdaten werden wegen der Nutzungsbedingungen nicht übernommen.
         Zusätzliche Betreiberstandorte werden nur als Prüflinks ergänzt; Verfügbarkeit, Preise, Stellplatzzahlen und Scraping-Daten werden ohne Freigabe nicht übernommen.
       `;
@@ -7524,15 +7777,39 @@ def build_html(
       if (!item) return;
       const garage = currentParkingGarages[Number(item.dataset.parkingIndex)];
       if (!garage || !parkingMap) return;
-      const embeddedCoords = Number.isFinite(garage.lat) && Number.isFinite(garage.lon)
-        ? {{ lat: garage.lat, lon: garage.lon }}
-        : null;
-      Promise.resolve(embeddedCoords || geocodeLocation(garage.address || garage.name)).then((coords) => {{
+      const routeButton = event.target.closest('[data-parking-route]');
+      Promise.resolve(parkingGarageCoords(garage) || geocodeLocation(garage.address || garage.name)).then((coords) => {{
         if (!coords) return;
-        parkingMap.setView([coords.lat, coords.lon], 16);
-        highlightParkingList(item.dataset.parkingIndex);
+        garage.lat = coords.lat;
+        garage.lon = coords.lon;
+        selectParkingGarage(garage, coords);
+        if (routeButton) planParkingRoute();
       }});
     }});
+    parkingRouteStart.addEventListener('keydown', (event) => {{
+      if (event.key === 'Enter') {{
+        event.preventDefault();
+        planParkingRoute();
+      }}
+    }});
+    parkingUseLocation.addEventListener('click', () => {{
+      if (!navigator.geolocation) {{
+        parkingRouteStatus.textContent = 'Standortfreigabe wird von diesem Browser nicht unterstützt.';
+        return;
+      }}
+      parkingRouteStatus.textContent = 'Standort wird abgefragt...';
+      navigator.geolocation.getCurrentPosition((position) => {{
+        parkingStartCoords = {{
+          lat: position.coords.latitude,
+          lon: position.coords.longitude,
+        }};
+        parkingRouteStart.value = 'Aktueller Standort';
+        planParkingRoute();
+      }}, () => {{
+        parkingRouteStatus.textContent = 'Standort konnte nicht gelesen werden. Bitte Startadresse eingeben.';
+      }}, {{ enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }});
+    }});
+    parkingClearRoute.addEventListener('click', clearParkingRoute);
     pharmacyList.addEventListener('click', (event) => {{
       const item = event.target.closest('[data-health-index]');
       if (!item) return;

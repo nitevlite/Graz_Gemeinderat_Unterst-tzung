@@ -78,6 +78,12 @@ jobs:
             --output public/index.html
           touch public/.nojekyll
 
+      - name: Smoke-test public parking routing
+        run: |
+          grep -q "parkingRouteStart" public/index.html
+          grep -q "router.project-osrm.org/route/v1/driving" public/index.html
+          grep -q "OpenStreetMap/Nominatim und OSRM" public/index.html
+
       - name: Publish gh-pages branch
         run: |
           set -euo pipefail

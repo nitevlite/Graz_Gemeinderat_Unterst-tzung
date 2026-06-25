@@ -153,7 +153,7 @@ def test_parses_official_graz_roadworks_html_blocks():
     </div>
     """
 
-    roadworks = parse_roadworks_html(html)
+    roadworks = parse_roadworks_html(html, today=date(2026, 6, 9))
 
     assert len(roadworks) == 1
     assert roadworks[0].title == "Kärntner Straße 163"
@@ -178,7 +178,7 @@ def test_parses_current_until_roadwork_period_from_description():
     </div>
     """
 
-    roadworks = parse_roadworks_html(html)
+    roadworks = parse_roadworks_html(html, today=date(2026, 6, 9))
 
     assert len(roadworks) == 1
     assert roadworks[0].period == "derzeit - 20.06.2026"
@@ -197,7 +197,7 @@ def test_parses_current_until_roadwork_period_with_bis_from_description():
     </div>
     """
 
-    roadworks = parse_roadworks_html(html)
+    roadworks = parse_roadworks_html(html, today=date(2026, 6, 9))
 
     assert len(roadworks) == 1
     assert roadworks[0].period == "derzeit bis 13.09.2026"
