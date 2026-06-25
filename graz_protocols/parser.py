@@ -6,6 +6,7 @@ import json
 import re
 from typing import Iterable, Protocol
 
+from .date_utils import parse_compact_public_date
 from .street_names import normalize_street_name
 
 
@@ -424,11 +425,13 @@ def extract_meeting_date(paragraphs: Iterable[str], source_file: str) -> str:
         return filename_match.group("date")
     legacy_filename_match = LEGACY_DATE_IN_FILENAME_RE.search(source_file)
     if legacy_filename_match:
-        year = 2000 + int(legacy_filename_match.group("yy"))
-        month = int(legacy_filename_match.group("month"))
-        day = int(legacy_filename_match.group("day"))
-        if 2000 <= year <= 2026 and 1 <= month <= 12 and 1 <= day <= 31:
-            return f"{year:04d}-{month:02d}-{day:02d}"
+        parsed_date = parse_compact_public_date(
+            legacy_filename_match.group("yy"),
+            legacy_filename_match.group("month"),
+            legacy_filename_match.group("day"),
+        )
+        if parsed_date:
+            return parsed_date
     for paragraph in paragraphs:
         match = MEETING_DATE_IN_TEXT_RE.search(paragraph)
         if match:

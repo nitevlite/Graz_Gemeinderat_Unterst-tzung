@@ -2,7 +2,7 @@
   "name": "Graz Gemeinderatsprotokolle",
   "short_name": "Graz Protokolle",
   "description": "Durchsuchbarer Viewer fuer Gemeinderatsprotokolle der Stadt Graz.",
-  "start_url": "viewer.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f7f8fa",

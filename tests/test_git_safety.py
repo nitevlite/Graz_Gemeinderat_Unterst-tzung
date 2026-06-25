@@ -19,6 +19,19 @@ def test_blocks_protocol_and_generated_file_types():
     assert "README.md" not in by_path
 
 
+def test_allows_explicit_public_street_name_fixture():
+    findings = check_paths(["Straßennamen_Graz.xlsx"], [], max_bytes=1_000_000)
+
+    assert findings == []
+
+
+def test_normalizes_quoted_git_paths_before_checking():
+    findings = check_paths(['"data/raw/protocol.docx"'], [], max_bytes=1_000_000)
+
+    by_path = reasons(findings)
+    assert by_path['"data/raw/protocol.docx"'] == "verbotener Dateityp .docx"
+
+
 def test_blocks_forbidden_data_directories():
     findings = check_paths(["graz_protokolle_arbeitskopie/example.txt", "src/app.py"], [], max_bytes=1_000_000)
 

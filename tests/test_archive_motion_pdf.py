@@ -80,3 +80,17 @@ def test_parse_archive_motion_text_extracts_numbered_written_motions():
     assert [record.meeting_date for record in records] == ["2009-11-19", "2009-11-19"]
     assert records[0].title == "Zweitwohnsitzabgabe, Petition an die Steiermärkische Landesregierung"
     assert records[0].submitter == "GR. Hohensinner"
+
+
+def test_parse_archive_motion_accepts_future_compact_filename_date():
+    text = """
+    Gemeinderatssitzung vom 12. März 2027
+    A N T R Ä G E
+    1) Neuer Antrag
+    GRin. Musterfrau stellt folgenden Antrag:
+    Der Gemeinderat wolle beschließen.
+    """
+
+    records = parse_archive_motion_text(text, "270312_antraege.pdf")
+
+    assert records[0].meeting_date == "2027-03-12"

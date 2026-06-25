@@ -117,6 +117,9 @@ def test_viewer_uses_german_labels_and_hides_raw_text():
     assert '<link rel="icon" type="image/png" sizes="32x32" href="bi/favicon-32.png">' in html
     assert '<link rel="apple-touch-icon" sizes="180x180" href="bi/apple-touch-icon.png">' in html
     assert '<link rel="manifest" href="site.webmanifest">' in html
+    assert '<link rel="stylesheet" href="vendor/leaflet/leaflet.css">' in html
+    assert '<script src="vendor/leaflet/leaflet.js"></script>' in html
+    assert "https://unpkg.com/leaflet" not in html
     assert "mehrheitlich angenommen" in html
     assert "angenommen (mehrheitlich)" in html
     assert "Angenommen" in html

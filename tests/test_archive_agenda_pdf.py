@@ -42,6 +42,17 @@ def test_parse_archive_agenda_lines_adds_source_page_fragment():
     assert records[0].title == "Stadion Graz-Liebenau Projektgenehmigung"
 
 
+def test_parse_archive_agenda_accepts_future_compact_filename_date():
+    lines = [
+        (1, "Tagesordnung"),
+        (2, "1) A 10/BD-12345/2027 Neues Projekt"),
+    ]
+
+    records = parse_archive_agenda_lines(lines, "270312_tagesordnung.pdf")
+
+    assert records[0].meeting_date == "2027-03-12"
+
+
 def test_parse_archive_agenda_lines_ignores_spoken_vote_lines_that_look_numbered():
     lines = [
         (1, "Gemeinderatssitzung vom 19. November 2009"),

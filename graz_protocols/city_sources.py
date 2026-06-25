@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 from bs4 import BeautifulSoup
 import requests
 
+from .date_utils import parse_compact_public_date
 from .parser import AgendaRecord
 
 
@@ -568,12 +569,7 @@ def asset_meeting_date(anchor, label: str, url: str, fallback: str) -> str:
 
 
 def compact_date(year: str, month: str, day: str) -> str:
-    year_int = 2000 + int(year)
-    month_int = int(month)
-    day_int = int(day)
-    if not (2004 <= year_int <= 2026 and 1 <= month_int <= 12 and 1 <= day_int <= 31):
-        return ""
-    return f"{year_int:04d}-{month}-{day}"
+    return parse_compact_public_date(year, month, day, min_year=2004)
 
 
 def fetch_city_meeting_pages_with_errors(

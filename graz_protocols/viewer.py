@@ -452,8 +452,8 @@ def build_html(
   <link rel="icon" type="image/png" sizes="32x32" href="bi/favicon-32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="bi/apple-touch-icon.png">
   <link rel="manifest" href="site.webmanifest">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <script src="vendor/leaflet/leaflet.js"></script>
   <style>
     :root {{
       color-scheme: light;

@@ -7,6 +7,7 @@ import importlib
 import re
 
 from .archive_agenda_pdf import source_url_with_page
+from .date_utils import parse_compact_public_date
 from .parser import (
     AgendaRecord,
     build_record_id,
@@ -289,11 +290,13 @@ def clean_submitter(value: str) -> str:
 def archive_motion_meeting_date(lines: list[tuple[int, str]], source_file: str) -> str:
     filename_match = re.search(r"(?<!\d)(?P<yy>\d{2})(?P<month>\d{2})(?P<day>\d{2})(?!\d)", source_file)
     if filename_match:
-        year = 2000 + int(filename_match.group("yy"))
-        month = int(filename_match.group("month"))
-        day = int(filename_match.group("day"))
-        if 2000 <= year <= 2026 and 1 <= month <= 12 and 1 <= day <= 31:
-            return f"{year:04d}-{month:02d}-{day:02d}"
+        parsed_date = parse_compact_public_date(
+            filename_match.group("yy"),
+            filename_match.group("month"),
+            filename_match.group("day"),
+        )
+        if parsed_date:
+            return parsed_date
     for _page, line in lines[:30]:
         match = MEETING_DATE_RE.search(line)
         if match:

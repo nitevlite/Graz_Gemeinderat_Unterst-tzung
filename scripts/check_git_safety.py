@@ -37,6 +37,9 @@ FORBIDDEN_FILENAMES = {
     "graz-baustellen-feed.rss",
     "graz-baustellen.ics",
 }
+ALLOWED_TRACKED_PATHS = {
+    "Straßennamen_Graz.xlsx",
+}
 DEFAULT_MAX_BYTES = 1_000_000
 
 
@@ -72,7 +75,13 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def git_lines(args: list[str]) -> list[str]:
-    result = subprocess.run(["git", *args], check=True, capture_output=True, text=True)
+    result = subprocess.run(
+        ["git", "-c", "core.quotePath=false", *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
@@ -82,6 +91,8 @@ def check_paths(tracked_paths: list[str], staged_paths: list[str], max_bytes: in
     staged = set(staged_paths)
     for path_text in all_paths:
         normalized = normalize_path(path_text)
+        if normalized in ALLOWED_TRACKED_PATHS:
+            continue
         suffix = Path(normalized).suffix.casefold()
         if Path(normalized).name.casefold() in FORBIDDEN_FILENAMES:
             findings.append(Finding(path_text, "lokaler Baustellen-/Audit-Export"))
@@ -101,7 +112,7 @@ def check_paths(tracked_paths: list[str], staged_paths: list[str], max_bytes: in
 
 
 def normalize_path(path: str) -> str:
-    return path.replace("\\", "/").strip("/")
+    return path.strip('"').replace("\\", "/").strip("/")
 
 
 def matching_forbidden_dir(path: str) -> str:

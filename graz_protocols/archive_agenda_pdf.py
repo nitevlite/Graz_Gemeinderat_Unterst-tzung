@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 
+from .date_utils import parse_compact_public_date
 from .parser import AgendaRecord, build_record_id, extract_amounts, extract_location_details, make_snippet
 from .question_pdf import extract_pdf_page_lines, read_question_hour_source
 
@@ -209,11 +210,13 @@ def normalize_archive_agenda_business_number(value: str) -> str:
 def archive_agenda_meeting_date(lines: list[tuple[int, str]], source_file: str) -> str:
     filename_match = re.search(r"(?<!\d)(?P<yy>\d{2})(?P<month>\d{2})(?P<day>\d{2})(?!\d)", source_file)
     if filename_match:
-        year = 2000 + int(filename_match.group("yy"))
-        month = int(filename_match.group("month"))
-        day = int(filename_match.group("day"))
-        if 2000 <= year <= 2026 and 1 <= month <= 12 and 1 <= day <= 31:
-            return f"{year:04d}-{month:02d}-{day:02d}"
+        parsed_date = parse_compact_public_date(
+            filename_match.group("yy"),
+            filename_match.group("month"),
+            filename_match.group("day"),
+        )
+        if parsed_date:
+            return parsed_date
     for _page, line in lines[:12]:
         match = re.search(
             r"(?P<day>\d{1,2})\.\s*(?P<month>[A-Za-zÄÖÜäöüß]+)\s+(?P<year>\d{4})",

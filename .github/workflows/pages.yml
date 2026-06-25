@@ -76,6 +76,9 @@ jobs:
             --summary public_work/summary.json \
             --topics public_work/topics.json \
             --output public/index.html
+          cp site.webmanifest public/site.webmanifest
+          cp -a bi public/bi
+          cp -a vendor public/vendor
           touch public/.nojekyll
 
       - name: Smoke-test public parking routing
@@ -100,6 +103,6 @@ jobs:
           git rm -r --ignore-unmatch .
           cp -a /tmp/graz-pages/. .
           touch .nojekyll
-          git add index.html .nojekyll
+          git add index.html .nojekyll site.webmanifest bi/ vendor/
           git commit -m "Publish public viewer" || exit 0
           git push origin gh-pages

@@ -14,6 +14,7 @@ from graz_protocols.city_sources import (
     write_city_archive_asset_index,
     CityArchiveAsset,
     CityMeetingPage,
+    compact_date,
 )
 from bs4 import BeautifulSoup
 
@@ -106,6 +107,11 @@ def test_parse_city_archive_assets_discovers_protocol_documents():
     assert {asset.kind for asset in assets} == {"protocol_document", "archive_document"}
     assert assets[0].meeting_date == "2021-12-16"
     assert assets[1].meeting_date == "2004-04-22"
+
+
+def test_compact_archive_dates_accept_future_public_years_and_reject_invalid_dates():
+    assert compact_date("27", "03", "12") == "2027-03-12"
+    assert compact_date("27", "02", "31") == ""
 
 
 def test_city_archive_asset_summary_reports_years_and_document_types(monkeypatch, tmp_path):
